@@ -35,6 +35,7 @@ local function ensureState(ctx)
             facing = facing,
             log = {},
             failWithoutAxis = {},
+            failPositions = {},
         }
     end
     return ctx._movementState
@@ -56,6 +57,14 @@ function movementStub.goTo(ctx, position, moveOpts)
     local key = serializePosition(target)
     if state.failWithoutAxis[key] and not axisOrder then
         return false, "axis_blocked"
+    end
+    local forcedErr = state.failPositions[key]
+    if forcedErr then
+        local message = forcedErr
+        if type(forcedErr) == "table" then
+            message = forcedErr.err or forcedErr.message
+        end
+        return false, message or "blocked"
     end
     state.failWithoutAxis[key] = nil
     state.position = target
@@ -89,6 +98,19 @@ movementStub.__test = {
         local state = ensureState(ctx)
         local key = serializePosition(pos)
         state.failWithoutAxis[key] = true
+    end,
+    blockPosition = function(ctx, pos, err)
+        local state = ensureState(ctx)
+        local key = serializePosition(pos)
+        state.failPositions[key] = err or "blocked"
+    end,
+    unblockPosition = function(ctx, pos)
+        local state = ensureState(ctx)
+        local key = serializePosition(pos)
+        state.failPositions[key] = nil
+    end,
+    clearBlocks = function(ctx)
+        ensureState(ctx).failPositions = {}
     end,
     clearLog = function(ctx)
         ensureState(ctx).log = {}
@@ -303,6 +325,52 @@ local function testWalkway(io)
     return true, ctx
 end
 
+local function testWalkwayReroute()
+    local ctx = freshCtx()
+    worldstate.buildReferenceFrame(ctx)
+    local grid = worldstate.configureGrid(ctx, {
+        width = 2,
+        length = 2,
+        spacingX = 2,
+        spacingZ = 3,
+        origin = { x = 0, y = 64, z = 0 },
+    })
+    local walkway = worldstate.configureWalkway(ctx, {
+        candidates = { grid.origin.x - 2, grid.origin.x + grid.spacingX * grid.width },
+        offset = -2,
+    })
+    local firstCandidate = walkway.candidates and walkway.candidates[1]
+    local secondCandidate = walkway.candidates and walkway.candidates[2]
+    if not firstCandidate or not secondCandidate then
+        error("walkway reroute requires multiple safe candidates")
+    end
+
+    local startRef = { x = grid.origin.x, y = grid.origin.y, z = grid.origin.z }
+    movementStub.__test.setPosition(ctx, worldstate.referenceToWorld(ctx, startRef))
+    movementStub.__test.clearLog(ctx)
+
+    local blockedWorld = worldstate.referenceToWorld(ctx, {
+        x = firstCandidate,
+        y = startRef.y,
+        z = startRef.z,
+    })
+    movementStub.__test.blockPosition(ctx, blockedWorld, "blocked_stage_one")
+
+    local targetRef = { x = grid.origin.x, y = grid.origin.y, z = grid.origin.z + grid.spacingZ }
+    local ok, err = worldstate.moveAlongWalkway(ctx, targetRef)
+    assertEqual(ok, true, err or "walkway reroute")
+    assertEqual(ctx.walkwayEntranceX, secondCandidate, "walkway switched candidate")
+    local log = movementStub.__test.getLog(ctx)
+    if #log < 4 then
+        error(string.format("walkway reroute goTo count expected >=4 got %d", #log))
+    end
+    local firstAttemptRef = worldstate.worldToReference(ctx, log[1].position)
+    assertEqual(firstAttemptRef.x, firstCandidate, "first walkway attempt column")
+    assertVector(worldstate.worldToReference(ctx, movementStub.getPosition(ctx)), targetRef, "walkway reroute final position")
+    movementStub.__test.clearBlocks(ctx)
+    return true
+end
+
 local function testTraversal(ctx)
     local traversalCtx = ctx or freshCtx()
     worldstate.configureGrid(traversalCtx, {
@@ -354,6 +422,7 @@ local function run(ioOverrides)
         end
         return ok
     end)
+    suite:step("Walkway reroute handling", testWalkwayReroute)
     suite:step("Traversal bookkeeping", function()
         return testTraversal(snapshotCtx)
     end)
