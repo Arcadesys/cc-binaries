@@ -1,5 +1,9 @@
 # ComputerCraft Personal OS
 
+## Pine Lanes
+
+The separate [`pine-lanes`](pine-lanes/README.md) program adds local multiplayer bowling with Pine3D, arcade hook, pin collisions, and ten-frame scoring. Keyboard and Advanced Monitor tap controls are supported.
+
 ## Pine Links
 
 The separate [`pine-links`](pine-links/README.md) program adds a Pine3D golf practice game based on Pebble Beach hole 7. It includes keyboard and Advanced Monitor controls, deterministic physics and scoring tests, and a display/input diagnostic. The existing desktop and MIDI programs remain separate entry points.
