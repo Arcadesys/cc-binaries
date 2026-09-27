@@ -1,0 +1,46 @@
+{
+    "name": "Potato Farmer",
+    "version": "1.0.0",
+    "role": "farmer",
+    "strategy": "potato",
+    "farm_config": {
+        "dimensions": {
+            "width": 9,
+            "length": 9
+        },
+        "trash_items": [
+            "minecraft:poisonous_potato",
+            "minecraft:dirt",
+            "minecraft:cobblestone",
+            "minecraft:stick"
+        ]
+    },
+    "tile_definitions": {
+        "farm_space": {
+            "description": "Standard farming tile",
+            "actions": [
+                {
+                    "type": "inspect_and_interact",
+                    "target": "down",
+                    "expect": "minecraft:potatoes",
+                    "properties": {
+                        "age": 7
+                    },
+                    "on_match": [
+                        "harvest",
+                        "replant"
+                    ],
+                    "on_missing": [
+                        "plant"
+                    ],
+                    "on_wrong": [
+                        "till",
+                        "plant"
+                    ],
+                    "on_wrong_props": []
+                }
+            ]
+        }
+    },
+    "plan": "fill_farm_space"
+}
