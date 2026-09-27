@@ -3,8 +3,9 @@ local lane = require("lib.lane")
 local pine = require("vendor.Pine3D")
 local render = {}
 
-local ZS = 3.0 -- make the real 1.05 m deck legible in terminal pixels
+local ZS = 3.0 -- spread lane features and object positions, not object geometry
 local PIN_VISUAL_SCALE = 1.8 -- modest display-only stylization for terminal resolution; physics stays exact
+local BALL_VISUAL_SCALE = 1.6 -- readable round silhouette above the lane surface
 local function quad(x1,y1,z1,x2,y2,z2,x3,y3,z3,c)
   return {x1=x1,y1=y1,z1=z1*ZS,x2=x2,y2=y2,z2=z2*ZS,x3=x3,y3=y3,z3=z3*ZS,c=c,forceRender=true}
 end
@@ -53,7 +54,7 @@ local function pinModel(angle,tilt,visualScale)
   local vx,vy,vz=-sa,0,ca
   local function point(x,y,z)
     x,y,z=x*visualScale,y*visualScale,z*visualScale
-    return ax*y+ux*x+vx*z, ay*y+uy*x+vy*z, (az*y+uz*x+vz*z)*ZS
+    return ax*y+ux*x+vx*z, ay*y+uy*x+vy*z, az*y+uz*x+vz*z
   end
   local function tri(x1,y1,z1,x2,y2,z2,x3,y3,z3,c)
     local ax1,ay1,az1=point(x1,y1,z1); local ax2,ay2,az2=point(x2,y2,z2); local ax3,ay3,az3=point(x3,y3,z3)
@@ -62,9 +63,11 @@ local function pinModel(angle,tilt,visualScale)
   local n=8
   for r=1,#rings-1 do
     local y1,a=rings[r][1],rings[r][2]; local y2,b=rings[r+1][1],rings[r+1][2]
-    local c=(r==5 or r==6) and colors.red or (r%2==0 and colors.white or colors.lightGray)
     for j=0,n-1 do
       local q1=j*math.pi*2/n; local q2=(j+1)*math.pi*2/n
+      local lit=math.sin((q1+q2)/2)>.15
+      local c=(r==5 or r==6) and (lit and colors.red or colors.purple)
+        or (lit and colors.white or colors.lightGray)
       local x1,z1=math.cos(q1)*a,math.sin(q1)*a
       local x2,z2=math.cos(q2)*a,math.sin(q2)*a
       local x3,z3=math.cos(q2)*b,math.sin(q2)*b
@@ -72,6 +75,13 @@ local function pinModel(angle,tilt,visualScale)
       tri(x1,y1,z1,x2,y1,z2,x3,y2,z3,c)
       tri(x1,y1,z1,x3,y2,z3,x4,y2,z4,c)
     end
+  end
+  -- Close the crown so the near/deck camera sees a solid pin, not an open tube.
+  local topY,topR=rings[#rings][1],rings[#rings][2]
+  for j=0,n-1 do
+    local q1=j*math.pi*2/n; local q2=(j+1)*math.pi*2/n
+    tri(0,topY,0,math.cos(q1)*topR,topY,math.sin(q1)*topR,
+      math.cos(q2)*topR,topY,math.sin(q2)*topR,colors.white)
   end
   return m
 end
@@ -87,6 +97,19 @@ local function scaleModel(model,sx,sy,sz)
   end
   return out
 end
+local function ballModel()
+  local diameter=lane.ballRadius*2*BALL_VISUAL_SCALE
+  local mesh=pine.models:sphere({res=10,color=colors.green})
+  for _,face in ipairs(mesh) do
+    local x=(face.x1+face.x2+face.x3)/3
+    local y=(face.y1+face.y2+face.y3)/3
+    local z=(face.z1+face.z2+face.z3)/3
+    local length=math.sqrt(x*x+y*y+z*z)
+    local light=length>0 and (y+.55*z-.25*x)/length or 0
+    face.c=light>.45 and colors.lime or (light>-.2 and colors.cyan or colors.green)
+  end
+  return scaleModel(mesh,diameter,diameter,diameter)
+end
 local function paletteSave(t)
   local saved={}
   if t.getPaletteColor then
@@ -101,8 +124,10 @@ function render.new(target)
   local t=target or term.current(); local oldTerm=term.current(); local oldW,oldH=t.getSize()
   local saved,oldFg,oldBg=paletteSave(t)
   local colorset={ [colors.black]={.035,.045,.065},[colors.brown]={.36,.20,.10},[colors.orange]={.72,.40,.19},
-    [colors.yellow]={.95,.75,.35},[colors.red]={.82,.12,.15},[colors.lightGray]={.68,.70,.73},[colors.gray]={.24,.27,.33},
-    [colors.white]={.96,.96,.91},[colors.lime]={.42,.85,.28},[colors.lightBlue]={.17,.33,.47} }
+    [colors.yellow]={.95,.75,.35},[colors.red]={.82,.12,.15},[colors.purple]={.43,.08,.11},
+    [colors.lightGray]={.68,.70,.73},[colors.gray]={.24,.27,.33},
+    [colors.white]={.96,.96,.91},[colors.lime]={.42,.85,.28},[colors.cyan]={.24,.66,.27},
+    [colors.green]={.12,.45,.20},[colors.lightBlue]={.17,.33,.47} }
   for c,rgb in pairs(colorset) do if t.setPaletteColor then pcall(t.setPaletteColor,c,rgb[1],rgb[2],rgb[3]) end end
   t.setBackgroundColor(colors.black); t.setTextColor(colors.white); t.clear()
   local w,h=t.getSize(); local controls=ui.layout(w,h,"AIM")
@@ -112,7 +137,7 @@ function render.new(target)
   local rack=lane.newRack(); local pins={}
   local pinPose={}
   for i=1,10 do pins[i]=frame:newObject(pinModel(),rack[i].x,0,rack[i].z*ZS); objects[#objects+1]=pins[i]; pinPose[i]={angle=0,tilt=0,scale=PIN_VISUAL_SCALE} end
-  local ball=frame:newObject(scaleModel(pine.models:sphere({res=8,color=colors.lime,color2=colors.white}),lane.ballRadius*2,lane.ballRadius*2,lane.ballRadius*2*ZS),0,lane.ballRadius,0)
+  local ball=frame:newObject(ballModel(),0,lane.ballRadius*BALL_VISUAL_SCALE,0)
   objects[#objects+1]=ball
   local axes={}; local axesLabels={}
   local function ensureAxes()
@@ -162,7 +187,7 @@ function render.new(target)
       if p then
         pins[id]:setPos(p.x or rack[id].x,0,(p.z or rack[id].z)*ZS)
         local angle,tilt=p.angle or 0,p.tilt or 0
-        local visualScale=view.camera=="deck" and 1.15 or PIN_VISUAL_SCALE
+        local visualScale=view.camera=="deck" and 1.3 or PIN_VISUAL_SCALE
         if math.abs(angle-pinPose[id].angle)>.01 or math.abs(tilt-pinPose[id].tilt)>.01 or visualScale~=pinPose[id].scale then
           pins[id]:setModel(pinModel(angle,tilt,visualScale)); pinPose[id]={angle=angle,tilt=tilt,scale=visualScale}
         end
@@ -170,7 +195,7 @@ function render.new(target)
       else pins[id]:setPos(0,-100,0) end
     end
     local b=snap.ball or {x=-1.5,y=lane.ballRadius,z=(view.settings and view.settings.position) or 0,gutter=false}
-    ball:setPos(b.x or -1.5,(b.y or lane.ballRadius),(b.z or 0)*ZS)
+    ball:setPos(b.x or -1.5,(b.y or lane.ballRadius)+(BALL_VISUAL_SCALE-1)*lane.ballRadius,(b.z or 0)*ZS)
     ball:setRot(0,0,0)
     if view.diagnostic then
       ensureAxes()
@@ -207,4 +232,5 @@ function render.new(target)
   return api
 end
 render._testPinModel=pinModel
+render._testBallModel=ballModel
 return render

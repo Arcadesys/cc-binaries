@@ -78,5 +78,15 @@ local function maxAxis(model,axis)
   return high
 end
 check(maxAxis(pinModel(0,math.pi/2),"x")>.60,"fallen pin points +X when angle is zero")
-check(maxAxis(pinModel(math.pi/2,math.pi/2),"z")>1.8,"fallen pin points +Z at positive quarter turn")
+check(maxAxis(pinModel(math.pi/2,math.pi/2),"z")>.60,"fallen pin points +Z at positive quarter turn")
+local function span(model,axis)
+  local low,high=math.huge,-math.huge
+  for _,poly in ipairs(model) do for n=1,3 do
+    local v=poly[axis..n]; low=math.min(low,v); high=math.max(high,v)
+  end end
+  return high-low
+end
+local ballModel=require("lib.render")._testBallModel()
+check(math.abs(span(ballModel,"x")-span(ballModel,"z"))<.03,"ball is round across the stretched lane")
+check(math.abs(span(pinModel(),"x")-span(pinModel(),"z"))<.015,"upright pin has a round footprint")
 return true

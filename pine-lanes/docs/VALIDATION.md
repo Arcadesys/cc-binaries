@@ -21,3 +21,7 @@ The application runs its event loop at a 0.1-second display target and caches pl
 ## Remaining compatibility boundary
 
 CraftOS-PC validation does not establish operation inside Minecraft, ATM10, or a particular Advanced Monitor build. No Minecraft/ATM10 instance was available for an in-world acceptance run. The terminal is not exposed to macOS accessibility as individual text cells, so this validation establishes visible large-label and keyboard/tap behavior, not screen-reader compatibility.
+
+## Rounder ball and pins follow-up
+
+The lane's display-only Z stretch was removed from the ball and pin meshes while retained for lane geometry and object positions. The ball mesh is enlarged uniformly and shaded across facets; pin crowns are capped and their side facets shaded. Mesh-bound tests now check that ball X/Z spans and upright pin footprints remain round. The five core groups and the full GUI integration suite passed after the visual change. Native CraftOS-PC captures at 51×19 and exact 39×19 were reviewed for silhouette and control readability. macOS locked after physical input during a further live roll, so that particular post-change manual roll did not finish; the complete keyboard and monitor games did finish in the GUI integration runner.
