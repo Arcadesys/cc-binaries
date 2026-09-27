@@ -1,5 +1,9 @@
 # ComputerCraft Personal OS
 
+## Pine Dungeon
+
+The separate [`pine-dungeon`](pine-dungeon/README.md) program is a compact first-person Pine3D dungeon crawler with a persistent ASCII map, three floors, turn-based monsters, loot, keyboard controls, and Advanced Monitor tap targets.
+
 ## Pine Lanes
 
 The separate [`pine-lanes`](pine-lanes/README.md) program adds local multiplayer bowling with Pine3D, arcade hook, pin collisions, and ten-frame scoring. Keyboard and Advanced Monitor tap controls are supported.
