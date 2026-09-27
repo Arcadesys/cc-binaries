@@ -1,5 +1,9 @@
 # ComputerCraft Personal OS
 
+## Pine Links
+
+The separate [`pine-links`](pine-links/README.md) program adds a Pine3D golf practice game based on Pebble Beach hole 7. It includes keyboard and Advanced Monitor controls, deterministic physics and scoring tests, and a display/input diagnostic. The existing desktop and MIDI programs remain separate entry points.
+
 This is a simple GUI-based operating system for ComputerCraft, styled after early Windows systems (Windows 95/98).
 
 ## Features
