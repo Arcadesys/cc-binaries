@@ -10,7 +10,8 @@ The minimum supported display is 39×19 characters; 51×19 or larger is more com
 
 | Action | Keyboard | Monitor tap |
 |---|---|---|
-| Move and face north, west, east, south | Arrows or WASD | NORTH, WEST, EAST, SOUTH |
+| Step forward or backward without turning | Up/Down or W/S | FORWARD, BACKWARD |
+| Turn 90 degrees in place | Left/Right or A/D | TURN LEFT, TURN RIGHT |
 | Strike the tile ahead | Space | ATTACK |
 | Drink a potion, healing up to 5 HP | H | POTION |
 | Show the enlarged ASCII map and legend | Tab | MAP |
@@ -20,7 +21,7 @@ The minimum supported display is 39×19 characters; 51×19 or larger is more com
 | Restart from menu or an ending | R | NEW GAME |
 | Quit | Q | QUIT |
 
-Moving into a monster strikes it instead of entering its tile. A goblin (`g`) takes one hit; a shade (`s`) takes two. Nearby monsters approach after your turn and attack when adjacent. A potion (`P`) and gold (`$`) are picked up automatically. A wall (`#`) blocks movement without spending a turn. Walking onto `>` descends to the next floor or wins on floor 3. The map marks your position with `@`; it carries all essential location information without relying on color.
+Moving into a monster strikes it instead of entering its tile. A goblin (`g`) takes one hit; a shade (`s`) takes two. Turning takes a turn, so nearby monsters can move or attack; backward steps keep your current facing. A potion (`P`) and gold (`$`) are picked up automatically. A wall (`#`) blocks movement without spending a turn. Walking onto `>` descends to the next floor or wins on floor 3. The map marks your position with `@` and names your facing direction above it; it carries all essential location information without relying on color.
 
 The game is deliberately short and replayable. It has no random generation, saved progress, networking, names, sound, or equipment system.
 

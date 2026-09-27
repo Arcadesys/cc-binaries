@@ -3,8 +3,14 @@ local App=require("lib.app")
 local ui=require("lib.ui")
 local runtime={}
 local moves={{1,0,"east"},{0,1,"south"},{-1,0,"west"},{0,-1,"north"}}
-local keyNames={north="up",south="down",west="left",east="right",
+local keyNames={forward="up",backward="down",turn_left="left",turn_right="right",
   attack="space",heal="h",map="tab",help="f1",menu="p",quit="q"}
+local facingIndex={north=1,east=2,south=3,west=4}
+local function relativeAction(s,direction)
+  if not direction then return nil end
+  local difference=(facingIndex[direction]-facingIndex[s.player.facing])%4
+  return ({[0]="forward",[1]="turn_right",[2]="backward",[3]="turn_left"})[difference]
+end
 local function route(s)
   local q={{s.player.x,s.player.z,nil}};local seen={[s.player.x..":"..s.player.z]=true};local head=1
   while q[head] do
@@ -55,7 +61,8 @@ function runtime.run(mode)
     end
     if app.state.phase=="play" then
       assert(app.state.turn<300,"turn budget")
-      local action=app.state.player.hp<=5 and app.state.player.potions>0 and "heal" or route(app.state)
+      local action=app.state.player.hp<=5 and app.state.player.potions>0 and "heal"
+        or relativeAction(app.state,route(app.state))
       assert(action,"route to stairs")
       queue(action,app)
     elseif app.state.phase=="won" then

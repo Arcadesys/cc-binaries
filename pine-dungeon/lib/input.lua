@@ -3,10 +3,10 @@ local function keysFor()
   local k=keys or {}
   local m={}
   local function add(code,action) if code then m[code]=action end end
-  add(k.up,"north");add(k.w,"north")
-  add(k.down,"south");add(k.s,"south")
-  add(k.left,"west");add(k.a,"west")
-  add(k.right,"east");add(k.d,"east")
+  add(k.up,"forward");add(k.w,"forward")
+  add(k.down,"backward");add(k.s,"backward")
+  add(k.left,"turn_left");add(k.a,"turn_left")
+  add(k.right,"turn_right");add(k.d,"turn_right")
   add(k.space,"attack");add(k.h,"heal")
   add(k.period,"wait");add(k.enter,"wait")
   add(k.tab,"map");add(k.p,"menu")

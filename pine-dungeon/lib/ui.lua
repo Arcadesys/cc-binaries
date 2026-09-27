@@ -22,7 +22,8 @@ function ui.layout(w,h,phase)
     labels={{"resume","RESUME"},{"new","NEW GAME"},{"quit","QUIT"}}
   else
     labels={
-      {"north","NORTH"},{"west","WEST"},{"east","EAST"},{"south","SOUTH"},
+      {"forward","FORWARD"},{"backward","BACKWARD"},
+      {"turn_left","TURN","LEFT"},{"turn_right","TURN","RIGHT"},
       {"attack","ATTACK"},{"heal","POTION"},{"map","MAP"},{"help","HELP"},
       {"wait","WAIT"},{"menu","MENU"},{"quit","QUIT"},
     }
@@ -31,7 +32,7 @@ function ui.layout(w,h,phase)
   for i,b in ipairs(labels) do
     local row=math.floor((i-1)/4);local col=(i-1)%4
     local x=col*cell+1;local width=col==3 and w-x+1 or cell
-    out[#out+1]={id=b[1],label=b[2],x=x,y=start+row*rowH,w=width,h=rowH}
+    out[#out+1]={id=b[1],label=b[2],label2=b[3],x=x,y=start+row*rowH,w=width,h=rowH}
   end
   out.rowH=rowH
   return out
@@ -43,6 +44,10 @@ local function drawButtons(t,buttons)
     for y=b.y,b.y+b.h-1 do put(t,b.x,y,"",fg,bg,b.w) end
     local x=b.x+math.max(0,math.floor((b.w-#b.label)/2))
     put(t,x,b.y,b.label,fg,bg,#b.label)
+    if b.label2 then
+      local x2=b.x+math.max(0,math.floor((b.w-#b.label2)/2))
+      put(t,x2,b.y+1,b.label2,fg,bg,#b.label2)
+    end
   end
 end
 function ui.draw(t,view,buttons)
@@ -60,7 +65,9 @@ function ui.draw(t,view,buttons)
   put(t,1,3,s.message,colors.yellow,colors.black,w)
   local sceneBottom=h-buttons.rowH*3
   if view.overlay=="help" then
-    local lines={"ARROWS/WASD: move  |  SPACE: attack",
+    local lines={"UP/W forward  DOWN/S backward",
+      "LEFT/A turn left  RIGHT/D turn right",
+      "SPACE attack ahead  |  . wait",
       "H: drink potion  |  TAB: map",
       "F1: help  |  P: menu  |  Q: quit",
       "Move into a monster to strike it.",

@@ -43,44 +43,75 @@ local function routeToExit(s)
     end
   end
 end
+local facingIndex={north=1,east=2,south=3,west=4}
+local function relativeAction(s,direction)
+  if not direction then return nil end
+  local difference=(facingIndex[direction]-facingIndex[s.player.facing])%4
+  return ({[0]="forward",[1]="turn_right",[2]="backward",[3]="turn_left"})[difference]
+end
 local campaign=world.new()
 for _=1,300 do
   if campaign.phase~="play" then break end
-  local action=campaign.player.hp<=5 and campaign.player.potions>0 and "heal" or routeToExit(campaign)
+  local action=campaign.player.hp<=5 and campaign.player.potions>0 and "heal"
+    or relativeAction(campaign,routeToExit(campaign))
   check(action,"campaign route exists")
   world.act(campaign,action)
 end
 check(campaign.phase=="won","full three-floor campaign is winnable with ordinary moves")
 local s=world.new()
 check(s.floor==1 and s.player.hp==12 and #s.monsters>0,"new adventure")
+s.monsters={}
 local turn=s.turn
-check(not world.act(s,"north") and s.turn==turn,"wall does not consume a turn")
+check(world.act(s,"turn_left") and s.player.facing=="north" and s.player.x==2
+  and s.player.z==2 and s.turn==turn+1,"left turn rotates in place and consumes a turn")
+check(not world.act(s,"forward") and s.turn==turn+1 and s.player.facing=="north",
+  "wall does not consume a turn or change facing")
+check(world.act(s,"turn_right") and s.player.facing=="east","right turn rotates in place")
 s.monsters={{x=s.player.x+1,z=s.player.z,kind="g",hp=2}}
-check(world.act(s,"east"),"attack by moving into monster")
-check(s.kills==1 and s.player.x==2 and s.turn==1,"monster defeated without entering its square")
-check(world.act(s,"east") and s.player.x==3,"dead monster no longer blocks")
+check(world.act(s,"forward"),"attack by moving into monster")
+check(s.kills==1 and s.player.x==2 and s.turn==3,"monster defeated without entering its square")
+check(world.act(s,"forward") and s.player.x==3,"dead monster no longer blocks")
 s.items["3:3"]="$";s.monsters={}
-check(world.act(s,"south") and s.player.gold==5,"gold pickup")
-s.items["3:4"]="P";check(world.act(s,"east") and s.player.potions==2,"potion pickup")
+check(world.act(s,"turn_right") and s.player.facing=="south","turn toward gold")
+check(world.act(s,"forward") and s.player.gold==5,"gold pickup")
+s.items["3:4"]="P";check(world.act(s,"turn_left") and s.player.facing=="east","turn toward potion")
+check(world.act(s,"forward") and s.player.potions==2,"potion pickup")
+check(world.act(s,"backward") and s.player.x==3 and s.player.z==3
+  and s.player.facing=="east","backward step keeps facing")
+local rear=world.new();rear.monsters={{x=2,z=2,kind="g",hp=2}};rear.player.x=3
+check(world.act(rear,"backward") and rear.kills==1 and rear.player.x==3
+  and rear.player.facing=="east","backward step attacks a monster behind without turning")
+local turning=world.new();turning.monsters={{x=3,z=2,kind="g",hp=2}}
+check(world.act(turning,"turn_left") and turning.player.hp==11,
+  "turning consumes a turn and allows adjacent monster attack")
+turning.monsters={}
+for _=1,4 do world.act(turning,"turn_right") end
+check(turning.player.facing=="north" and turning.player.x==2 and turning.player.z==2,
+  "four right turns return to the same position and facing")
 s.player.hp=4;check(world.act(s,"heal") and s.player.hp==9 and s.player.potions==1,"healing consumes potion")
-check(world.act(s,"attack") and s.turn==6,"empty attack consumes turn")
+check(world.act(s,"attack") and s.turn==11,"empty attack consumes turn")
 local death=world.new();death.monsters={{x=death.player.x+1,z=death.player.z,kind="s",hp=3}}
 death.player.hp=1;world.act(death,"wait")
 check(death.phase=="lost" and death.player.hp==0,"enemy turn can defeat player")
 local stairs=world.new();stairs.monsters={}
 stairs.exit={x=stairs.player.x+1,z=stairs.player.z}
-world.act(stairs,"east");check(stairs.floor==2 and stairs.player.hp==12,"stairs retain player state")
+world.act(stairs,"forward");check(stairs.floor==2 and stairs.player.hp==12,"stairs retain player state")
 stairs.monsters={};stairs.floor=3;stairs.exit={x=stairs.player.x+1,z=stairs.player.z}
-world.act(stairs,"east");check(stairs.phase=="won","last stairs end game")
-check(not world.act(stairs,"west"),"ended game cannot move")
+world.act(stairs,"forward");check(stairs.phase=="won","last stairs end game")
+check(not world.act(stairs,"backward"),"ended game cannot move")
 local app=App.new()
-app:action("east");local x,turn=app.state.player.x,app.state.turn
-app:action("help");app:action("north")
-check(app.state.player.x==x and app.state.turn==turn,"help preserves turn")
+app:action("forward");local x,turn,facing=app.state.player.x,app.state.turn,app.state.player.facing
+app:action("help");app:action("turn_left")
+check(app.state.player.x==x and app.state.turn==turn and app.state.player.facing==facing,
+  "help preserves position, turn, and facing")
 app:action("help");app:action("map");check(app.map,"map toggles")
 app:action("menu");app:action("new")
 check(app.state.turn==0 and not app.overlay and not app.map,"new game resets state and view")
 local buttons=ui.layout(39,19,"play")
+check(buttons[1].id=="forward" and buttons[2].id=="backward"
+  and buttons[3].id=="turn_left" and buttons[3].label2=="LEFT"
+  and buttons[4].id=="turn_right" and buttons[4].label2=="RIGHT",
+  "relative movement is clearly labeled on the minimum-size touch display")
 for _,b in ipairs(buttons) do
   check(b.h>=2 and b.x>=1 and b.y>=1 and b.x+b.w-1<=39 and b.y+b.h-1<=19,
     "39x19 button bounds and tap height")
@@ -89,10 +120,11 @@ local tiny=ui.layout(24,12,"play")
 check(tiny.small and tiny[1].id=="quit","small screen has quit")
 check(input.action({"monitor_touch","right",buttons[1].x,buttons[1].y},buttons,"left")==nil,
   "foreign monitor touch rejected")
-check(input.action({"monitor_touch","left",buttons[1].x,buttons[1].y},buttons,"left")=="north",
+check(input.action({"monitor_touch","left",buttons[1].x,buttons[1].y},buttons,"left")=="forward",
   "monitor tap uses visible rectangle")
 check(input.action({"key",keys.right,true},buttons,nil)==nil,"held key ignored")
-check(input.action({"key",keys.right,false},buttons,nil)=="east","keyboard direction")
+check(input.action({"key",keys.right,false},buttons,nil)=="turn_right","keyboard turn")
+check(input.action({"key",keys.down,false},buttons,nil)=="backward","keyboard backward")
 for _,size in ipairs({{39,19},{51,19}}) do
   local old=term.current();local t=window.create(old,1,1,size[1],size[2],false)
   term.redirect(t)

@@ -37,6 +37,7 @@ local maps={
 }
 world.maps=maps
 local vectors={north={0,-1},south={0,1},west={-1,0},east={1,0}}
+local facings={"north","east","south","west"}
 local glyph={g=true,s=true}
 local function key(x,z) return z..":"..x end
 local function loadFloor(state,number)
@@ -105,14 +106,23 @@ function world.act(state,action)
   if state.phase~="play" then return false end
   local p=state.player
   local consumed=false
-  if vectors[action] then
-    local v=vectors[action];p.facing=action
-    local x,z=p.x+v[1],p.z+v[2]
+  if action=="turn_left" or action=="turn_right" then
+    for i,facing in ipairs(facings) do
+      if p.facing==facing then
+        p.facing=facings[(i+(action=="turn_left" and 2 or 0))%4+1]
+        break
+      end
+    end
+    state.message=action=="turn_left" and "You turn left." or "You turn right."
+    consumed=true
+  elseif action=="forward" or action=="backward" then
+    local v=vectors[p.facing];local step=action=="forward" and 1 or -1
+    local x,z=p.x+v[1]*step,p.z+v[2]*step
     if world.tile(state,x,z)=="#" then state.message="A stone wall blocks the way.";return false end
     local m=world.monsterAt(state,x,z)
     if m then attack(state,m)
     else
-      p.x=x;p.z=z;state.message="You move "..action.."."
+      p.x=x;p.z=z;state.message="You step "..action.."."
       local item=state.items[key(x,z)]
       if item=="$" then p.gold=p.gold+5;state.message="You found 5 gold.";state.items[key(x,z)]=nil
       elseif item=="P" then p.potions=p.potions+1;state.message="You found a potion.";state.items[key(x,z)]=nil end
