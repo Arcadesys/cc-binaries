@@ -1,0 +1,12 @@
+{
+    "songs": [
+        {
+            "title": "Proto Test",
+            "file": "https://raw.githubusercontent.com/Arcadesys/cc-jukebox/ee471205c7a23caadb1093e38f41e8bfc266d480/songs/prototest.dfpwm"
+        },
+        {
+            "title": "Neon Nights and Velvet Dreams",
+            "file": "songs/neon_nights.dfpwm"
+        }
+    ]
+}
