@@ -156,6 +156,16 @@ return {
             T.ok(not p.zoomed, "unzoomed")
         end)
     end },
+    { "zooming delivers term_resize to the app", function(T)
+        H.withKernel(function(k)
+            H.echo(k)
+            local p, log = H.echo(k)
+            local before = count(log, "term_resize")
+            k:toggleZoom(p)
+            H.pump(k, 0.1)
+            T.eq(count(log, "term_resize"), before + 1, "resize delivered")
+        end)
+    end },
     { "fullscreen app gets the whole screen and palette is restored on switch", function(T)
         H.withKernel(function(k, parent)
             local p1 = H.echo(k, { label = "desk" })

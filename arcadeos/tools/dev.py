@@ -106,7 +106,7 @@ def cmd_test(names):
         print(proc.stdout.decode("latin-1")[-3000:])
         print("FAIL: no results written")
         return 1
-    text = open(out).read()
+    text = open(out, encoding="latin-1").read()
     print(text, end="")
     return 0 if any(l.startswith("PASS all") for l in text.splitlines()) else 1
 

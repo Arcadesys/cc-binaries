@@ -466,7 +466,7 @@ function Kernel:modalInput(ev)
             m.sel = m.sel % m.count + 1
         elseif key == keys.enter or key == keys.numPadEnter or key == keys.space then
             self:closeModal(m.sel)
-        elseif key == keys.escape then
+        elseif key == keys.escape or key == keys.backspace then
             self:closeModal(m.count)
         end
         self.dirty = true
@@ -555,7 +555,7 @@ function Kernel:menuInput(ev)
         if key == keys.up then m.sel = stepItem(m.items, m.sel, -1)
         elseif key == keys.down then m.sel = stepItem(m.items, m.sel, 1)
         elseif key == keys.enter or key == keys.numPadEnter then self:chooseMenu(m.sel)
-        elseif key == keys.escape then self.menu = nil
+        elseif key == keys.escape or key == keys.backspace then self.menu = nil
         elseif (key == keys.left or key == keys.right) and m.kind == "bar" then
             local n = #m.proc.menus
             self:openMenu(m.proc, "bar", (m.index - 1 + (key == keys.right and 1 or -1)) % n + 1)
@@ -719,6 +719,17 @@ function Kernel:makeApi()
         local p = k.running
         if p then p.title = tostring(title); k.dirty = true end
     end
+    function api.setIcon(text)
+        local p = k.running
+        if p and p.icon ~= text then
+            p.icon = tostring(text)
+            if p.iconic then k.dirty = true; os.queueEvent(WAKE) end
+        end
+    end
+    function api.isIconic()
+        local p = k.running
+        return p and (p.iconic or (p.zoomed and k.focus ~= p)) or false
+    end
     function api.setMenus(menus)
         local p = k.running
         if not p then return end
@@ -811,6 +822,7 @@ end
 -- Main loop
 
 function Kernel:step(ev)
+    self:flushInboxes()
     self:handle(ev)
     self:flushInboxes()
     self:reap()

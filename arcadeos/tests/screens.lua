@@ -85,6 +85,79 @@ scenario("06-iconized", function(k, parent)
     dump(parent, "06-iconized")
 end)
 
+scenario("07-accessories", function(k, parent)
+    H.pump(k, 0.2)
+    for _, id in ipairs({ "clock", "calculator", "notepad" }) do
+        k:launch(id)
+        H.pump(k, 0.3)
+    end
+    for _, c in ipairs({ "H", "e", "l", "l", "o", ",", " ", "W", "o", "r", "l", "d", "!" }) do send(k, "char", c) end
+    H.pump(k, 1.2)
+    dump(parent, "07-accessories")
+end)
+
+scenario("08-clock-zoomed", function(k, parent)
+    H.pump(k, 0.2)
+    k:launch("clock")
+    H.pump(k, 0.3)
+    k:toggleZoom(k.focus)
+    H.pump(k, 1.2)
+    dump(parent, "08-clock-zoomed")
+end)
+
+scenario("09-reversi", function(k, parent)
+    H.pump(k, 0.2)
+    k:launch("reversi")
+    H.pump(k, 0.3)
+    k:toggleZoom(k.focus)
+    H.pump(k, 0.3)
+    local p = k.focus
+    local c = k.frames[p].client
+    -- Play d3 (row 3, col 4): a legal opening move for black.
+    local sw, sh = 2, 1
+    if c.w >= 24 and c.h - 1 >= 16 then sw, sh = 3, 2 end
+    local bx = math.floor((c.w - 8 * sw) / 2) + 1
+    local by = math.max(1, math.floor((c.h - 1 - 8 * sh) / 2) + 1)
+    send(k, "mouse_click", 1, c.x + bx - 1 + 3 * sw + 1, c.y + by - 1 + 2 * sh)
+    H.pump(k, 1.0)
+    dump(parent, "09-reversi")
+end)
+
+scenario("10-paint", function(k, parent)
+    H.pump(k, 0.2)
+    k:launch("paint")
+    H.pump(k, 0.3)
+    local c = k.frames[k.focus].client
+    local function cl(ev, x, y) send(k, ev, 1, c.x + x - 1, c.y + y - 1) end
+    -- pick red from the palette row, draw a rectangle, then blue pencil scribble
+    send(k, "mouse_click", 1, c.x + 14, c.y + c.h - 1)
+    send(k, "key", keys.r, false)
+    cl("mouse_click", 5, 3); cl("mouse_drag", 20, 10); cl("mouse_up", 20, 10)
+    send(k, "mouse_click", 1, c.x + 11, c.y + c.h - 1)
+    send(k, "key", keys.b, false)
+    cl("mouse_click", 25, 5); cl("mouse_drag", 40, 14); cl("mouse_up", 40, 14)
+    H.pump(k, 0.3)
+    dump(parent, "10-paint")
+end)
+
+scenario("11-control-panel", function(k, parent)
+    H.pump(k, 0.2)
+    k:launch("control")
+    H.pump(k, 0.3)
+    dump(parent, "11-control-panel")
+end)
+
+scenario("12-open-dialog", function(k, parent)
+    H.pump(k, 0.2)
+    k:launch("notepad")
+    H.pump(k, 0.3)
+    k:toggleZoom(k.focus)
+    H.pump(k, 0.2)
+    k:post(k.focus, "arcadeos_menu", "open")
+    H.pump(k, 0.3)
+    dump(parent, "12-open-dialog")
+end)
+
 local args = { ... }
 local names = #args > 0 and args or ORDER
 for _, name in ipairs(names) do
