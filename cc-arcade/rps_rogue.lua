@@ -292,7 +292,7 @@ local function main()
         end
     end
     
-    if fs.exists("menu.lua") then shell.run("menu.lua") end
+    if not arcadeos and fs.exists("menu.lua") then shell.run("menu.lua") end
 end
 
 main()

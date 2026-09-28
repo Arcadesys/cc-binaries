@@ -1,0 +1,868 @@
+{
+ "raw_base": "https://raw.githubusercontent.com/Arcadesys/cc-binaries/main",
+ "packages": {
+  "core": {
+   "description": "ArcadeOS shell and accessories",
+   "required": true,
+   "turtle": false,
+   "size": 119225,
+   "files": [
+    {
+     "src": "arcadeos/boot.lua",
+     "dest": "/arcadeos/boot.lua",
+     "size": 2639
+    },
+    {
+     "src": "arcadeos/apps/blackjack/app.lua",
+     "dest": "/arcadeos/apps/blackjack/app.lua",
+     "size": 136
+    },
+    {
+     "src": "arcadeos/apps/calculator/app.lua",
+     "dest": "/arcadeos/apps/calculator/app.lua",
+     "size": 101
+    },
+    {
+     "src": "arcadeos/apps/calculator/main.lua",
+     "dest": "/arcadeos/apps/calculator/main.lua",
+     "size": 4559
+    },
+    {
+     "src": "arcadeos/apps/cantstop/app.lua",
+     "dest": "/arcadeos/apps/cantstop/app.lua",
+     "size": 139
+    },
+    {
+     "src": "arcadeos/apps/clock/app.lua",
+     "dest": "/arcadeos/apps/clock/app.lua",
+     "size": 97
+    },
+    {
+     "src": "arcadeos/apps/clock/main.lua",
+     "dest": "/arcadeos/apps/clock/main.lua",
+     "size": 2809
+    },
+    {
+     "src": "arcadeos/apps/control/app.lua",
+     "dest": "/arcadeos/apps/control/app.lua",
+     "size": 104
+    },
+    {
+     "src": "arcadeos/apps/control/main.lua",
+     "dest": "/arcadeos/apps/control/main.lua",
+     "size": 3630
+    },
+    {
+     "src": "arcadeos/apps/designer/app.lua",
+     "dest": "/arcadeos/apps/designer/app.lua",
+     "size": 149
+    },
+    {
+     "src": "arcadeos/apps/designer/main.lua",
+     "dest": "/arcadeos/apps/designer/main.lua",
+     "size": 147
+    },
+    {
+     "src": "arcadeos/apps/euchre/app.lua",
+     "dest": "/arcadeos/apps/euchre/app.lua",
+     "size": 136
+    },
+    {
+     "src": "arcadeos/apps/euchre/main.lua",
+     "dest": "/arcadeos/apps/euchre/main.lua",
+     "size": 83
+    },
+    {
+     "src": "arcadeos/apps/executive/app.lua",
+     "dest": "/arcadeos/apps/executive/app.lua",
+     "size": 121
+    },
+    {
+     "src": "arcadeos/apps/executive/main.lua",
+     "dest": "/arcadeos/apps/executive/main.lua",
+     "size": 6036
+    },
+    {
+     "src": "arcadeos/apps/factory/app.lua",
+     "dest": "/arcadeos/apps/factory/app.lua",
+     "size": 172
+    },
+    {
+     "src": "arcadeos/apps/idlecraft/app.lua",
+     "dest": "/arcadeos/apps/idlecraft/app.lua",
+     "size": 138
+    },
+    {
+     "src": "arcadeos/apps/jukebox/app.lua",
+     "dest": "/arcadeos/apps/jukebox/app.lua",
+     "size": 148
+    },
+    {
+     "src": "arcadeos/apps/midiplayer/app.lua",
+     "dest": "/arcadeos/apps/midiplayer/app.lua",
+     "size": 161
+    },
+    {
+     "src": "arcadeos/apps/minesweeper/app.lua",
+     "dest": "/arcadeos/apps/minesweeper/app.lua",
+     "size": 141
+    },
+    {
+     "src": "arcadeos/apps/minesweeper/main.lua",
+     "dest": "/arcadeos/apps/minesweeper/main.lua",
+     "size": 88
+    },
+    {
+     "src": "arcadeos/apps/notepad/app.lua",
+     "dest": "/arcadeos/apps/notepad/app.lua",
+     "size": 163
+    },
+    {
+     "src": "arcadeos/apps/notepad/main.lua",
+     "dest": "/arcadeos/apps/notepad/main.lua",
+     "size": 8495
+    },
+    {
+     "src": "arcadeos/apps/paint/app.lua",
+     "dest": "/arcadeos/apps/paint/app.lua",
+     "size": 142
+    },
+    {
+     "src": "arcadeos/apps/paint/main.lua",
+     "dest": "/arcadeos/apps/paint/main.lua",
+     "size": 8084
+    },
+    {
+     "src": "arcadeos/apps/pinedungeon/app.lua",
+     "dest": "/arcadeos/apps/pinedungeon/app.lua",
+     "size": 237
+    },
+    {
+     "src": "arcadeos/apps/pinelanes/app.lua",
+     "dest": "/arcadeos/apps/pinelanes/app.lua",
+     "size": 230
+    },
+    {
+     "src": "arcadeos/apps/pinelinks/app.lua",
+     "dest": "/arcadeos/apps/pinelinks/app.lua",
+     "size": 230
+    },
+    {
+     "src": "arcadeos/apps/race/app.lua",
+     "dest": "/arcadeos/apps/race/app.lua",
+     "size": 134
+    },
+    {
+     "src": "arcadeos/apps/reversi/app.lua",
+     "dest": "/arcadeos/apps/reversi/app.lua",
+     "size": 113
+    },
+    {
+     "src": "arcadeos/apps/reversi/main.lua",
+     "dest": "/arcadeos/apps/reversi/main.lua",
+     "size": 7955
+    },
+    {
+     "src": "arcadeos/apps/rpsrogue/app.lua",
+     "dest": "/arcadeos/apps/rpsrogue/app.lua",
+     "size": 137
+    },
+    {
+     "src": "arcadeos/apps/slots/app.lua",
+     "dest": "/arcadeos/apps/slots/app.lua",
+     "size": 129
+    },
+    {
+     "src": "arcadeos/apps/solitaire/app.lua",
+     "dest": "/arcadeos/apps/solitaire/app.lua",
+     "size": 138
+    },
+    {
+     "src": "arcadeos/apps/solitaire/main.lua",
+     "dest": "/arcadeos/apps/solitaire/main.lua",
+     "size": 86
+    },
+    {
+     "src": "arcadeos/apps/terminal/app.lua",
+     "dest": "/arcadeos/apps/terminal/app.lua",
+     "size": 137
+    },
+    {
+     "src": "arcadeos/apps/turtleos/app.lua",
+     "dest": "/arcadeos/apps/turtleos/app.lua",
+     "size": 153
+    },
+    {
+     "src": "arcadeos/lib/canvas.lua",
+     "dest": "/arcadeos/lib/canvas.lua",
+     "size": 2890
+    },
+    {
+     "src": "arcadeos/lib/dialog.lua",
+     "dest": "/arcadeos/lib/dialog.lua",
+     "size": 9951
+    },
+    {
+     "src": "arcadeos/lib/ui.lua",
+     "dest": "/arcadeos/lib/ui.lua",
+     "size": 10855
+    },
+    {
+     "src": "arcadeos/sys/apps.lua",
+     "dest": "/arcadeos/sys/apps.lua",
+     "size": 3239
+    },
+    {
+     "src": "arcadeos/sys/chrome.lua",
+     "dest": "/arcadeos/sys/chrome.lua",
+     "size": 6779
+    },
+    {
+     "src": "arcadeos/sys/host.lua",
+     "dest": "/arcadeos/sys/host.lua",
+     "size": 777
+    },
+    {
+     "src": "arcadeos/sys/idle.lua",
+     "dest": "/arcadeos/sys/idle.lua",
+     "size": 2418
+    },
+    {
+     "src": "arcadeos/sys/kernel.lua",
+     "dest": "/arcadeos/sys/kernel.lua",
+     "size": 28752
+    },
+    {
+     "src": "arcadeos/sys/theme.lua",
+     "dest": "/arcadeos/sys/theme.lua",
+     "size": 2786
+    },
+    {
+     "src": "arcadeos/sys/wm.lua",
+     "dest": "/arcadeos/sys/wm.lua",
+     "size": 2481
+    }
+   ]
+  },
+  "arcade": {
+   "description": "Arcade games: Blackjack, Slots, Can't Stop, Race, RPS Rogue, IdleCraft",
+   "required": false,
+   "turtle": false,
+   "size": 156026,
+   "files": [
+    {
+     "src": "cc-arcade/audio.lua",
+     "dest": "/pkg/arcade/audio.lua",
+     "size": 5168
+    },
+    {
+     "src": "cc-arcade/blackjack.lua",
+     "dest": "/pkg/arcade/blackjack.lua",
+     "size": 23912
+    },
+    {
+     "src": "cc-arcade/cant_stop.lua",
+     "dest": "/pkg/arcade/cant_stop.lua",
+     "size": 24468
+    },
+    {
+     "src": "cc-arcade/credits.lua",
+     "dest": "/pkg/arcade/credits.lua",
+     "size": 3744
+    },
+    {
+     "src": "cc-arcade/idlecraft.lua",
+     "dest": "/pkg/arcade/idlecraft.lua",
+     "size": 23927
+    },
+    {
+     "src": "cc-arcade/input.lua",
+     "dest": "/pkg/arcade/input.lua",
+     "size": 3606
+    },
+    {
+     "src": "cc-arcade/race.lua",
+     "dest": "/pkg/arcade/race.lua",
+     "size": 13239
+    },
+    {
+     "src": "cc-arcade/rps_rogue.lua",
+     "dest": "/pkg/arcade/rps_rogue.lua",
+     "size": 8745
+    },
+    {
+     "src": "cc-arcade/slots.lua",
+     "dest": "/pkg/arcade/slots.lua",
+     "size": 24269
+    },
+    {
+     "src": "cc-arcade/track.lua",
+     "dest": "/pkg/arcade/track.lua",
+     "size": 18637
+    },
+    {
+     "src": "cc-arcade/screensavers/bounce.lua",
+     "dest": "/pkg/arcade/screensavers/bounce.lua",
+     "size": 1023
+    },
+    {
+     "src": "cc-arcade/screensavers/roulette.lua",
+     "dest": "/pkg/arcade/screensavers/roulette.lua",
+     "size": 5288
+    }
+   ]
+  },
+  "factory": {
+   "description": "Minesweeper, Solitaire, Euchre, Schema Designer",
+   "required": false,
+   "turtle": false,
+   "size": 96870,
+   "files": [
+    {
+     "src": "cc-factory/lib_designer.lua",
+     "dest": "/pkg/factory/lib_designer.lua",
+     "size": 35525
+    },
+    {
+     "src": "cc-factory/lib_games.lua",
+     "dest": "/pkg/factory/lib_games.lua",
+     "size": 18466
+    },
+    {
+     "src": "cc-factory/lib_items.lua",
+     "dest": "/pkg/factory/lib_items.lua",
+     "size": 20438
+    },
+    {
+     "src": "cc-factory/lib_json.lua",
+     "dest": "/pkg/factory/lib_json.lua",
+     "size": 955
+    },
+    {
+     "src": "cc-factory/lib_schema.lua",
+     "dest": "/pkg/factory/lib_schema.lua",
+     "size": 6528
+    },
+    {
+     "src": "cc-factory/lib_table.lua",
+     "dest": "/pkg/factory/lib_table.lua",
+     "size": 3412
+    },
+    {
+     "src": "cc-factory/lib_ui.lua",
+     "dest": "/pkg/factory/lib_ui.lua",
+     "size": 11546
+    }
+   ]
+  },
+  "pine": {
+   "description": "Pine3D games: Pine Links, Pine Lanes, Pine Dungeon",
+   "required": false,
+   "turtle": false,
+   "size": 422466,
+   "files": [
+    {
+     "src": "computercraft_scripts/pine-dungeon/dungeon.lua",
+     "dest": "/pkg/scripts/pine-dungeon/dungeon.lua",
+     "size": 1031
+    },
+    {
+     "src": "computercraft_scripts/pine-dungeon/lib/app.lua",
+     "dest": "/pkg/scripts/pine-dungeon/lib/app.lua",
+     "size": 4192
+    },
+    {
+     "src": "computercraft_scripts/pine-dungeon/lib/input.lua",
+     "dest": "/pkg/scripts/pine-dungeon/lib/input.lua",
+     "size": 1144
+    },
+    {
+     "src": "computercraft_scripts/pine-dungeon/lib/render.lua",
+     "dest": "/pkg/scripts/pine-dungeon/lib/render.lua",
+     "size": 6199
+    },
+    {
+     "src": "computercraft_scripts/pine-dungeon/lib/ui.lua",
+     "dest": "/pkg/scripts/pine-dungeon/lib/ui.lua",
+     "size": 4474
+    },
+    {
+     "src": "computercraft_scripts/pine-dungeon/lib/world.lua",
+     "dest": "/pkg/scripts/pine-dungeon/lib/world.lua",
+     "size": 5675
+    },
+    {
+     "src": "computercraft_scripts/pine-dungeon/vendor/LICENSE",
+     "dest": "/pkg/scripts/pine-dungeon/vendor/LICENSE",
+     "size": 1062
+    },
+    {
+     "src": "computercraft_scripts/pine-dungeon/vendor/Pine3D.lua",
+     "dest": "/pkg/scripts/pine-dungeon/vendor/Pine3D.lua",
+     "size": 69417
+    },
+    {
+     "src": "computercraft_scripts/pine-dungeon/vendor/REVISION.txt",
+     "dest": "/pkg/scripts/pine-dungeon/vendor/REVISION.txt",
+     "size": 422
+    },
+    {
+     "src": "computercraft_scripts/pine-dungeon/vendor/betterblittle.lua",
+     "dest": "/pkg/scripts/pine-dungeon/vendor/betterblittle.lua",
+     "size": 6135
+    },
+    {
+     "src": "computercraft_scripts/pine-lanes/bowl.lua",
+     "dest": "/pkg/scripts/pine-lanes/bowl.lua",
+     "size": 1279
+    },
+    {
+     "src": "computercraft_scripts/pine-lanes/lib/app.lua",
+     "dest": "/pkg/scripts/pine-lanes/lib/app.lua",
+     "size": 10521
+    },
+    {
+     "src": "computercraft_scripts/pine-lanes/lib/input.lua",
+     "dest": "/pkg/scripts/pine-lanes/lib/input.lua",
+     "size": 1814
+    },
+    {
+     "src": "computercraft_scripts/pine-lanes/lib/lane.lua",
+     "dest": "/pkg/scripts/pine-lanes/lib/lane.lua",
+     "size": 800
+    },
+    {
+     "src": "computercraft_scripts/pine-lanes/lib/physics.lua",
+     "dest": "/pkg/scripts/pine-lanes/lib/physics.lua",
+     "size": 12768
+    },
+    {
+     "src": "computercraft_scripts/pine-lanes/lib/render.lua",
+     "dest": "/pkg/scripts/pine-lanes/lib/render.lua",
+     "size": 10994
+    },
+    {
+     "src": "computercraft_scripts/pine-lanes/lib/rules.lua",
+     "dest": "/pkg/scripts/pine-lanes/lib/rules.lua",
+     "size": 11381
+    },
+    {
+     "src": "computercraft_scripts/pine-lanes/lib/ui.lua",
+     "dest": "/pkg/scripts/pine-lanes/lib/ui.lua",
+     "size": 10324
+    },
+    {
+     "src": "computercraft_scripts/pine-lanes/vendor/LICENSE",
+     "dest": "/pkg/scripts/pine-lanes/vendor/LICENSE",
+     "size": 1062
+    },
+    {
+     "src": "computercraft_scripts/pine-lanes/vendor/Pine3D.lua",
+     "dest": "/pkg/scripts/pine-lanes/vendor/Pine3D.lua",
+     "size": 69417
+    },
+    {
+     "src": "computercraft_scripts/pine-lanes/vendor/REVISION.txt",
+     "dest": "/pkg/scripts/pine-lanes/vendor/REVISION.txt",
+     "size": 422
+    },
+    {
+     "src": "computercraft_scripts/pine-lanes/vendor/betterblittle.lua",
+     "dest": "/pkg/scripts/pine-lanes/vendor/betterblittle.lua",
+     "size": 6135
+    },
+    {
+     "src": "computercraft_scripts/pine-links/golf.lua",
+     "dest": "/pkg/scripts/pine-links/golf.lua",
+     "size": 1032
+    },
+    {
+     "src": "computercraft_scripts/pine-links/courses/pebble_beach/hole_07.lua",
+     "dest": "/pkg/scripts/pine-links/courses/pebble_beach/hole_07.lua",
+     "size": 58323
+    },
+    {
+     "src": "computercraft_scripts/pine-links/lib/app.lua",
+     "dest": "/pkg/scripts/pine-links/lib/app.lua",
+     "size": 9668
+    },
+    {
+     "src": "computercraft_scripts/pine-links/lib/course.lua",
+     "dest": "/pkg/scripts/pine-links/lib/course.lua",
+     "size": 2171
+    },
+    {
+     "src": "computercraft_scripts/pine-links/lib/input.lua",
+     "dest": "/pkg/scripts/pine-links/lib/input.lua",
+     "size": 2010
+    },
+    {
+     "src": "computercraft_scripts/pine-links/lib/physics.lua",
+     "dest": "/pkg/scripts/pine-links/lib/physics.lua",
+     "size": 13323
+    },
+    {
+     "src": "computercraft_scripts/pine-links/lib/render.lua",
+     "dest": "/pkg/scripts/pine-links/lib/render.lua",
+     "size": 14646
+    },
+    {
+     "src": "computercraft_scripts/pine-links/lib/rules.lua",
+     "dest": "/pkg/scripts/pine-links/lib/rules.lua",
+     "size": 2214
+    },
+    {
+     "src": "computercraft_scripts/pine-links/lib/ui.lua",
+     "dest": "/pkg/scripts/pine-links/lib/ui.lua",
+     "size": 5375
+    },
+    {
+     "src": "computercraft_scripts/pine-links/vendor/LICENSE",
+     "dest": "/pkg/scripts/pine-links/vendor/LICENSE",
+     "size": 1062
+    },
+    {
+     "src": "computercraft_scripts/pine-links/vendor/Pine3D.lua",
+     "dest": "/pkg/scripts/pine-links/vendor/Pine3D.lua",
+     "size": 69417
+    },
+    {
+     "src": "computercraft_scripts/pine-links/vendor/REVISION.txt",
+     "dest": "/pkg/scripts/pine-links/vendor/REVISION.txt",
+     "size": 422
+    },
+    {
+     "src": "computercraft_scripts/pine-links/vendor/betterblittle.lua",
+     "dest": "/pkg/scripts/pine-links/vendor/betterblittle.lua",
+     "size": 6135
+    }
+   ]
+  },
+  "media": {
+   "description": "Jukebox, MIDI Player, screensavers",
+   "required": false,
+   "turtle": false,
+   "size": 45576,
+   "files": [
+    {
+     "src": "computercraft_scripts/midi_player.lua",
+     "dest": "/pkg/scripts/midi_player.lua",
+     "size": 19276
+    },
+    {
+     "src": "cc-jukebox/jukebox.lua",
+     "dest": "/pkg/jukebox/jukebox.lua",
+     "size": 14416
+    },
+    {
+     "src": "cc-jukebox/manifest.json",
+     "dest": "/pkg/jukebox/manifest.json",
+     "size": 340
+    },
+    {
+     "src": "cc-screensaver/screensavers/disco-floor.lua",
+     "dest": "/pkg/screensavers/disco-floor.lua",
+     "size": 2799
+    },
+    {
+     "src": "cc-screensaver/screensavers/example-bounce.lua",
+     "dest": "/pkg/screensavers/example-bounce.lua",
+     "size": 465
+    },
+    {
+     "src": "cc-screensaver/screensavers/game-of-life.lua",
+     "dest": "/pkg/screensavers/game-of-life.lua",
+     "size": 1724
+    },
+    {
+     "src": "cc-screensaver/screensavers/pipes-3d.lua",
+     "dest": "/pkg/screensavers/pipes-3d.lua",
+     "size": 3075
+    },
+    {
+     "src": "cc-screensaver/screensavers/roulette-wheel.lua",
+     "dest": "/pkg/screensavers/roulette-wheel.lua",
+     "size": 3481
+    }
+   ]
+  },
+  "turtle": {
+   "description": "Factory and TurtleOS turtle automation (turtles only)",
+   "required": false,
+   "turtle": true,
+   "size": 400894,
+   "files": [
+    {
+     "src": "cc-factory/factory.lua",
+     "dest": "/pkg/factory/factory.lua",
+     "size": 5718
+    },
+    {
+     "src": "cc-factory/lib_designer.lua",
+     "dest": "/pkg/factory/lib_designer.lua",
+     "size": 35525
+    },
+    {
+     "src": "cc-factory/lib_diagnostics.lua",
+     "dest": "/pkg/factory/lib_diagnostics.lua",
+     "size": 1667
+    },
+    {
+     "src": "cc-factory/lib_fs.lua",
+     "dest": "/pkg/factory/lib_fs.lua",
+     "size": 2217
+    },
+    {
+     "src": "cc-factory/lib_fuel.lua",
+     "dest": "/pkg/factory/lib_fuel.lua",
+     "size": 17835
+    },
+    {
+     "src": "cc-factory/lib_games.lua",
+     "dest": "/pkg/factory/lib_games.lua",
+     "size": 18466
+    },
+    {
+     "src": "cc-factory/lib_gps.lua",
+     "dest": "/pkg/factory/lib_gps.lua",
+     "size": 2186
+    },
+    {
+     "src": "cc-factory/lib_initialize.lua",
+     "dest": "/pkg/factory/lib_initialize.lua",
+     "size": 9816
+    },
+    {
+     "src": "cc-factory/lib_inventory.lua",
+     "dest": "/pkg/factory/lib_inventory.lua",
+     "size": 44413
+    },
+    {
+     "src": "cc-factory/lib_inventory_utils.lua",
+     "dest": "/pkg/factory/lib_inventory_utils.lua",
+     "size": 1308
+    },
+    {
+     "src": "cc-factory/lib_items.lua",
+     "dest": "/pkg/factory/lib_items.lua",
+     "size": 20438
+    },
+    {
+     "src": "cc-factory/lib_json.lua",
+     "dest": "/pkg/factory/lib_json.lua",
+     "size": 955
+    },
+    {
+     "src": "cc-factory/lib_logger.lua",
+     "dest": "/pkg/factory/lib_logger.lua",
+     "size": 12290
+    },
+    {
+     "src": "cc-factory/lib_mining.lua",
+     "dest": "/pkg/factory/lib_mining.lua",
+     "size": 3052
+    },
+    {
+     "src": "cc-factory/lib_movement.lua",
+     "dest": "/pkg/factory/lib_movement.lua",
+     "size": 21188
+    },
+    {
+     "src": "cc-factory/lib_navigation.lua",
+     "dest": "/pkg/factory/lib_navigation.lua",
+     "size": 15173
+    },
+    {
+     "src": "cc-factory/lib_orientation.lua",
+     "dest": "/pkg/factory/lib_orientation.lua",
+     "size": 2153
+    },
+    {
+     "src": "cc-factory/lib_parser.lua",
+     "dest": "/pkg/factory/lib_parser.lua",
+     "size": 17007
+    },
+    {
+     "src": "cc-factory/lib_placement.lua",
+     "dest": "/pkg/factory/lib_placement.lua",
+     "size": 14571
+    },
+    {
+     "src": "cc-factory/lib_reporter.lua",
+     "dest": "/pkg/factory/lib_reporter.lua",
+     "size": 2057
+    },
+    {
+     "src": "cc-factory/lib_schema.lua",
+     "dest": "/pkg/factory/lib_schema.lua",
+     "size": 6528
+    },
+    {
+     "src": "cc-factory/lib_strategy.lua",
+     "dest": "/pkg/factory/lib_strategy.lua",
+     "size": 2262
+    },
+    {
+     "src": "cc-factory/lib_strategy_branchmine.lua",
+     "dest": "/pkg/factory/lib_strategy_branchmine.lua",
+     "size": 5104
+    },
+    {
+     "src": "cc-factory/lib_strategy_excavate.lua",
+     "dest": "/pkg/factory/lib_strategy_excavate.lua",
+     "size": 4058
+    },
+    {
+     "src": "cc-factory/lib_strategy_farm.lua",
+     "dest": "/pkg/factory/lib_strategy_farm.lua",
+     "size": 4029
+    },
+    {
+     "src": "cc-factory/lib_strategy_tunnel.lua",
+     "dest": "/pkg/factory/lib_strategy_tunnel.lua",
+     "size": 9969
+    },
+    {
+     "src": "cc-factory/lib_string.lua",
+     "dest": "/pkg/factory/lib_string.lua",
+     "size": 690
+    },
+    {
+     "src": "cc-factory/lib_table.lua",
+     "dest": "/pkg/factory/lib_table.lua",
+     "size": 3412
+    },
+    {
+     "src": "cc-factory/lib_ui.lua",
+     "dest": "/pkg/factory/lib_ui.lua",
+     "size": 11546
+    },
+    {
+     "src": "cc-factory/lib_world.lua",
+     "dest": "/pkg/factory/lib_world.lua",
+     "size": 9265
+    },
+    {
+     "src": "cc-factory/lib_worldstate.lua",
+     "dest": "/pkg/factory/lib_worldstate.lua",
+     "size": 14321
+    },
+    {
+     "src": "cc-factory/schema_modular_factory.txt",
+     "dest": "/pkg/factory/schema_modular_factory.txt",
+     "size": 2445
+    },
+    {
+     "src": "cc-factory/schema_printer_sample.txt",
+     "dest": "/pkg/factory/schema_printer_sample.txt",
+     "size": 271
+    },
+    {
+     "src": "cc-factory/state_blocked.lua",
+     "dest": "/pkg/factory/state_blocked.lua",
+     "size": 619
+    },
+    {
+     "src": "cc-factory/state_build.lua",
+     "dest": "/pkg/factory/state_build.lua",
+     "size": 5283
+    },
+    {
+     "src": "cc-factory/state_check_requirements.lua",
+     "dest": "/pkg/factory/state_check_requirements.lua",
+     "size": 4520
+    },
+    {
+     "src": "cc-factory/state_done.lua",
+     "dest": "/pkg/factory/state_done.lua",
+     "size": 262
+    },
+    {
+     "src": "cc-factory/state_error.lua",
+     "dest": "/pkg/factory/state_error.lua",
+     "size": 559
+    },
+    {
+     "src": "cc-factory/state_initialize.lua",
+     "dest": "/pkg/factory/state_initialize.lua",
+     "size": 9403
+    },
+    {
+     "src": "cc-factory/state_mine.lua",
+     "dest": "/pkg/factory/state_mine.lua",
+     "size": 3236
+    },
+    {
+     "src": "cc-factory/state_refuel.lua",
+     "dest": "/pkg/factory/state_refuel.lua",
+     "size": 1432
+    },
+    {
+     "src": "cc-factory/state_restock.lua",
+     "dest": "/pkg/factory/state_restock.lua",
+     "size": 1883
+    },
+    {
+     "src": "cc-factory/state_treefarm.lua",
+     "dest": "/pkg/factory/state_treefarm.lua",
+     "size": 1963
+    },
+    {
+     "src": "cc-factory/turtle_os.lua",
+     "dest": "/pkg/factory/turtle_os.lua",
+     "size": 12251
+    },
+    {
+     "src": "cc-turtleos/turtleos/menu.lua",
+     "dest": "/pkg/turtleos/menu.lua",
+     "size": 6233
+    },
+    {
+     "src": "cc-turtleos/turtleos/apis/movement.lua",
+     "dest": "/pkg/turtleos/apis/movement.lua",
+     "size": 10116
+    },
+    {
+     "src": "cc-turtleos/turtleos/lib/core.lua",
+     "dest": "/pkg/turtleos/lib/core.lua",
+     "size": 588
+    },
+    {
+     "src": "cc-turtleos/turtleos/lib/logger.lua",
+     "dest": "/pkg/turtleos/lib/logger.lua",
+     "size": 392
+    },
+    {
+     "src": "cc-turtleos/turtleos/lib/schema.lua",
+     "dest": "/pkg/turtleos/lib/schema.lua",
+     "size": 425
+    },
+    {
+     "src": "cc-turtleos/turtleos/roles/builder.lua",
+     "dest": "/pkg/turtleos/roles/builder.lua",
+     "size": 258
+    },
+    {
+     "src": "cc-turtleos/turtleos/roles/farmer.lua",
+     "dest": "/pkg/turtleos/roles/farmer.lua",
+     "size": 950
+    },
+    {
+     "src": "cc-turtleos/turtleos/roles/miner.lua",
+     "dest": "/pkg/turtleos/roles/miner.lua",
+     "size": 204
+    },
+    {
+     "src": "cc-turtleos/turtleos/strategies/farmer/potato.lua",
+     "dest": "/pkg/turtleos/strategies/farmer/potato.lua",
+     "size": 8161
+    },
+    {
+     "src": "cc-turtleos/turtleos/strategies/farmer/tree.lua",
+     "dest": "/pkg/turtleos/strategies/farmer/tree.lua",
+     "size": 10221
+    }
+   ]
+  }
+ }
+}

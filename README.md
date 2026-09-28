@@ -2,6 +2,20 @@
 
 ComputerCraft programs, consolidated from separate repositories via `git subtree` (each subfolder keeps its original commit history).
 
+## ArcadeOS
+
+[`arcadeos/`](./arcadeos) is a Windows 1.0–style shell that runs everything below as apps, with tiled windows, menu bars, an icon strip and Windows 1.0 accessories. To install it on an Advanced Computer:
+
+```
+wget run https://raw.githubusercontent.com/Arcadesys/cc-binaries/main/arcadeos/install.lua
+```
+
+![ArcadeOS desktop](arcadeos/docs/desktop.png)
+
+See the [ArcadeOS README](./arcadeos/README.md) for usage and for writing apps.
+
+## Programs
+
 | Folder | Source repo |
 | --- | --- |
 | [`cc-turtleos`](./cc-turtleos) | [Arcadesys/cc-turtleos](https://github.com/Arcadesys/cc-turtleos) |

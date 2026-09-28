@@ -1,9 +1,12 @@
--- Ensure package path includes root for sub-processes
-if not package.path:find("/?.lua") then
-    package.path = "/?.lua;/?/init.lua;" .. package.path
+-- Resolve paths from wherever turtleos/ is installed ("/turtleos" or e.g. "/pkg/turtleos").
+local base = fs.getDir(shell.getRunningProgram())
+local pkgRoot = fs.getDir(base)
+local rootPath = "/" .. fs.combine(pkgRoot, "?.lua")
+if not package.path:find(rootPath, 1, true) then
+    package.path = rootPath .. ";/" .. fs.combine(pkgRoot, "?/init.lua") .. ";" .. package.path
 end
 
-local strategies_dir = "turtleos/strategies"
+local strategies_dir = fs.combine(base, "strategies")
 
 -- Helper: Get list of roles (directories)
 local function get_roles()

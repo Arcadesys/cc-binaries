@@ -463,7 +463,7 @@ local function playSong(midi, instrumentMap, shouldLoop, speaker)
     print("Playing... press Ctrl+T to stop")
 
     while playing do
-        local event, param1 = os.pullEvent()
+        local event, param1 = os.pullEventRaw()
         if event == "timer" and param1 == timerId then
             local elapsed = os.clock() - playStart
             updateProgress(elapsed)

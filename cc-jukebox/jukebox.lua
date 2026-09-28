@@ -13,6 +13,10 @@ local CONFIG = {
     volume = 1.0
 }
 
+-- Resolve the manifest and local songs next to this program, wherever it's installed.
+local BASE = shell and fs.getDir(shell.getRunningProgram()) or ""
+CONFIG.manifest_file = fs.combine(BASE, CONFIG.manifest_file)
+
 -- IMPORTS
 local dfpwm = require("cc.audio.dfpwm")
 local speaker = peripheral.find("speaker")
@@ -35,6 +39,11 @@ local function loadManifest()
     f.close()
     
     if data and data.songs then
+        for _, song in ipairs(data.songs) do
+            if type(song.file) == "string" and not song.file:find("^http") and song.file:sub(1, 1) ~= "/" then
+                song.file = "/" .. fs.combine(BASE, song.file)
+            end
+        end
         state.playlist = data.songs
         return true
     end

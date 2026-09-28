@@ -755,11 +755,13 @@ end
 -- ENTRY POINT
 --------------------------------------------------------------------------------
 
+local programArgs = { ... }
+
 local function main()
     math.randomseed(os.time())
-    
+
     -- Check for demo mode (attract mode from menu)
-    local args = { ... }
+    local args = programArgs
     if args[1] == "--demo" then
         while true do
             local wantsPlay = runDemo()

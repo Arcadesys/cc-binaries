@@ -29,4 +29,8 @@ function json_utils.decodeJson(text)
     return nil, "json_decoder_unavailable"
 end
 
+function json_utils.encode(value)
+    return textutils.serializeJSON(value)
+end
+
 return json_utils

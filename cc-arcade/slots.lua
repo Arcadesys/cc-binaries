@@ -559,7 +559,7 @@ local function main()
             elseif button == "RIGHT" then
                 term.setBackgroundColor(colors.black)
                 term.clear()
-                if fs.exists("menu.lua") then shell.run("menu.lua") end
+                if not arcadeos and fs.exists("menu.lua") then shell.run("menu.lua") end
                 return
             end
 
@@ -574,7 +574,7 @@ local function main()
                 elseif key == "backspace" or key == "e" then -- Exit
                      term.setBackgroundColor(colors.black)
                      term.clear()
-                     if fs.exists("menu.lua") then shell.run("menu.lua") end
+                     if not arcadeos and fs.exists("menu.lua") then shell.run("menu.lua") end
                      return
                 end
             elseif event == "disk" or event == "disk_eject" then
