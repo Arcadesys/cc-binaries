@@ -2,6 +2,7 @@
 """ArcadeOS developer tool.
 
   dev.py files            regenerate arcadeos/files.json from layout.json
+  dev.py install-test     install into a fresh emulator from this checkout and verify
   dev.py test [NAME...]   run headless tests in CraftOS-PC (all, or named suites)
   dev.py run [--quick]    open the CraftOS-PC GUI booted into ArcadeOS
   dev.py screens OUT_DIR  run the screenshot scenarios and render PNGs
@@ -61,6 +62,7 @@ def cmd_files():
         result["packages"][name] = {
             "description": pkg.get("description", ""),
             "required": pkg.get("required", False),
+            "turtle": pkg.get("turtle", False),
             "size": sum(f["size"] for f in files),
             "files": files,
         }
@@ -111,6 +113,24 @@ def cmd_test(names):
     return 0 if any(l.startswith("PASS all") for l in text.splitlines()) else 1
 
 
+def cmd_install_test():
+    cmd_files()
+    results = tempfile.mkdtemp(prefix="arcadeos-install-")
+    data_dir = tempfile.mkdtemp(prefix="arcadeos-fresh-")
+    code = ('shell.run("/src/arcadeos/install.lua", "--local", "/src", "--yes") '
+            'shell.run("/src/arcadeos/tests/install_check.lua") os.shutdown()')
+    subprocess.run([CRAFTOS, "--headless", "--directory", data_dir, "--mount-ro", f"/src={REPO}",
+                    "--mount-rw", f"/results={results}", "--exec", code],
+                   stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=600)
+    out = os.path.join(results, "install.txt")
+    if not os.path.exists(out):
+        print("FAIL: installer did not finish")
+        return 1
+    text = open(out, encoding="latin-1").read()
+    print(text, end="")
+    return 0 if "PASS install" in text else 1
+
+
 def cmd_run(argv):
     boot = "/arcadeos/boot.lua" + (" --quick" if "--quick" in argv else "")
     data_dir = os.path.join(tempfile.gettempdir(), "arcadeos-dev")
@@ -159,6 +179,8 @@ def main(argv):
         return cmd_test(rest)
     if cmd == "run":
         return cmd_run(rest)
+    if cmd == "install-test":
+        return cmd_install_test()
     if cmd == "screens":
         return cmd_screens(rest)
     print(__doc__)
