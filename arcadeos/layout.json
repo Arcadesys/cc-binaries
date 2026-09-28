@@ -1,0 +1,53 @@
+{
+  "raw_base": "https://raw.githubusercontent.com/Arcadesys/cc-binaries/main",
+  "packages": {
+    "core": {
+      "description": "ArcadeOS shell and accessories",
+      "required": true,
+      "mounts": [
+        { "src": "arcadeos", "dest": "/arcadeos",
+          "exclude": ["tools/**", "tests/**", "files.json", "README.md", "install.lua", "layout.json"] }
+      ]
+    },
+    "arcade": {
+      "description": "Arcade games: Blackjack, Slots, Can't Stop, Race, RPS Rogue, IdleCraft",
+      "mounts": [
+        { "src": "cc-arcade", "dest": "/pkg/arcade",
+          "include": ["*.lua"],
+          "exclude": ["menu.lua", "kiosk.lua", "cashier.lua", "exchange.lua", "setup.lua", "dedicate.lua",
+                      "config.lua", "startup.lua", "install.lua", "update.lua"] }
+      ]
+    },
+    "factory": {
+      "description": "Minesweeper, Solitaire, Euchre, Schema Designer, turtle Factory",
+      "mounts": [
+        { "src": "cc-factory", "dest": "/pkg/factory",
+          "include": ["*.lua", "schema_*.txt"],
+          "exclude": ["harness_*.lua", "main.lua"] }
+      ]
+    },
+    "pine": {
+      "description": "Pine3D games: Pine Links, Pine Lanes, Pine Dungeon",
+      "mounts": [
+        { "src": "computercraft_scripts", "dest": "/pkg/scripts",
+          "include": ["pine-*/**.lua", "pine-*/**.txt", "pine-*/**/LICENSE*"],
+          "exclude": ["pine-*/tests/**", "pine-*/tools/**", "pine-*/docs/**",
+                      "pine-*/runtime-check.lua", "pine-*/diagnostic.lua"] }
+      ]
+    },
+    "media": {
+      "description": "Jukebox, MIDI Player, screensavers",
+      "mounts": [
+        { "src": "computercraft_scripts", "dest": "/pkg/scripts", "include": ["midi_player.lua"] },
+        { "src": "cc-jukebox", "dest": "/pkg/jukebox", "include": ["jukebox.lua", "manifest.json"] },
+        { "src": "cc-screensaver/screensavers", "dest": "/pkg/screensavers", "include": ["*.lua"] }
+      ]
+    },
+    "turtle": {
+      "description": "TurtleOS roles and strategies (turtles only)",
+      "mounts": [
+        { "src": "cc-turtleos/turtleos", "dest": "/pkg/turtleos", "include": ["**.lua"] }
+      ]
+    }
+  }
+}
