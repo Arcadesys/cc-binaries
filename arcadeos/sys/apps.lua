@@ -36,7 +36,8 @@ function apps.scan(root, env)
         if fs.isDir(dir) and fs.exists(fs.combine(dir, "app.lua")) then
             local m, err = loadManifest(dir, id)
             if m then
-                if not (m.requires.turtle and not hasTurtle) then
+                local installed = fs.exists(m.entry) and (not m.needs or fs.exists(m.needs))
+                if installed and not (m.requires.turtle and not hasTurtle) then
                     list[#list + 1] = m
                 end
             else

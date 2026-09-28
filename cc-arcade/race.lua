@@ -420,7 +420,7 @@ local function main()
 
     term.setBackgroundColor(colors.black)
     term.clear()
-    if fs.exists("menu.lua") then
+    if not arcadeos and fs.exists("menu.lua") then
         shell.run("menu.lua")
     end
 end

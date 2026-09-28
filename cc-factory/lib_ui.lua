@@ -236,6 +236,26 @@ function ui.runForm(form)
     end
 end
 
+-- Form builder: ui.Form(title), form:addInput(id, label, value), form:run() -> "ok" | "cancel".
+-- Read values back from form.elements (el.id, el.value).
+function ui.Form(title)
+    local _, h = term.getSize()
+    local step = h >= 19 and 2 or 1
+    local form = { title = title, elements = {}, row = 2 }
+    function form:addInput(id, label, value)
+        self.elements[#self.elements + 1] = { type = "label", x = 2, y = self.row, text = label }
+        self.elements[#self.elements + 1] = { type = "input", id = id, x = 17, y = self.row, width = 10, value = value or "" }
+        self.row = self.row + step
+    end
+    function form:run()
+        local y = self.row + 1
+        self.elements[#self.elements + 1] = { type = "button", x = 2, y = y, text = "OK", callback = function() return "ok" end }
+        self.elements[#self.elements + 1] = { type = "button", x = 8, y = y, text = "Cancel", callback = function() return "cancel" end }
+        return ui.runForm(self)
+    end
+    return form
+end
+
 -- Simple Scrollable Menu
 -- items = { { text="Label", callback=function() end }, ... }
 function ui.runMenu(title, items)

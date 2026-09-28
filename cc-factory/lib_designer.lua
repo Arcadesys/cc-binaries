@@ -430,7 +430,7 @@ local function drawInventory()
     for row = 0, 3 do
         for col = 0, 3 do
             local slot = row * 4 + col + 1
-            local item = turtle.getItemDetail(slot)
+            local item = turtle and turtle.getItemDetail(slot)
             
             term.setCursorPos(ix + 1 + (col * 4), iy + 1 + row)
             
@@ -679,7 +679,8 @@ local function saveSchema()
     local name = read()
     if name == "" then return end
     if not name:find("%.json$") then name = name .. ".json" end
-    
+    if arcadeos and name:sub(1, 1) ~= "/" then name = "/home/" .. name end
+
     local exportDef = exportVoxelDefinition()
 
     local f = fs.open(name, "w")
@@ -878,7 +879,7 @@ function designer.run(opts)
                         local row = relY
                         if col >= 0 and col <= 3 and row >= 0 and row <= 3 then
                             local slot = row * 4 + col + 1
-                            local item = turtle.getItemDetail(slot)
+                            local item = turtle and turtle.getItemDetail(slot)
                             if item then
                                 state.dragItem = {
                                     id = item.name,

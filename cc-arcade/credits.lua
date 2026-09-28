@@ -1,7 +1,14 @@
-local DEFAULT_CREDITS = 0 
+local DEFAULT_CREDITS = 0
 local DEFAULT_NAME = "Guest"
+local FREEPLAY_CREDITS = 999
+local FREEPLAY_PATH = "freeplay"
 
 local credits = {}
+
+-- Under ArcadeOS with Free Play on (Control Panel), no credit disk is needed.
+local function freeplay()
+    return arcadeos ~= nil and arcadeos.freeplay()
+end
 
 local function getFilePath(mountPath)
     return (mountPath or "disk") .. "/credits.json"
@@ -58,12 +65,18 @@ function credits.findCards()
             end
         end
     end
+    if #cards == 0 and freeplay() then
+        cards[1] = { path = FREEPLAY_PATH, side = FREEPLAY_PATH, name = "Player", credits = FREEPLAY_CREDITS }
+    end
     return cards
 end
 
 function credits.get(mountPath)
     if _G.ARCADE_DEV_MODE then
         return math.huge
+    end
+    if freeplay() then
+        return FREEPLAY_CREDITS
     end
 
     local data = readData(mountPath)
@@ -83,8 +96,8 @@ function credits.getName(mountPath)
 end
 
 function credits.set(amount, mountPath)
-    if _G.ARCADE_DEV_MODE then
-        return true 
+    if _G.ARCADE_DEV_MODE or freeplay() then
+        return true
     end
 
     local data = readData(mountPath) or { name = DEFAULT_NAME }
@@ -101,8 +114,8 @@ function credits.add(amount, mountPath)
 end
 
 function credits.remove(amount, mountPath)
-    if _G.ARCADE_DEV_MODE then
-        return true 
+    if _G.ARCADE_DEV_MODE or freeplay() then
+        return true
     end
 
     local current = credits.get(mountPath)

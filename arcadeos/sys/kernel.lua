@@ -3,6 +3,7 @@ local theme = require("sys.theme")
 local wm = require("sys.wm")
 local chrome = require("sys.chrome")
 local apps = require("sys.apps")
+local idle = require("sys.idle")
 
 local VERSION = "1.00"
 
@@ -177,7 +178,7 @@ function Kernel:launch(id, ...)
     for _, a in ipairs({ ... }) do args[#args + 1] = a end
     local p = self:spawn({
         app = m, title = m.name, icon = m.icon, display = m.display, min = m.min,
-        native = m.native, entry = m.entry, args = args, mode = "app",
+        native = m.native, entry = m.entry, args = args, mode = m.hold and "file" or "app",
     })
     return p.id
 end
@@ -309,6 +310,7 @@ function Kernel:reap()
             changed = true
             if p.zoomed then wasMax = true end
             if self.drag == p then self.drag = nil end
+            if self.saver == p then self.saver = nil end
             if self.menu and self.menu.proc == p then self.menu = nil end
             if p.error and not self.exiting then
                 self:showModal("Application Error",
@@ -691,6 +693,9 @@ function Kernel:handle(ev)
         local fn = self.ownTimers[ev[2]]
         self.ownTimers[ev[2]] = nil
         fn()
+    elseif self.saver and (INPUT[name] or MOUSE[name]) then
+        self.lastInput = os.epoch("utc")
+        if idle.WAKE[name] or name == "terminate" then idle.stop(self) end
     elseif INPUT[name] then
         self.lastInput = os.epoch("utc")
         self:onKey(ev)
@@ -765,6 +770,11 @@ function Kernel:makeApi()
     function api.getClipboard() return k.clipboard end
     function api.setClipboard(s) k.clipboard = s end
     function api.getScreenSize() return k.W, k.H end
+    function api.screensavers() return idle.list(k.saverDir) end
+    function api.previewScreensaver(name)
+        k.lastInput = os.epoch("utc")
+        return idle.start(k, name)
+    end
     function api.theme() return theme end
     return api
 end
@@ -832,6 +842,7 @@ end
 function Kernel:start(first)
     theme.load()
     self:installShims()
+    if first ~= false then idle.attach(self) end
     self.W, self.H = self.parent.getSize()
     theme.apply(self.parent)
     if first ~= false then
