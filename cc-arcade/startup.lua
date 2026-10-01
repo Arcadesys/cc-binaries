@@ -153,8 +153,8 @@ while true do
     if event == "timer" and p1 == timer then
         break
     elseif event == "char" and p1:lower() == "d" then
-        _G.ARCADE_DEV_MODE = true
-        print("DEV MODE ENABLED: Infinite Credits")
+        _G.ARCADE_DEV_MODE = not fs.exists("/house-config.json")
+        print(_G.ARCADE_DEV_MODE and "EXHIBITION: no redeemable credits" or "House configured: live wallet remains active")
         sleep(1)
         break
     elseif event == "char" and p1:lower() == "u" then
@@ -166,7 +166,7 @@ while true do
 end
 
 if not _G.ARCADE_DEV_MODE then
-    print("Production Mode: Standard Credits")
+    print("Production Mode: Shared House Wallet")
 end
 sleep(0.5)
 

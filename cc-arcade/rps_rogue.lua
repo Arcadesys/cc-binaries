@@ -237,12 +237,17 @@ local function main()
             end
         end
     end
-    creditsAPI.remove(5)
+    local cards = creditsAPI.findCards()
+    local path = cards[1] and cards[1].path
+    local round, reserveError = creditsAPI.beginRound("rps_rogue", 5, 5, path)
+    if not round then error("HOUSE: " .. tostring(reserveError), 0) end
 
     generateEnemy()
     
     while true do
         if player.hp <= 0 then
+            creditsAPI.settleRound(round, 0)
+            creditsAPI.unlock(path)
             term.clear()
             term.setCursorPos(1, h/2)
             term.setTextColor(colors.red)
@@ -258,7 +263,9 @@ local function main()
             -- Victory
             floor = floor + 1
             player.level = player.level + 1
-            creditsAPI.add(5) -- Reward for clearing floor
+            creditsAPI.settleRound(round, 5) -- Reward for clearing floor
+            round, reserveError = creditsAPI.beginRound("rps_rogue", 0, 5, path)
+            if not round then error("HOUSE: next floor paused: " .. tostring(reserveError), 0) end
             audio.playWin()
             
             -- Upgrade

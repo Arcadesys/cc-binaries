@@ -1,0 +1,11 @@
+Pine3D upstream: https://github.com/Xella37/Pine3D
+Pinned commit: 2fbbd2cebe9b1ce8a8fc173a2a8a7694878a62a4
+Pinned on: 2026-09-27
+
+Runtime files copied from that commit:
+- Pine3D.lua
+- betterblittle.lua (the only runtime require used by Pine3D.lua)
+- LICENSE (MIT; copyright Xella, 2022)
+
+No network access is needed at runtime. The converters, sample models, and
+noise helper are not runtime dependencies of this adapter.

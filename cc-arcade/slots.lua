@@ -301,7 +301,8 @@ local function spin(player)
         return "Not enough credits!"
     end
     
-    creditsAPI.remove(player.bet, player.mountPath)
+    local round, err = creditsAPI.beginRound("slots", player.bet, 500 * math.min(player.bet, 3), player.mountPath)
+    if not round then return err end
     
     -- Animation
     for i=1,20 do
@@ -339,8 +340,8 @@ local function spin(player)
     if player.bet >= 2 then win = win + checkLine(0) end -- Top (offset 0)
     if player.bet >= 3 then win = win + checkLine(2) end -- Bottom (offset 2)
     
+    creditsAPI.settleRound(round, win)
     if win > 0 then
-        creditsAPI.add(win, player.mountPath)
         audio.playWin()
         
         -- Flash Effect

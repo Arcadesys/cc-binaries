@@ -25,6 +25,10 @@ See the [ArcadeOS README](./arcadeos/README.md) for usage and for writing apps.
 | [`cc-jukebox`](./cc-jukebox) | [Arcadesys/cc-jukebox](https://github.com/Arcadesys/cc-jukebox) |
 | [`computercraft_scripts`](./computercraft_scripts) | [Arcadesys/computercraft_scripts](https://github.com/Arcadesys/computercraft_scripts) |
 
+## Pine3D Derby and diamond house
+
+The [derby prototype](./cc-arcade/derby/README.md) adds a shared 3D horse race, separate betting stations, and a central diamond-backed arcade wallet. It includes the [venue concept](./cc-arcade/derby/docs/diamond-house-concept.png); live Minecraft acceptance remains pending.
+
 ## Pine games
 
 The standalone Pine3D games are in [`computercraft_scripts`](./computercraft_scripts). Copy an entire game folder to a CC:Tweaked computer so its bundled libraries stay beside the launcher.
