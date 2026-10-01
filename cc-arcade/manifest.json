@@ -1,5 +1,92 @@
 {
  "programs": {
+  "pinearcade": {
+   "title": "Pine Arcade",
+   "entry": "pinearcade.lua",
+   "description": "Pine3D menu of every installed game; picks what this computer boots into",
+   "files": [
+    {
+     "path": "casino/app.lua",
+     "size": 1362
+    },
+    {
+     "path": "casino/font.lua",
+     "size": 1708
+    },
+    {
+     "path": "casino/mesh.lua",
+     "size": 1551
+    },
+    {
+     "path": "casino/palette.lua",
+     "size": 642
+    },
+    {
+     "path": "casino/wallet.lua",
+     "size": 3605
+    },
+    {
+     "path": "credits.lua",
+     "size": 5501
+    },
+    {
+     "path": "derby/client.lua",
+     "size": 1855
+    },
+    {
+     "path": "derby/config.lua",
+     "size": 1820
+    },
+    {
+     "path": "derby/palette.lua",
+     "size": 432
+    },
+    {
+     "path": "derby/store.lua",
+     "size": 1705
+    },
+    {
+     "path": "derby/ui.lua",
+     "size": 1875
+    },
+    {
+     "path": "derby/vendor/LICENSE",
+     "size": 1062
+    },
+    {
+     "path": "derby/vendor/Pine3D.lua",
+     "size": 69417
+    },
+    {
+     "path": "derby/vendor/REVISION.txt",
+     "size": 422
+    },
+    {
+     "path": "derby/vendor/betterblittle.lua",
+     "size": 6135
+    },
+    {
+     "path": "input.lua",
+     "size": 3606
+    },
+    {
+     "path": "pinearcade.lua",
+     "size": 320
+    },
+    {
+     "path": "pinearcade/app.lua",
+     "size": 6845
+    },
+    {
+     "path": "pinearcade/emblems.lua",
+     "size": 9327
+    },
+    {
+     "path": "pinearcade/render.lua",
+     "size": 4617
+    }
+   ]
+  },
   "pineslots": {
    "title": "Pine Slots",
    "entry": "pineslots.lua",
@@ -394,7 +481,8 @@
      "path": "race.lua",
      "size": 112
     }
-   ]
+   ],
+   "monitor": false
   },
   "house": {
    "title": "House setup",
@@ -501,9 +589,295 @@
      "size": 1731
     }
    ]
+  },
+  "pineball": {
+   "title": "Pine Ball",
+   "entry": "pine-ball/ball.lua",
+   "description": "Baseball against the CPU or a two-player duel",
+   "files": [
+    {
+     "path": "derby/vendor/LICENSE",
+     "size": 1062
+    },
+    {
+     "path": "derby/vendor/Pine3D.lua",
+     "size": 69417
+    },
+    {
+     "path": "derby/vendor/REVISION.txt",
+     "size": 422
+    },
+    {
+     "path": "derby/vendor/betterblittle.lua",
+     "size": 6135
+    },
+    {
+     "path": "pine-ball/ball.lua",
+     "size": 1446,
+     "src": "computercraft_scripts/pine-ball/ball.lua"
+    },
+    {
+     "path": "pine-ball/lib/app.lua",
+     "size": 19932,
+     "src": "computercraft_scripts/pine-ball/lib/app.lua"
+    },
+    {
+     "path": "pine-ball/lib/baseball.lua",
+     "size": 13076,
+     "src": "computercraft_scripts/pine-ball/lib/baseball.lua"
+    },
+    {
+     "path": "pine-ball/lib/input.lua",
+     "size": 1941,
+     "src": "computercraft_scripts/pine-ball/lib/input.lua"
+    },
+    {
+     "path": "pine-ball/lib/plays.lua",
+     "size": 9888,
+     "src": "computercraft_scripts/pine-ball/lib/plays.lua"
+    },
+    {
+     "path": "pine-ball/lib/render.lua",
+     "size": 6244,
+     "src": "computercraft_scripts/pine-ball/lib/render.lua"
+    },
+    {
+     "path": "pine-ball/lib/rng.lua",
+     "size": 1540,
+     "src": "computercraft_scripts/pine-ball/lib/rng.lua"
+    },
+    {
+     "path": "pine-ball/lib/roster.lua",
+     "size": 1058,
+     "src": "computercraft_scripts/pine-ball/lib/roster.lua"
+    },
+    {
+     "path": "pine-ball/lib/stadium.lua",
+     "size": 11791,
+     "src": "computercraft_scripts/pine-ball/lib/stadium.lua"
+    },
+    {
+     "path": "pine-ball/lib/ui.lua",
+     "size": 5714,
+     "src": "computercraft_scripts/pine-ball/lib/ui.lua"
+    }
+   ]
+  },
+  "pinelinks": {
+   "title": "Pine Links",
+   "entry": "pine-links/golf.lua",
+   "description": "Mini golf: a par 3 with a swing meter",
+   "files": [
+    {
+     "path": "derby/vendor/LICENSE",
+     "size": 1062
+    },
+    {
+     "path": "derby/vendor/Pine3D.lua",
+     "size": 69417
+    },
+    {
+     "path": "derby/vendor/REVISION.txt",
+     "size": 422
+    },
+    {
+     "path": "derby/vendor/betterblittle.lua",
+     "size": 6135
+    },
+    {
+     "path": "pine-links/golf.lua",
+     "size": 1209,
+     "src": "computercraft_scripts/pine-links/golf.lua"
+    },
+    {
+     "path": "pine-links/lib/app.lua",
+     "size": 11275,
+     "src": "computercraft_scripts/pine-links/lib/app.lua"
+    },
+    {
+     "path": "pine-links/lib/course.lua",
+     "size": 1681,
+     "src": "computercraft_scripts/pine-links/lib/course.lua"
+    },
+    {
+     "path": "pine-links/lib/golf.lua",
+     "size": 6951,
+     "src": "computercraft_scripts/pine-links/lib/golf.lua"
+    },
+    {
+     "path": "pine-links/lib/input.lua",
+     "size": 2077,
+     "src": "computercraft_scripts/pine-links/lib/input.lua"
+    },
+    {
+     "path": "pine-links/lib/physics.lua",
+     "size": 2083,
+     "src": "computercraft_scripts/pine-links/lib/physics.lua"
+    },
+    {
+     "path": "pine-links/lib/render.lua",
+     "size": 12254,
+     "src": "computercraft_scripts/pine-links/lib/render.lua"
+    },
+    {
+     "path": "pine-links/lib/rules.lua",
+     "size": 1640,
+     "src": "computercraft_scripts/pine-links/lib/rules.lua"
+    },
+    {
+     "path": "pine-links/lib/ui.lua",
+     "size": 5581,
+     "src": "computercraft_scripts/pine-links/lib/ui.lua"
+    }
+   ]
+  },
+  "pinelanes": {
+   "title": "Pine Lanes",
+   "entry": "pine-lanes/bowl.lua",
+   "description": "Ten-frame bowling for one to four players",
+   "files": [
+    {
+     "path": "derby/vendor/LICENSE",
+     "size": 1062
+    },
+    {
+     "path": "derby/vendor/Pine3D.lua",
+     "size": 69417
+    },
+    {
+     "path": "derby/vendor/REVISION.txt",
+     "size": 422
+    },
+    {
+     "path": "derby/vendor/betterblittle.lua",
+     "size": 6135
+    },
+    {
+     "path": "pine-lanes/bowl.lua",
+     "size": 1556,
+     "src": "computercraft_scripts/pine-lanes/bowl.lua"
+    },
+    {
+     "path": "pine-lanes/lib/alley.lua",
+     "size": 11104,
+     "src": "computercraft_scripts/pine-lanes/lib/alley.lua"
+    },
+    {
+     "path": "pine-lanes/lib/app.lua",
+     "size": 11312,
+     "src": "computercraft_scripts/pine-lanes/lib/app.lua"
+    },
+    {
+     "path": "pine-lanes/lib/input.lua",
+     "size": 1814,
+     "src": "computercraft_scripts/pine-lanes/lib/input.lua"
+    },
+    {
+     "path": "pine-lanes/lib/lane.lua",
+     "size": 1079,
+     "src": "computercraft_scripts/pine-lanes/lib/lane.lua"
+    },
+    {
+     "path": "pine-lanes/lib/physics.lua",
+     "size": 5582,
+     "src": "computercraft_scripts/pine-lanes/lib/physics.lua"
+    },
+    {
+     "path": "pine-lanes/lib/pindeck.lua",
+     "size": 18477,
+     "src": "computercraft_scripts/pine-lanes/lib/pindeck.lua"
+    },
+    {
+     "path": "pine-lanes/lib/render.lua",
+     "size": 8257,
+     "src": "computercraft_scripts/pine-lanes/lib/render.lua"
+    },
+    {
+     "path": "pine-lanes/lib/rng.lua",
+     "size": 1540,
+     "src": "computercraft_scripts/pine-lanes/lib/rng.lua"
+    },
+    {
+     "path": "pine-lanes/lib/rules.lua",
+     "size": 11381,
+     "src": "computercraft_scripts/pine-lanes/lib/rules.lua"
+    },
+    {
+     "path": "pine-lanes/lib/ui.lua",
+     "size": 10236,
+     "src": "computercraft_scripts/pine-lanes/lib/ui.lua"
+    }
+   ]
+  },
+  "pinedungeon": {
+   "title": "Pine Dungeon",
+   "entry": "pine-dungeon/dungeon.lua",
+   "description": "First-person dungeon crawler with a map",
+   "files": [
+    {
+     "path": "derby/vendor/LICENSE",
+     "size": 1062
+    },
+    {
+     "path": "derby/vendor/Pine3D.lua",
+     "size": 69417
+    },
+    {
+     "path": "derby/vendor/REVISION.txt",
+     "size": 422
+    },
+    {
+     "path": "derby/vendor/betterblittle.lua",
+     "size": 6135
+    },
+    {
+     "path": "pine-dungeon/dungeon.lua",
+     "size": 1206,
+     "src": "computercraft_scripts/pine-dungeon/dungeon.lua"
+    },
+    {
+     "path": "pine-dungeon/lib/app.lua",
+     "size": 4192,
+     "src": "computercraft_scripts/pine-dungeon/lib/app.lua"
+    },
+    {
+     "path": "pine-dungeon/lib/input.lua",
+     "size": 1144,
+     "src": "computercraft_scripts/pine-dungeon/lib/input.lua"
+    },
+    {
+     "path": "pine-dungeon/lib/render.lua",
+     "size": 6199,
+     "src": "computercraft_scripts/pine-dungeon/lib/render.lua"
+    },
+    {
+     "path": "pine-dungeon/lib/ui.lua",
+     "size": 4474,
+     "src": "computercraft_scripts/pine-dungeon/lib/ui.lua"
+    },
+    {
+     "path": "pine-dungeon/lib/world.lua",
+     "size": 5675,
+     "src": "computercraft_scripts/pine-dungeon/lib/world.lua"
+    }
+   ]
   }
  },
  "tools": [
+  "house",
+  "config"
+ ],
+ "launcher": "pinearcade",
+ "order": [
+  "pinearcade",
+  "pineslots",
+  "pinejack",
+  "pinebox",
+  "race",
+  "pineball",
+  "pinelinks",
+  "pinelanes",
+  "pinedungeon",
   "house",
   "config"
  ]

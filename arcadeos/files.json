@@ -273,7 +273,7 @@
    "description": "Arcade games: Blackjack, Slots, Pine Slots, Pine Jack, Pine Shut the Box, Can't Stop, Race, RPS Rogue, IdleCraft",
    "required": false,
    "turtle": false,
-   "size": 355908,
+   "size": 383587,
    "files": [
     {
      "src": "cc-arcade/audio.lua",
@@ -309,6 +309,11 @@
      "src": "cc-arcade/input.lua",
      "dest": "/pkg/arcade/input.lua",
      "size": 3606
+    },
+    {
+     "src": "cc-arcade/pinearcade.lua",
+     "dest": "/pkg/arcade/pinearcade.lua",
+     "size": 320
     },
     {
      "src": "cc-arcade/pinebox.lua",
@@ -486,6 +491,26 @@
      "size": 6135
     },
     {
+     "src": "cc-arcade/pinearcade/app.lua",
+     "dest": "/pkg/arcade/pinearcade/app.lua",
+     "size": 6845
+    },
+    {
+     "src": "cc-arcade/pinearcade/emblems.lua",
+     "dest": "/pkg/arcade/pinearcade/emblems.lua",
+     "size": 9327
+    },
+    {
+     "src": "cc-arcade/pinearcade/render.lua",
+     "dest": "/pkg/arcade/pinearcade/render.lua",
+     "size": 4617
+    },
+    {
+     "src": "cc-arcade/pinearcade/tests/run.lua",
+     "dest": "/pkg/arcade/pinearcade/tests/run.lua",
+     "size": 6570
+    },
+    {
      "src": "cc-arcade/pinebox/app.lua",
      "dest": "/pkg/arcade/pinebox/app.lua",
      "size": 251
@@ -629,12 +654,12 @@
    "description": "Pine3D games: Pine Ball, Pine Links, Pine Lanes, Pine Dungeon",
    "required": false,
    "turtle": false,
-   "size": 530053,
+   "size": 530753,
    "files": [
     {
      "src": "computercraft_scripts/pine-ball/ball.lua",
      "dest": "/pkg/scripts/pine-ball/ball.lua",
-     "size": 1271
+     "size": 1446
     },
     {
      "src": "computercraft_scripts/pine-ball/lib/app.lua",
@@ -704,7 +729,7 @@
     {
      "src": "computercraft_scripts/pine-dungeon/dungeon.lua",
      "dest": "/pkg/scripts/pine-dungeon/dungeon.lua",
-     "size": 1031
+     "size": 1206
     },
     {
      "src": "computercraft_scripts/pine-dungeon/lib/app.lua",
@@ -754,7 +779,7 @@
     {
      "src": "computercraft_scripts/pine-lanes/bowl.lua",
      "dest": "/pkg/scripts/pine-lanes/bowl.lua",
-     "size": 1381
+     "size": 1556
     },
     {
      "src": "computercraft_scripts/pine-lanes/lib/alley.lua",
@@ -829,7 +854,7 @@
     {
      "src": "computercraft_scripts/pine-links/golf.lua",
      "dest": "/pkg/scripts/pine-links/golf.lua",
-     "size": 1034
+     "size": 1209
     },
     {
      "src": "computercraft_scripts/pine-links/lib/app.lua",
