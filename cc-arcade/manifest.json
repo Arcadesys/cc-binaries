@@ -23,7 +23,7 @@
     },
     {
      "path": "casino/wallet.lua",
-     "size": 3605
+     "size": 3980
     },
     {
      "path": "credits.lua",
@@ -110,7 +110,7 @@
     },
     {
      "path": "casino/wallet.lua",
-     "size": 3605
+     "size": 3980
     },
     {
      "path": "credits.lua",
@@ -209,7 +209,7 @@
     },
     {
      "path": "casino/wallet.lua",
-     "size": 3605
+     "size": 3980
     },
     {
      "path": "credits.lua",
@@ -308,7 +308,7 @@
     },
     {
      "path": "casino/wallet.lua",
-     "size": 3605
+     "size": 3980
     },
     {
      "path": "credits.lua",
@@ -368,11 +368,11 @@
     },
     {
      "path": "pinebox/game.lua",
-     "size": 8891
+     "size": 13878
     },
     {
      "path": "pinebox/render.lua",
-     "size": 5276
+     "size": 8556
     },
     {
      "path": "pinebox/rules.lua",
@@ -380,7 +380,7 @@
     },
     {
      "path": "pinebox/scene.lua",
-     "size": 3763
+     "size": 3968
     }
    ]
   },
