@@ -58,9 +58,9 @@ for n=1,10 do frames[n]={marks={},rolls={},cumulative=nil} end
 frames[10].marks={"X","X","X"}
 local term51,rows51=mockTerm(51,19)
 ui.draw(term51,{phase="AIM",camera="score",playerCount=1,currentPlayer=1,scorePlayer=1,frame=10,ballNumber=3,fine=true,
-  settings={position=0,aim=0,power=.75,hook=0},scorecards={{frames=frames,total=300,resolvedSubtotal=300}},rankings={}},ui.layout(51,19,"AIM","score"))
+  settings={position=-32,aim=10,power=100,hook=0},scorecards={{frames=frames,total=300,resolvedSubtotal=300}},rankings={}},ui.layout(51,19,"AIM","score"))
 check(rows51[10]:find("X X X")~=nil,"tenth-frame bonus marks remain visible")
-check(rows51[2]:find("deg")~=nil,"aim units use readable ASCII text")
+check(rows51[2]:find("P%-32 A%+10 W100 H%+0")~=nil,"furball control units read as plain signed integers")
 check(rows51[16]:find("FINE ON")~=nil,"fine-mode state is visible on the target")
 frames[9].marks={"X"}
 local pendingTerm,pendingRows=mockTerm(51,19)
@@ -87,6 +87,6 @@ local function span(model,axis)
   return high-low
 end
 local ballModel=require("lib.render")._testBallModel()
-check(math.abs(span(ballModel,"x")-span(ballModel,"z"))<.03,"ball is round across the stretched lane")
-check(math.abs(span(pinModel(),"x")-span(pinModel(),"z"))<.015,"upright pin has a round footprint")
+check(math.abs(span(ballModel,"x")-span(ballModel,"z"))<.08*span(ballModel,"x"),"ball is round on the lane")
+check(math.abs(span(pinModel(),"x")-span(pinModel(),"z"))<.05*span(pinModel(),"x"),"upright pin has a round footprint")
 return true

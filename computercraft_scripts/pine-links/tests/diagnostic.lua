@@ -23,7 +23,7 @@ for _,mode in ipairs({'keyboard','monitor'}) do
       if kind=='frame' then
         frames=frames+1
         if frames==1 then action('view') end
-        if app.displayBall and app.displayBall.x~=app.course.hole.tee.x then moved=true end
+        if app.displayBall and app.displayBall.x~=require('lib.course').hole.tee.x then moved=true end
         if echo and moved then os.queueEvent('key',keys.backspace,false) end
       end
     end}); done=true

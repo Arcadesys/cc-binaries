@@ -38,3 +38,13 @@ Controls have explicit text labels, a dedicated swing target, and keyboard equiv
 The original M0 gate explicitly requires a capture inside the target Minecraft pack. This remains pending. Record ATM10, Minecraft, and CC:Tweaked versions; computer type; monitor block dimensions, character size and text scale; and server limits. Then run `diagnostic.lua`, tap and use keyboard controls, play the hole, and measure frame timing. Emulator timing is not server performance evidence.
 
 Geometry is a source-informed approximation, not surveyed terrain. Wind remains calm for this milestone. There are no other playable holes, persistent round saves, or full-course progression. The manifest preserves the supplied 18-hole scorecard metadata only.
+
+## Furball engine port
+
+The Pebble Beach terrain, physics and course data were replaced by furball-simulator's Marovitz-inspired Hole 3 (`lib/course.lua`) and golf kernel (`lib/golf.lua`). Checks run in CraftOS-PC 2.8.3:
+
+- `tests/furball.lua`: 200 lie samples and 125 shots across 33 seeded rounds from furball `a26fa32` reproduce the same rest positions, lies, stroke and penalty counts, tick counts, carry, flight-path samples and messages (including holed, out-of-bounds and sand results).
+- Five core modules pass (`tools/test_craftos.sh`): furball parity, shot contract (batch independence, forecast equals result, OB, sand suggestion), rules, input and the controller (default tee shot to the green, putter suggestion, birdie, wrap-around aim, power bounds).
+- The GUI runtime suite passes for keyboard and monitor: birdie from the default tee shot, out of bounds +1 with the lie restored, a pulled 5 iron into the left bunker recovered to the green with the suggested wedge, help/views/pause, resize and detach on the monitor, and terminal/palette restoration.
+
+Not yet run inside Minecraft.

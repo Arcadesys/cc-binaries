@@ -7,7 +7,7 @@ if shell and fs and shell.getRunningProgram():match('tests/run.lua$') then
   loadModule=env.require
 end
 
-local tests = { "tests.physics", "tests.rules", "tests.course", "tests.input", "tests.real_shot", "tests.real_bunker", "tests.app" }
+local tests = { "tests.furball", "tests.physics", "tests.rules", "tests.input", "tests.app" }
 local passed = 0
 for _, name in ipairs(tests) do
   local ok, result = pcall(loadModule, name)

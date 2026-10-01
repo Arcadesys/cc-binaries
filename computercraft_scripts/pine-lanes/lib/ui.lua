@@ -128,12 +128,12 @@ function ui.draw(t,view,buttons)
 
   local position=settings.position or 0
   local aim=settings.aim or 0
-  local power=settings.power or 0.75
+  local power=settings.power or 60
   local hook=settings.hook or 0
-  local compact=string.format("P%+.1f A%+.0fdeg W%d%% H%+.1f",position,math.deg(aim),math.floor(power*100+0.5),hook)
-  local chosen=selected=="aim" and string.format("AIM %+.2fdeg",math.deg(aim)) or
-    selected=="power" and string.format("POWER %d%%",math.floor(power*100+0.5)) or
-    selected=="hook" and string.format("HOOK %+.0f%%",hook*100) or string.format("POSITION %+.2f",position)
+  local compact=string.format("P%+d A%+d W%d H%+d",position,aim,power,hook)
+  local chosen=selected=="aim" and string.format("AIM %+d",aim) or
+    selected=="power" and string.format("POWER %d%%",power) or
+    selected=="hook" and string.format("HOOK %+d",hook) or string.format("POSITION %+d",position)
   local row2=string.format("%s | %s%s",chosen,compact,view.fine and " | FINE" or "")
   put(t,1,2,row2,white,black,w)
 

@@ -1,43 +1,24 @@
--- Small, idempotent arcade scoring rules for a single hole.
+-- Hole scoring. Strokes and the out-of-bounds penalty are counted by the furball kernel
+-- (lib/golf.lua); this module commits a finished shot exactly once and names the score.
+local golf = require("lib.golf")
 local rules = {}
 
-local function position(p)
-  if type(p) ~= "table" then return nil end
-  return { x = p.x, y = p.y, z = p.z }
+function rules.new()
+  return {hole = golf.newHole(), lastShotId = 0}
 end
 
-function rules.new(tee)
-  local ball = position(tee)
-  if not ball then ball = { x = 0, y = 0, z = 0 } end
-  return { ball = ball, strokes = 0, penalties = 0, complete = false, lastShotId = 0 }
-end
-
-function rules.apply(state, shotId, result, preShot)
-  if type(state) ~= "table" or type(result) ~= "table" then return false, "state and result are required" end
-  if state.complete then return false, "hole is already complete" end
+-- Idempotent: a shot id is applied once, in order. The result's state replaces the hole state.
+function rules.apply(round, shotId, result)
+  if type(round) ~= "table" or type(result) ~= "table" then return false, "round and result are required" end
+  if round.hole.phase == "finished" then return false, "hole is already complete" end
   if type(shotId) ~= "number" or shotId < 1 or shotId % 1 ~= 0 then return false, "shot id must be a positive integer" end
-  if shotId <= (state.lastShotId or 0) then return false, "shot already applied or out of order" end
-  if result.outcome == "error" then
-    state.lastShotId = shotId
-    return true, "error"
+  if shotId <= round.lastShotId then return false, "shot already applied or out of order" end
+  if type(result.state) ~= "table" or (result.state.phase ~= "ready" and result.state.phase ~= "finished") then
+    return false, "shot has not come to rest"
   end
-  if result.outcome ~= "rest" and result.outcome ~= "holed" and result.outcome ~= "water" and result.outcome ~= "ob" then
-    return false, "unknown shot outcome"
-  end
-  state.lastShotId = shotId
-
-  state.strokes = (state.strokes or 0) + 1
-  if result.outcome == "water" or result.outcome == "ob" then
-    -- Arcade hazard rule: the shot counts, then one penalty stroke is added.
-    state.strokes = state.strokes + 1
-    state.penalties = (state.penalties or 0) + 1
-    state.ball = position(preShot) or position(state.ball) or { x = 0, y = 0, z = 0 }
-    state.complete = false
-  else
-    state.ball = position(result.position) or position(state.ball)
-    state.complete = result.outcome == "holed"
-  end
-  return true, state
+  round.lastShotId = shotId
+  round.hole = golf.copy(result.state)
+  return true
 end
 
 function rules.scoreName(strokes, par)

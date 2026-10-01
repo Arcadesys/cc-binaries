@@ -16,22 +16,22 @@ local function equal(a,b)
  return true
 end
 local small=App.new();small.smallDisplay=true;small:action('primary');assert(small.phase=='SETUP');small:action('quit');assert(not small.running)
-local a=App.new();assert(a.phase=='SETUP')
+local a=App.new({seed=123});assert(a.phase=='SETUP')
 a:action('players_up');assert(a.playerCount==2)
 a:action('players_up');a:action('players_up');a:action('players_up');assert(a.playerCount==4)
 a:action('players_down');a:action('players_down');a:action('players_down');a:action('players_down');assert(a.playerCount==1)
 a:action('primary');assert(a.phase=='AIM')
-a:action('select_hook');for i=1,30 do a:action('adjust_up') end;assert(a:currentSettings().hook==1)
-for i=1,50 do a:action('adjust_down') end;assert(a:currentSettings().hook==-1)
-a:action('fine');a:action('adjust_up');assert(math.abs(a:currentSettings().hook+.98)<1e-9)
-a:action('select_position');for i=1,100 do a:action('adjust_up') end;assert(a:currentSettings().position==.38)
-a:action('select_aim');for i=1,100 do a:action('adjust_down') end;assert(a:currentSettings().aim==-math.rad(8))
-a:action('select_power');for i=1,100 do a:action('adjust_down') end;assert(a:currentSettings().power==.25)
+a:action('select_hook');for i=1,30 do a:action('adjust_up') end;assert(a:currentSettings().hook==100)
+for i=1,50 do a:action('adjust_down') end;assert(a:currentSettings().hook==-100)
+a:action('fine');a:action('adjust_up');assert(a:currentSettings().hook==-98)
+a:action('select_position');for i=1,100 do a:action('adjust_up') end;assert(a:currentSettings().position==100)
+a:action('select_aim');for i=1,100 do a:action('adjust_down') end;assert(a:currentSettings().aim==-100)
+a:action('select_power');for i=1,100 do a:action('adjust_down') end;assert(a:currentSettings().power==0)
 a:action('help');assert(a.phase=='HELP');a:tick(10);a:action('start');assert(a.phase=='AIM')
 a:action('quit');assert(a.running,'quit must require menu')
-a:action('pause');a:action('restart');assert(a.phase=='AIM' and a:currentSettings().power==.75)
+a:action('pause');a:action('restart');assert(a.phase=='AIM' and a:currentSettings().power==60)
 a:action('help');a:action('restart');assert(a.phase=='AIM' and a.match.frame==1,'help restart button failed')
-local b=App.new();b:action('start')
+local b=App.new({seed=123});b:action('start')
 a:action('roll');local id=a.deliveryId;a:action('roll');assert(a.deliveryId==id,'double roll')
 a:action('pause');local n=#a.sim.trajectory;a:tick(10);assert(#a.sim.trajectory==n);a:action('start')
 finish(a,false);b:action('roll');finish(b,true)
@@ -42,11 +42,11 @@ for _,overlay in ipairs({'pause','help'}) do
  a:action(overlay);a:tick(100);a:action('start')
  assert(a.phase=='RESULT' and a.rollSummary==summary and a.match.rack==resultRack,'result overlay changed delivery')
 end
-local early=App.new();early:action('start');early:action('roll');early:action('skip')
+local early=App.new({seed=123});early:action('start');early:action('roll');early:action('skip')
 local budget=1000
 while early.phase=='SIMULATE' and budget>0 do early:tick(.1);budget=budget-1 end
 assert(early.phase=='RESULT' and equal(early.match,b.match),'skip during simulation changed result')
-local paused=App.new();paused:action('start');paused:action('roll')
+local paused=App.new({seed=123});paused:action('start');paused:action('roll')
 while paused.phase=='SIMULATE' do paused:tick(.1) end
 paused:tick(.3);local elapsed=paused.playback.elapsed;local image=paused.displaySnapshot
 paused:action('help');paused:tick(100);paused:action('pause');paused:action('start')
@@ -63,7 +63,7 @@ assert(a.phase=='AIM' and a.match.rack==oldRack and a.match.lastDeliveryId==oldI
 local multi=App.new();multi:action('players_up');multi:action('start')
 multi:action('select_power');multi:action('adjust_down');local power=multi:currentSettings().power
 for i=1,2 do if multi.match.currentPlayer==1 then multi:action('roll');finish(multi,true);multi:action('continue') end end
-assert(multi.match.currentPlayer==2 and multi:currentSettings().power==.75)
+assert(multi.match.currentPlayer==2 and multi:currentSettings().power==60)
 assert(multi.playerSettings[1].power==power)
 multi:action('view');multi:action('view');assert(multi.camera=='score')
 multi:action('select_prev');assert(multi.scorePlayer==1)

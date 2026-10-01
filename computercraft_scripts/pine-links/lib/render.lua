@@ -1,327 +1,254 @@
+-- Pine3D view of furball's Marovitz-inspired Hole 3 (lib/course.lua). The scene mirrors
+-- furball-simulator src/sports/golf/scene.ts in low-poly terminal form; it never decides outcomes.
+-- Furball metres (x right, z downrange) are drawn at Pine (X = z, Y = y, Z = x).
 local ui = require("lib.ui")
 local pine = require("vendor.Pine3D")
+local course = require("lib.course")
 local render = {}
 
-local function col(name, fallback)
-  return colors[name] or fallback
+local function P(x, y, z) return {x = z, y = y, z = x} end -- furball -> Pine coordinates
+local function tri(m, a, b, c, color)
+  m[#m + 1] = {x1 = a.x, y1 = a.y, z1 = a.z, x2 = b.x, y2 = b.y, z2 = b.z, x3 = c.x, y3 = c.y, z3 = c.z, c = color, forceRender = true}
 end
-local palette = {
-  fairway=col("lime", colors.green), rough=col("green", colors.lime),
-  green=col("cyan", colors.lightBlue), bunker=col("yellow", colors.orange),
-  sand=col("yellow", colors.orange), water=col("blue", colors.cyan),
-  ocean=col("blue", colors.cyan), cliff=col("gray", colors.lightGray),
-  rock=col("gray", colors.lightGray), tee=col("white", colors.lightGray),
-}
-local function materialColor(name)
-  return palette[tostring(name or "fairway"):lower()] or colors.lime
+local function rect(m, x0, x1, z0, z1, y, color)
+  tri(m, P(x0, y, z0), P(x1, y, z0), P(x1, y, z1), color)
+  tri(m, P(x0, y, z0), P(x1, y, z1), P(x0, y, z1), color)
 end
-local function faceColor(tri)
-  local a,b,c=tri.a,tri.b,tri.c
-  local ux,uy,uz=b.x-a.x,b.y-a.y,b.z-a.z
-  local vx,vy,vz=c.x-a.x,c.y-a.y,c.z-a.z
-  local nx,ny,nz=uy*vz-uz*vy,uz*vx-ux*vz,ux*vy-uy*vx
-  local len=math.sqrt(nx*nx+ny*ny+nz*nz)
-  if len>0 then nx,ny,nz=nx/len,ny/len,nz/len end
-  if ny<0 then nx,ny,nz=-nx,-ny,-nz end
-  local lit=math.max(0,nx*0.35+ny*0.86+nz*(-0.37))
-  local name=tostring(tri.material or "fairway"):lower()
-  -- Preserve distinct materials under every light angle. The former shared
-  -- brightest shade turned rough, fairway and green into one lime silhouette.
-  if name=='rough' then return lit<0.88 and colors.purple or colors.green end
-  if name=='fairway' then return lit<0.88 and colors.brown or colors.lime end
-  if name=='green' then return lit<0.88 and colors.orange or colors.cyan end
-  return materialColor(name)
-end
-local function vec(p)
-  return p or {x=0,y=0,z=0}
-end
-local function polygon(a,b,c,color)
-  return {x1=a.x,y1=a.y,z1=a.z,x2=b.x,y2=b.y,z2=b.z,x3=c.x,y3=c.y,z3=c.z,c=color}
-end
-local function doubleSided(a,b,c,color)
-  local p=polygon(a,b,c,color); p.forceRender=true; return p
-end
-
-local function axisBox(model,origin,x0,x1,y0,y1,z0,z1,color)
-  local p={}
-  for _,x in ipairs({x0,x1}) do for _,y in ipairs({y0,y1}) do for _,z in ipairs({z0,z1}) do
-    p[x..":"..y..":"..z]={x=origin.x+x,y=origin.y+y,z=origin.z+z}
-  end end end
-  local function quad(a,b,c,d)
-    model[#model+1]=doubleSided(p[a],p[b],p[c],color)
-    model[#model+1]=doubleSided(p[a],p[c],p[d],color)
+local function ellipse(m, cx, cz, rx, rz, y, color, segments)
+  segments = segments or 16
+  for i = 0, segments - 1 do
+    local a, b = i / segments * math.pi * 2, (i + 1) / segments * math.pi * 2
+    tri(m, P(cx, y, cz), P(cx + math.cos(a) * rx, y, cz + math.sin(a) * rz), P(cx + math.cos(b) * rx, y, cz + math.sin(b) * rz), color)
   end
-  local function key(x,y,z) return x..":"..y..":"..z end
-  quad(key(x0,y0,z0),key(x0,y0,z1),key(x0,y1,z1),key(x0,y1,z0))
-  quad(key(x1,y0,z0),key(x1,y1,z0),key(x1,y1,z1),key(x1,y0,z1))
-  quad(key(x0,y0,z0),key(x1,y0,z0),key(x1,y0,z1),key(x0,y0,z1))
-  quad(key(x0,y1,z0),key(x0,y1,z1),key(x1,y1,z1),key(x1,y1,z0))
-  quad(key(x0,y0,z0),key(x0,y1,z0),key(x1,y1,z0),key(x1,y0,z0))
-  quad(key(x0,y0,z1),key(x1,y0,z1),key(x1,y1,z1),key(x0,y1,z1))
+end
+local function box(m, cx, cz, w, h, d, y0, side, top)
+  local x0, x1, z0, z1, y1 = cx - w / 2, cx + w / 2, cz - d / 2, cz + d / 2, y0 + h
+  local c = {P(x0, y0, z0), P(x1, y0, z0), P(x1, y0, z1), P(x0, y0, z1), P(x0, y1, z0), P(x1, y1, z0), P(x1, y1, z1), P(x0, y1, z1)}
+  local faces = {{1, 2, 6, 5}, {2, 3, 7, 6}, {3, 4, 8, 7}, {4, 1, 5, 8}}
+  for _, f in ipairs(faces) do tri(m, c[f[1]], c[f[2]], c[f[3]], side); tri(m, c[f[1]], c[f[3]], c[f[4]], side) end
+  tri(m, c[5], c[6], c[7], top or side); tri(m, c[5], c[7], c[8], top or side)
+end
+-- Tapered trunk plus a stretched octahedron crown, like furball's cylinder + icosahedron trees.
+local function tree(m, t)
+  box(m, t.x, t.z, 1.2, 8, 1.2, 0, colors.brown)
+  local top, mid, r = 17, 10, 5
+  local crown = t.z % 3 ~= 0 and colors.purple or colors.green
+  local ring = {P(t.x + r, mid, t.z), P(t.x, mid, t.z + r), P(t.x - r, mid, t.z), P(t.x, mid, t.z - r)}
+  for i = 1, 4 do
+    local a, b = ring[i], ring[i % 4 + 1]
+    tri(m, a, b, P(t.x, top, t.z), crown)
+    tri(m, a, b, P(t.x, 3.5, t.z), crown)
+  end
 end
 
-local function diagnosticModels(tee)
-  local axes={}
-  local origin={x=tee.x,y=tee.y+0.25,z=tee.z}
-  axisBox(axes,origin,0,12,-0.08,0.08,-0.08,0.08,colors.red)
-  axisBox(axes,origin,-0.08,0.08,0,6,-0.08,0.08,colors.white)
-  axisBox(axes,origin,-0.08,0.08,-0.08,0.08,0,10,colors.magenta)
-  local y=tee.y+0.3
-  local tile={
-    polygon({x=tee.x+12,y=y,z=tee.z-8},{x=tee.x+12,y=y,z=tee.z+8},{x=tee.x+32,y=y,z=tee.z+8},colors.lime),
-    polygon({x=tee.x+12,y=y,z=tee.z-8},{x=tee.x+32,y=y,z=tee.z+8},{x=tee.x+32,y=y,z=tee.z-8},colors.green),
-  }
-  return axes,tile,{x=tee.x+32,y=y,z=tee.z}
+local function courseModel()
+  local m = {}
+  local B, H, C = course.bounds, course.hole, course.cup
+  rect(m, -95, 95, -45, 235, -0.05, colors.green)                -- rough
+  rect(m, -12, 12, 4, 153, 0, colors.brown)                      -- fairway
+  for z = 9, 144, 18 do rect(m, -12, 12, z - 4.5, z + 4.5, 0.03, colors.lime) end -- mowing stripes
+  ellipse(m, C.x, C.z, H.greenRadiusX + 1.8, H.greenRadiusZ + 1.8, 0.05, colors.lime, 20) -- fringe
+  ellipse(m, C.x, C.z, H.greenRadiusX, H.greenRadiusZ, 0.08, colors.cyan, 20)              -- green
+  for _, b in ipairs(course.bunkers) do
+    ellipse(m, b.x, b.z, b.rx + 0.55, b.rz + 0.55, 0.085, colors.orange, 14)
+    ellipse(m, b.x, b.z, b.rx, b.rz, 0.09, colors.yellow, 14)
+  end
+  rect(m, -3, 3, -4, 4, 0.05, colors.lime)                        -- tee box
+  for _, x in ipairs({-2.5, 2.5}) do box(m, x, -1, 0.5, 0.5, 0.5, 0.05, colors.blue) end
+  ellipse(m, C.x, C.z, H.cupRadius * 2, H.cupRadius * 2, 0.1, colors.black, 8)
+  for _, t in ipairs(course.trees) do tree(m, t) end
+  for z = B.near, B.far, 20 do for _, x in ipairs({-B.halfWidth, B.halfWidth}) do box(m, x, z, 0.4, 1.4, 0.4, 0, colors.white) end end
+  for x = -B.halfWidth, B.halfWidth, 12 do for _, z in ipairs({B.near, B.far}) do box(m, x, z, 0.4, 1.4, 0.4, 0, colors.white) end end
+  -- Original skyline and park-path dressing; neither encodes compass orientation nor survey landmarks.
+  rect(m, -50.5, -45.5, -21.5, 213.5, 0.02, colors.lightGray)
+  for i = 0, 11 do
+    local height = 7 + (i % 4) * 4
+    box(m, -66 - (i % 3) * 10, 20 + i * 17, 7, height, 9, 0, i % 2 == 1 and colors.gray or colors.red, colors.lightGray)
+  end
+  -- Flag: white pole and red pennant.
+  box(m, C.x, C.z, 0.15, 3.8, 0.15, 0, colors.white)
+  tri(m, P(C.x, 3.8, C.z), P(C.x, 3.1, C.z), P(C.x + 1.4, 3.45, C.z), colors.red)
+  return m
 end
 
-local function makeFlag(cup)
-  local x,y,z = cup.x,cup.y,cup.z
-  return {
-    polygon({x=x,y=y,z=z},{x=x,y=y+3,z=z},{x=x+0.8,y=y+2.6,z=z},colors.red),
-    polygon({x=x-0.04,y=y,z=z},{x=x-0.04,y=y+3,z=z},{x=x+0.04,y=y+3,z=z},colors.white),
-    polygon({x=x-0.04,y=y,z=z},{x=x+0.04,y=y+3,z=z},{x=x+0.04,y=y,z=z},colors.white),
-  }
+local function ballModel()
+  local r = 0.45 -- display only: furball draws a 0.24 m ball with an on-screen marker
+  local m = {}
+  local top, bottom = {x = 0, y = r * 2, z = 0}, {x = 0, y = 0, z = 0}
+  local ring = {{x = r, y = r, z = 0}, {x = 0, y = r, z = r}, {x = -r, y = r, z = 0}, {x = 0, y = r, z = -r}}
+  for i = 1, 4 do
+    local a, b = ring[i], ring[i % 4 + 1]
+    tri(m, a, b, top, i % 2 == 0 and colors.white or colors.lightGray)
+    tri(m, a, b, bottom, colors.lightGray)
+  end
+  return m
 end
 
-local function makeBall()
-  return {
-    polygon({x=-0.12,y=0,z=-0.12},{x=0.12,y=0,z=-0.12},{x=0,y=0.2,z=0.12},colors.white),
-    polygon({x=0.12,y=0,z=-0.12},{x=0.12,y=0,z=0.12},{x=0,y=0.2,z=0.12},colors.lightGray),
-    polygon({x=0.12,y=0,z=0.12},{x=-0.12,y=0,z=0.12},{x=0,y=0.2,z=0.12},colors.white),
-    polygon({x=-0.12,y=0,z=0.12},{x=-0.12,y=0,z=-0.12},{x=0,y=0.2,z=0.12},colors.lightGray),
-  }
+-- Flat diamonds along the calm-weather forecast; the last one marks the predicted finish.
+local function forecastModel(points, penalty)
+  local m = {}
+  local color = penalty and colors.red or colors.white
+  for i = 2, #points do
+    local p = points[i]
+    local s = i == #points and 1.1 or 0.45
+    local y = p.y + 0.12
+    tri(m, P(p.x - s, y, p.z), P(p.x, y, p.z - s), P(p.x + s, y, p.z), color)
+    tri(m, P(p.x - s, y, p.z), P(p.x + s, y, p.z), P(p.x, y, p.z + s), color)
+  end
+  return m
 end
 
-local function worldPoint(x,y,z)
-  -- Course and Pine3D both use X forward, Y up, Z sideways.
-  return {x=x or 0,y=y or 0,z=z or 0}
+local function sceneBoxFor(t)
+  local w, h = t.getSize()
+  local layout = ui.layout(w, h, "AIM")
+  local rowH = layout[1] and layout[1].h or 2
+  return {x = 1, y = 5, w = w, h = math.max(1, h - 4 - rowH * (layout.rows or 3))}
 end
 
-function render.new(target, course)
+function render.new(target)
   local t = term.current()
   local originalPalette = {}
   if t.getPaletteColor then
-    for i=0,15 do
-      local ok,r,g,b = pcall(t.getPaletteColor, 2^i)
-      if ok then originalPalette[#originalPalette+1] = {2^i,r,g,b} end
+    for i = 0, 15 do
+      local ok, r, g, b = pcall(t.getPaletteColor, 2 ^ i)
+      if ok then originalPalette[#originalPalette + 1] = {2 ^ i, r, g, b} end
     end
   end
-  -- Six turf shades, separate from the cream sand and bright text. Restored on exit.
+  -- Furball's flat-shaded park palette; restored on exit.
   if t.setPaletteColor then
-    local shades={[colors.purple]=0x174b35,[colors.green]=0x286742,
-      [colors.brown]=0x548a3d,[colors.lime]=0x77b64c,
-      [colors.orange]=0x92bd63,[colors.cyan]=0xb3d980,
-      [colors.yellow]=0xf3da82,[colors.blue]=0x23659e,
-      [colors.lightBlue]=0x9bbddd,[colors.gray]=0x424b53}
-    for c,rgb in pairs(shades) do t.setPaletteColor(c,rgb) end
+    local shades = {[colors.green] = 0x4c753a, [colors.brown] = 0x80a24c, [colors.lime] = 0x88ae50,
+      [colors.cyan] = 0xa1bf69, [colors.yellow] = 0xf3db9c, [colors.orange] = 0xb7a16e,
+      [colors.purple] = 0x294f36, [colors.lightBlue] = 0x92b6c4, [colors.blue] = 0x304e81,
+      [colors.gray] = 0x7a6360, [colors.red] = 0xa53443, [colors.lightGray] = 0xc6baa1}
+    for c, rgb in pairs(shades) do t.setPaletteColor(c, rgb) end
   end
-  local hole = course.hole or course
-  local renderer = {target=target, course=course, buttons={}}
-  local frame, sceneBox, objects, ballObject, axisObject, tileObject, diagnosticFlagObject
-  local axisLabels
-  local function build()
-    local w,h = t.getSize()
-    local layout=ui.layout(w,h,"AIM")
-    local rowH=layout[1] and layout[1].h or 2
-    local sceneH = math.max(1, h - 4 - rowH*(layout.rows or 3))
-    sceneBox = {x=1,y=5,w=w,h=sceneH}
-    frame = pine.newFrame(sceneBox.x,sceneBox.y,sceneBox.w,sceneBox.h)
-    frame:setBackgroundColor(colors.lightBlue)
-    local model={}
-    local edgeCounts, edgeRefs = {}, {}
-    local function edgeKey(a,b)
-      local ka=string.format("%.4f,%.4f,%.4f",a.x,a.y,a.z)
-      local kb=string.format("%.4f,%.4f,%.4f",b.x,b.y,b.z)
-      return ka<kb and (ka.."|"..kb) or (kb.."|"..ka)
-    end
-    for _,tri in ipairs(hole.triangles or {}) do
-      model[#model+1]=polygon(vec(tri.a),vec(tri.b),vec(tri.c),faceColor(tri))
-      local sides={{tri.a,tri.b},{tri.b,tri.c},{tri.c,tri.a}}
-      for _,side in ipairs(sides) do
-        local k=edgeKey(side[1],side[2]); edgeCounts[k]=(edgeCounts[k] or 0)+1; edgeRefs[k]=side
-      end
-    end
-    objects={}
-    local bounds=hole.bounds or {minX=-20,maxX=127,minZ=-30,maxZ=30}
-    local oceanY=(hole.waterLevel or -2)-0.25
-    local x0,x1=bounds.minX-500,bounds.maxX+500
-    local z0,z1=bounds.minZ-500,bounds.maxZ+500
-    local ocean={
-      polygon({x=x0,y=oceanY,z=z0},{x=x0,y=oceanY,z=z1},{x=x1,y=oceanY,z=z1},colors.blue),
-      polygon({x=x0,y=oceanY,z=z0},{x=x1,y=oceanY,z=z1},{x=x1,y=oceanY,z=z0},colors.blue),
-    }
-    objects[#objects+1]=frame:newObject(ocean,0,0,0)
-    local skirts={}
-    for k,count in pairs(edgeCounts) do
-      if count==1 then
-        local edge=edgeRefs[k]
-        local a,b=edge[1],edge[2]
-        local dx,dz=b.x-a.x,b.z-a.z
-        local length=math.sqrt(dx*dx+dz*dz)
-        if course.sample and length>0 then
-          local mx,mz=(a.x+b.x)/2,(a.z+b.z)/2
-          local ox,oz=-dz/length*0.2,dx/length*0.2
-          local plus=course.sample(mx+ox,mz+oz)~=nil
-          local minus=course.sample(mx-ox,mz-oz)~=nil
-          if plus~=minus then
-            local ad={x=a.x,y=oceanY,z=a.z}; local bd={x=b.x,y=oceanY,z=b.z}
-            skirts[#skirts+1]=doubleSided(a,b,bd,colors.gray)
-            skirts[#skirts+1]=doubleSided(a,bd,ad,colors.gray)
-          end
-        end
-      end
-    end
-    if #skirts>0 then objects[#objects+1]=frame:newObject(skirts,0,0,0) end
-    if #model>0 then objects[#objects+1]=frame:newObject(model,0,0,0) end
-    local tee=vec(hole.tee)
-    local cup=vec(hole.cup)
-    objects[#objects+1]=frame:newObject(makeFlag(cup),0,0,0)
-    ballObject=frame:newObject(makeBall(),tee.x,tee.y,tee.z)
-    objects[#objects+1]=ballObject
-  end
-  build()
+  local renderer = {target = target, buttons = {}}
+  local sceneBox = sceneBoxFor(t)
+  local frame = pine.newFrame(sceneBox.x, sceneBox.y, sceneBox.w, sceneBox.h)
+  frame:setBackgroundColor(colors.lightBlue)
+  frame:setFoV(60)
+  local tee = course.hole.tee
+  local objects = {frame:newObject(courseModel(), 0, 0, 0)}
+  local ballObject = frame:newObject(ballModel(), tee.z, 0, tee.x)
+  objects[#objects + 1] = ballObject
+  local forecastObject = frame:newObject(forecastModel({}), 0, -100, 0)
+  objects[#objects + 1] = forecastObject
+  local forecastKey
+  local axisObject
 
   function renderer:resize()
-    local w,h=t.getSize()
-    local layout=ui.layout(w,h,"AIM")
-    local rowH=layout[1] and layout[1].h or 2
-    sceneBox={x=1,y=5,w=w,h=math.max(1,h-4-rowH*(layout.rows or 3))}
-    if frame then frame:setSize(sceneBox.x,sceneBox.y,sceneBox.w,sceneBox.h) else build() end
+    sceneBox = sceneBoxFor(t)
+    frame:setSize(sceneBox.x, sceneBox.y, sceneBox.w, sceneBox.h)
+  end
+
+  local function marker(x, y, z, glyph, fg, bg)
+    local p = P(x, y, z)
+    local px, py, visible = frame:map3dTo2d(p.x, p.y, p.z)
+    if not visible or px < 0 or py < 0 then return end
+    local cx = sceneBox.x + math.floor((px - 1) / 2 + 0.5)
+    local cy = sceneBox.y + math.floor((py - 1) / 3 + 0.5)
+    if cx >= sceneBox.x and cx < sceneBox.x + sceneBox.w and cy >= sceneBox.y and cy < sceneBox.y + sceneBox.h then
+      t.setCursorPos(cx, cy); t.setTextColor(fg); t.setBackgroundColor(bg); t.write(glyph)
+    end
   end
 
   local function drawScene(view)
-    local ball=vec(view.ball or hole.tee)
-    local tee=vec(hole.tee); local cup=vec(hole.cup)
-    local w,h=t.getSize()
-    if view.phase=="DIAGNOSTIC" then
-      -- Face the diagnostic origin from above and from its Z-negative side so
-      -- all three positive world axes separate in the projection.
-      local yaw=math.deg(math.atan(28/18))
-      local pitch=-math.deg(math.atan(14/math.sqrt(18*18+28*28)))
-      frame:setCamera(tee.x-18,tee.y+18,tee.z-28,-90,yaw,pitch)
-    elseif view.view == 'overview' then
-      -- A fixed three-quarter view makes the elevation and cliff edge legible
-      -- without camera motion; also useful for watching a complete shot.
-      frame:setCamera(38,72,-82,-90,77,-39)
+    local ball = view.ball or tee
+    local aim = math.rad(view.aim or 0)
+    local fx, fz = math.sin(aim), math.cos(aim) -- furball forward (x, z)
+    local yaw = math.deg(math.atan2 and math.atan2(fx, fz) or math.atan(fx, fz))
+    if view.phase == "DIAGNOSTIC" then
+      frame:setCamera(-25, 22, -18, -90, 35, -30)
+    elseif view.view == "overview" then
+      -- Fixed three-quarter view from behind the tee, like furball's course camera.
+      frame:setCamera(-70, 48, 0, -90, 0, -21)
     elseif view.view == "map" then
-      local bounds=hole.bounds or {minX=0,maxX=107,minZ=-12,maxZ=12}
-      local cx=(bounds.minX+bounds.maxX)/2
-      local cz=(bounds.minZ+bounds.maxZ)/2
-      local span=math.max(bounds.maxX-bounds.minX,bounds.maxZ-bounds.minZ)
-      -- Roll toward the ground and yaw 90 degrees so course X runs across the map.
-      frame:setCamera(cx,span*0.9,cz,-90,90,-90)
+      local B = course.bounds
+      frame:setCamera((B.near + B.far) / 2, (B.far - B.near) * 0.62, 0, -90, -90, -90)
     else
-      local aim=view.aim or 0
-      local d=view.phase=="SHOT_PLAYBACK" and 8 or 12
-      local lift=view.phase=="SHOT_PLAYBACK" and 3.5 or 5.1
-      local side=2
-      local cam=worldPoint(ball.x-math.cos(aim)*d-math.sin(aim)*side,ball.y+lift,
-        ball.z-math.sin(aim)*d+math.cos(aim)*side)
-      local pitch=-17
-      frame:setCamera(cam.x,cam.y,cam.z,-90,math.deg(aim),pitch)
+      -- Furball's follow camera: behind the ball along the aim line, raised, looking downrange.
+      local moving = view.phase == "SHOT_PLAYBACK"
+      local back, lift = moving and 22 or 12, moving and 11 + (ball.y or 0) * 0.6 or 4.5
+      local cam = P(ball.x - fx * back, lift, ball.z - fz * back)
+      frame:setCamera(cam.x, cam.y, cam.z, -90, yaw, moving and -20 or -7)
     end
-    ballObject:setPos(ball.x,ball.y,ball.z)
-    local drawObjects=objects
-    if view.phase=="DIAGNOSTIC" then
+    local b = P(ball.x, ball.y or 0, ball.z)
+    ballObject:setPos(b.x, b.y, b.z)
+    local fc = view.forecast
+    local key = fc and (#fc.points .. ":" .. fc.finish.ball.x .. ":" .. fc.finish.ball.z .. ":" .. tostring(fc.penalty)) or nil
+    if key ~= forecastKey then
+      forecastKey = key
+      if fc then forecastObject:setModel(forecastModel(fc.points, fc.penalty)); forecastObject:setPos(0, 0, 0)
+      else forecastObject:setPos(0, -100, 0) end
+    end
+    local drawObjects = objects
+    if view.phase == "DIAGNOSTIC" then
       if not axisObject then
-        local tee=vec(hole.tee)
-        local axes,tile,flag=diagnosticModels(tee)
-        axisObject=frame:newObject(axes,0,0,0)
-        tileObject=frame:newObject(tile,0,0,0)
-        diagnosticFlagObject=frame:newObject(makeFlag(flag),0,0,0)
-        axisLabels={
-          {p=worldPoint(tee.x+12.5,tee.y+0.25,tee.z),text="X+",color=colors.red},
-          {p=worldPoint(tee.x,tee.y+6.5,tee.z),text="Y+",color=colors.white},
-          {p=worldPoint(tee.x,tee.y+0.25,tee.z+10.5),text="Z+",color=colors.magenta},
-        }
+        local m = {}
+        box(m, 6, 0, 12, 0.3, 0.3, 0.3, colors.red)   -- +x (right, Pine Z)
+        box(m, 0, 0, 0.3, 6, 0.3, 0, colors.white)    -- +y
+        box(m, 0, 6, 0.3, 0.3, 12, 0.3, colors.blue)  -- +z (downrange, Pine X)
+        axisObject = frame:newObject(m, 0, 0, 0)
       end
-      drawObjects={}
-      for i=1,#objects do drawObjects[i]=objects[i] end
-      drawObjects[#drawObjects+1]=tileObject
-      drawObjects[#drawObjects+1]=diagnosticFlagObject
-      drawObjects[#drawObjects+1]=axisObject
+      drawObjects = {}
+      for i = 1, #objects do drawObjects[i] = objects[i] end
+      drawObjects[#drawObjects + 1] = axisObject
     end
     frame:drawObjects(drawObjects)
     frame:drawBuffer()
-
-    local function marker(p,glyph,fg,bg)
-      local px,py,visible=frame:map3dTo2d(p.x,p.y,p.z)
-      if not visible or px<0 or py<0 then return end
-      -- Pine3D coordinates are sub-character pixels relative to the frame;
-      -- add the frame origin before converting 2x3 pixels to terminal cells.
-      local x=sceneBox.x+math.floor((px-1)/2+0.5)
-      local y=sceneBox.y+math.floor((py-1)/3+0.5)
-      if x>=sceneBox.x and x<sceneBox.x+sceneBox.w and y>=sceneBox.y and y<sceneBox.y+sceneBox.h then
-        t.setCursorPos(x,y); t.setTextColor(fg); t.setBackgroundColor(bg); t.write(glyph)
-      end
-    end
-    -- Oversized textual marker and shadow are deliberately HUD-only, never collision geometry.
-    marker(worldPoint(ball.x,ball.y,ball.z),".",colors.gray,colors.black)
-    if view.phase=="AIM" or view.phase=="DIAGNOSTIC" then
-      for i=1,5 do
-        local along=3+i*2
-        marker(worldPoint(ball.x+math.cos(view.aim or 0)*along,ball.y+0.08,
-          ball.z+math.sin(view.aim or 0)*along),".",colors.yellow,colors.black)
-      end
-    end
-    if view.phase=="DIAGNOSTIC" and axisLabels then
-      for _,label in ipairs(axisLabels) do marker(label.p,label.text,colors.black,label.color) end
-    end
-    marker(worldPoint(ball.x,ball.y+0.25,ball.z),"@",colors.black,colors.white)
-    marker(worldPoint(cup.x,cup.y+3,cup.z),"!",colors.yellow,colors.black)
-    if view.view == "map" then
-      marker(worldPoint(tee.x,tee.y+0.2,tee.z),"T",colors.cyan,colors.black)
-      marker(worldPoint(cup.x,cup.y+0.2,cup.z),"C",colors.yellow,colors.black)
+    -- Readable HUD markers on top of the 3D scene; never collision geometry.
+    marker(ball.x, (ball.y or 0) + 1.2, ball.z, "@", colors.black, colors.white)
+    marker(course.cup.x, 4.6, course.cup.z, "!", colors.yellow, colors.black)
+    if view.view == "map" then marker(tee.x, 0.2, tee.z, "T", colors.black, colors.white) end
+    if view.phase == "DIAGNOSTIC" then
+      marker(12.5, 0.5, 0, "X+", colors.black, colors.red)
+      marker(0, 6.5, 0, "Y+", colors.black, colors.white)
+      marker(0, 0.5, 12.5, "Z+", colors.black, colors.blue)
     end
   end
 
   function renderer:draw(view)
-    view=view or {}
+    view = view or {}
+    local w, h = t.getSize()
     t.setBackgroundColor(colors.black); t.setTextColor(colors.white); t.clear()
     drawScene(view)
-    local club=type(view.club)=="table" and view.club or nil
-    local carry=club and club.carry or view.carry
-    local clubName=club and club.name or view.club or "wedge"
+    local club = view.club or {}
     local row2
-    if select(1,t.getSize()) >= 48 then
-      row2=string.format("%s %syd  POWER %d%%  AIM %.1f deg",
-        tostring(clubName):upper(), tostring(carry or "?"), math.floor((view.power or 0)*100+0.5),
-        math.deg(view.aim or 0))
+    if w >= 48 then
+      row2 = string.format("%s %dm  POWER %.1f%%  AIM %+.1f deg", tostring(club.name or "?"):upper(), club.carry or 0, view.power or 0, view.aim or 0)
     else
-      row2=string.format("%s %syd PWR%d%% AIM%.1f",
-        tostring(clubName):upper(), tostring(carry or "?"), math.floor((view.power or 0)*100+0.5),
-        math.deg(view.aim or 0))
+      row2 = string.format("%s PWR%.1f%% AIM%+.1f", tostring(club.name or "?"):upper(), view.power or 0, view.aim or 0)
     end
-    local ball=vec(view.ball or hole.tee)
-    local cup=vec(hole.cup)
-    local dx,dz=cup.x-ball.x,cup.z-ball.z
-    local distance=math.sqrt(dx*dx+dz*dz)
-    local sampled=course.sample and course.sample(ball.x,ball.z)
-    local lie=(sampled and sampled.material) or (view.result and view.result.surface) or "tee"
-    local row3=string.format("TO CUP %.1f yd  LIE %s  WIND %s",
-      distance,tostring(lie):upper(),tostring(view.windLabel or "CALM"))
+    local row3
+    local fc = view.forecast
+    if fc then
+      row3 = fc.penalty and "FORECAST: OUT OF BOUNDS (+1)" or string.format("FORECAST %.1fm TO CUP | %s%s",
+        require("lib.golf").distanceToCup(fc.finish), fc.finish.lie:upper(), fc.finish.phase == "finished" and " | IN THE CUP" or "")
+    else
+      row3 = string.format("TO CUP %.1fm  LIE %s%s", view.toCup or 0, tostring(view.lie or "tee"):upper(),
+        (view.ball and (view.ball.y or 0) > 0.05) and string.format("  BALL %.1fm HIGH", view.ball.y) or "")
+    end
     local title
-    if view.phase=="TITLE" then title=select(1,t.getSize())>=48 and "PINE LINKS  |  PEBBLE BEACH 7" or "PINE LINKS  |  HOLE 7"
-    else title=string.format("HOLE 7  PAR 3  |  STROKES %s  |  PEN %s",tostring(view.strokes or 0),tostring(view.penalties or 0)) end
-    t.setCursorPos(1,1); t.setTextColor(colors.black); t.setBackgroundColor(colors.yellow); t.write(title:sub(1,select(1,t.getSize())))
-    if select(2,t.getSize())>=2 then t.setCursorPos(1,2); t.setTextColor(colors.white); t.setBackgroundColor(colors.black); t.write(row2:sub(1,select(1,t.getSize()))) end
-    if select(2,t.getSize())>=3 then
-      t.setCursorPos(1,3); t.setTextColor(colors.white); t.setBackgroundColor(colors.black); t.write(row3:sub(1,select(1,t.getSize())))
-    end
-    self.buttons=ui.layout(select(1,t.getSize()),select(2,t.getSize()),view.phase)
-    ui.draw(t,view,self.buttons,sceneBox.h)
+    if view.phase == "TITLE" then title = w >= 48 and "PINE LINKS  |  ROGERS BARK MUNICIPAL GOLF" or "PINE LINKS  |  MAROVITZ 3"
+    else title = string.format("HOLE 3  PAR 3  |  STROKES %d  |  PEN %d", view.strokes or 0, view.penalties or 0) end
+    ui.writeAt(t, 1, 1, title, colors.black, colors.yellow, w)
+    if h >= 2 then ui.writeAt(t, 1, 2, row2, colors.white, colors.black, w) end
+    if h >= 3 then ui.writeAt(t, 1, 3, row3, colors.white, colors.black, w) end
+    self.buttons = ui.layout(w, h, view.phase)
+    ui.draw(t, view, self.buttons, sceneBox.h)
   end
 
   function renderer:close()
-    if frame and frame.buffer and frame.buffer.blitWin then pcall(frame.buffer.blitWin.setVisible,false) end
+    if frame and frame.buffer and frame.buffer.blitWin then pcall(frame.buffer.blitWin.setVisible, false) end
     if t.setPaletteColor then
-      for _,p in ipairs(originalPalette) do pcall(t.setPaletteColor,p[1],p[2],p[3],p[4]) end
+      for _, p in ipairs(originalPalette) do pcall(t.setPaletteColor, p[1], p[2], p[3], p[4]) end
     end
     if t.setBackgroundColor then t.setBackgroundColor(colors.black) end
     if t.setTextColor then t.setTextColor(colors.white) end
-    if t.clear then t.clear(); t.setCursorPos(1,1) end
+    if t.clear then t.clear(); t.setCursorPos(1, 1) end
   end
   return renderer
 end
 
+render._testCourseModel = courseModel
 return render

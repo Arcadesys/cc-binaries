@@ -1,28 +1,29 @@
--- Canonical one-lane geometry in meters. X runs toward the pins; Z is across.
+-- One-lane geometry in furball-simulator scene units (lib/pindeck.lua).
+-- Pine axes: X runs from the release point toward the pins, Y is up, Z is across (+ right).
+-- A furball scene point (x, z) maps to Pine (X = RELEASE_Z - z, Z = x).
+local deck = require("lib.pindeck")
+
 local lane = {
-  width = 1.0541,
+  width = deck.GUTTER_EDGE * 2,
   foulLine = 0,
-  headX = 18.288,
-  pinSpacing = 0.3048,
-  pinRadius = 0.057,
-  pinHeight = 0.381,
-  ballRadius = 0.1085,
-  gutterWidth = 0.22,
-  endX = 21.0,
+  headX = deck.RELEASE_Z - deck.HEAD_PIN_Z,
+  rowDepth = deck.PIN_ROW_DEPTH,
+  pinSpacing = 1.1,
+  pinRadius = deck.PIN_RADIUS,
+  pinHeight = 1.25, -- furball pinModel.ts: 15 regulation inches at 2.4 in belly radius
+  ballRadius = deck.BALL_RADIUS,
+  gutterWidth = (deck.GUTTER_CENTER - deck.GUTTER_EDGE) * 2,
+  gutterCenter = deck.GUTTER_CENTER,
+  deckStartX = deck.RELEASE_Z - deck.DECK_BOUNDS.maxZ,
+  endX = deck.RELEASE_Z - deck.DECK_BOUNDS.minZ,
 }
 
+function lane.toPine(x, z) return deck.RELEASE_Z - z, x end
+
 function lane.newRack()
-  local s, x = lane.pinSpacing, lane.headX
-  local locations = {
-    {x, 0},
-    {x+s*math.sqrt(3)/2, -s/2}, {x+s*math.sqrt(3)/2, s/2},
-    {x+s*math.sqrt(3), -s}, {x+s*math.sqrt(3), 0}, {x+s*math.sqrt(3), s},
-    {x+3*s*math.sqrt(3)/2, -1.5*s}, {x+3*s*math.sqrt(3)/2, -0.5*s},
-    {x+3*s*math.sqrt(3)/2, 0.5*s}, {x+3*s*math.sqrt(3)/2, 1.5*s},
-  }
   local rack = {}
-  for id, p in ipairs(locations) do
-    rack[id] = {id=id,x=p[1],z=p[2],angle=0,tilt=0,down=false}
+  for _, pin in ipairs(deck.PINS) do
+    rack[pin.id] = {id=pin.id, x=lane.headX + pin.row * lane.rowDepth, z=pin.x, angle=0, tilt=0, down=false}
   end
   return rack
 end

@@ -3,8 +3,9 @@ local rules=require('lib.rules')
 local lane=require('lib.lane')
 local App={}; App.__index=App
 local parameters={'position','aim','power','hook'}
-local limits={position={-.38,.38,.05,.01},aim={-math.rad(8),math.rad(8),math.rad(1),math.rad(.25)},power={.25,1,.05,.01},hook={-1,1,.10,.02}}
-local function settings() return {position=0,aim=0,power=.75,hook=0} end
+-- Furball control units: position, aim (launch angle) and hook (spin) span -100..100; power 0..100.
+local limits={position={-100,100,10,2},aim={-100,100,5,1},power={0,100,5,1},hook={-100,100,10,2}}
+local function settings() return {position=0,aim=0,power=60,hook=0} end
 local function copy(value)
   if type(value)~='table' then return value end
   local out={}; for k,v in pairs(value) do out[k]=copy(v) end; return out
@@ -12,7 +13,8 @@ end
 function App.new(options)
   options=options or {}
   local self=setmetatable({options=options,phase='SETUP',playerCount=1,selected='position',fine=false,camera='lane',scorePlayer=1,
-    running=true,deliveryId=0,lastInput='Ready',message='Choose 1-4 players, then START.'},App)
+    running=true,deliveryId=0,lastInput='Ready',message='Choose 1-4 players, then START.',
+    seed=math.floor(tonumber(options.seed) or (os.epoch and os.epoch('utc') or os.time()) % 1000000)},App)
   self:resetMatch(1)
   if options.diagnostic then self.phase='AIM'; self.message='X+ down lane | Y+ up | Z+ right' end
   return self
@@ -32,7 +34,8 @@ function App:view()
   local set=self:currentSettings()
   return {phase=self.phase,playerCount=self.playerCount,currentPlayer=self.match.currentPlayer,frame=self.match.frame,
     ballNumber=self.match.ballNumber,settings=set,selected=self.selected,fine=self.fine,camera=self.camera,scorePlayer=self.scorePlayer,
-    snapshot=self.displaySnapshot or {ball={x=0,y=lane.ballRadius,z=set.position,gutter=false},pins=self.match.rack},
+    snapshot=self.displaySnapshot or {ball={x=0,y=lane.ballRadius,z=physics.releaseZ(set.position),gutter=false},pins=self.match.rack},
+    preview=(self.phase=='AIM' and not self.displaySnapshot) and physics.preview(set) or nil,
     scorecards=scores,rankings=self.match.complete and rules.rankings(self.match) or {},message=self.message,lastInput=self.lastInput,
     rollSummary=self.rollSummary,diagnostic=self.options.diagnostic}
 end
@@ -46,7 +49,8 @@ end
 function App:roll()
   if self.phase~='AIM' then return end
   self.deliveryId=self.deliveryId+1
-  local shot=copy(self:currentSettings()); shot.deliveryId=self.deliveryId
+  -- Furball seeds each delivery as matchSeed + rollIndex; equal seeds replay a match exactly.
+  local shot=copy(self:currentSettings()); shot.deliveryId=self.deliveryId; shot.seed=self.seed+self.deliveryId
   local sim,err=physics.begin(self.match.rack,shot)
   if not sim then self.message='Roll cancelled: '..tostring(err); return end
   self.beforeRoll={player=self.match.currentPlayer,frame=self.match.frame,ballNumber=self.match.ballNumber}
@@ -64,7 +68,8 @@ function App:resolve()
     self.rollSummary=copy(self.beforeRoll)
     self.rollSummary.count=#result.knocked; self.rollSummary.knocked=copy(result.knocked)
     self.phase='RESULT'
-    self.message=string.format('Player %d: %d pins. CONTINUE when ready.',self.beforeRoll.player,#result.knocked)
+    local label=#result.knocked>0 and (#result.knocked..' pins') or ({gutter='gutter ball',short='short of the pins',miss='clean miss'})[result.kind] or '0 pins'
+    self.message=string.format('Player %d: %s. CONTINUE when ready.',self.beforeRoll.player,label)
     self:emit('resolved',result)
   end
   self.sim=nil; self.playback=nil
@@ -175,7 +180,10 @@ function App.run(options)
         app:pause('Display resized. Resume when ready.');rebuild();changed=true
       elseif event[1]=='timer' and event[2]==timer then
         local w,h=target.getSize()
-        if w~=width or h~=height then app:pause('Display resized. Resume when ready.');rebuild();changed=true
+        if monitorName and not w then
+          -- The monitor vanished before its detach event arrived; fall back the same way.
+          target=original;monitorName=nil;app:pause('Monitor detached. Resume here.');rebuild();changed=true
+        elseif w~=width or h~=height then app:pause('Display resized. Resume when ready.');rebuild();changed=true
         else local phase=app.phase;app:tick(.1);changed=phase=='SIMULATE' or phase=='PLAYBACK' end
         timer=os.startTimer(.1)
       else

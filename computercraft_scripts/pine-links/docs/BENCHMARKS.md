@@ -1,3 +1,5 @@
+> **Historical.** This describes the original Pebble Beach hole 7 prototype. Pine Links now runs furball-simulator's Marovitz-inspired Hole 3 and golf kernel; see `README.md`.
+
 # Emulator drawing measurements
 
 Measured during the keyboard/monitor acceptance scenarios on 27 September 2026. Times cover one Pine3D frame plus HUD drawing, not full simulation or end-to-end displayed FPS. Animation is scheduled every 0.1 seconds (10 Hz target).

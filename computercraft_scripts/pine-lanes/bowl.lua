@@ -9,6 +9,7 @@ while i<=#args do
   if args[i]=='--terminal' then options.terminal=true
   elseif args[i]=='--monitor' then i=i+1; options.monitor=assert(args[i],'--monitor needs a name')
   elseif args[i]=='--diagnostic' then options.diagnostic=true
+  elseif args[i]=='--seed' then i=i+1; options.seed=assert(tonumber(args[i]),'--seed needs a number')
   elseif args[i]=='--log' then i=i+1; options.log=assert(args[i],'--log needs a path')
   else error('Unknown option: '..args[i]) end
   i=i+1

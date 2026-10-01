@@ -47,8 +47,8 @@ function ui.layout(w, h, phase)
       add(1, 1, "aim_left", labels and "AIM LEFT" or "AIM-", 1); add(1, 2, "aim_right", labels and "AIM RIGHT" or "AIM+", 1)
       add(1, 3, "power_down", labels and "POWER -" or "PWR-", 1); add(1, 4, "power_up", labels and "POWER +" or "PWR+", 1)
       add(2, 1, "club_prev", labels and "CLUB -" or "CLB-", 1); add(2, 2, "club_next", labels and "CLUB +" or "CLB+", 1)
-      add(2, 3, "fine", "FINE", 1); add(2, 4, "view", "VIEW", 1)
-      add(3, 1, "swing", "SWING", 2); add(3, 3, "help", "HELP", 1); add(3, 4, "pause", "MENU", 1)
+      add(2, 3, "aim_cup", labels and "AIM CUP" or "CUP", 1); add(2, 4, "fine", "FINE", 1)
+      add(3, 1, "swing", "SWING", 1); add(3, 2, "view", "VIEW", 1); add(3, 3, "help", "HELP", 1); add(3, 4, "pause", "MENU", 1)
     else
       add(1, 1, "aim_left", "AIM -", 1); add(1, 2, "aim_right", "AIM +", 1)
       add(2, 1, "power_down", "PWR -", 1); add(2, 2, "power_up", "PWR +", 1)
@@ -60,7 +60,9 @@ function ui.layout(w, h, phase)
   return out
 end
 
+local function ascii(s) return (tostring(s):gsub("\226\128\148", "-"):gsub("[\128-\255]", "")) end
 local function writeAt(t, x, y, s, fg, bg, maxW)
+  s = ascii(s)
   if y < 1 or y > select(2, t.getSize()) or x > select(1, t.getSize()) then return end
   local w = math.min(maxW or #s, select(1, t.getSize()) - x + 1)
   s = tostring(s):sub(1, math.max(0, w))
@@ -100,8 +102,8 @@ function ui.draw(t, view, buttons, sceneRows)
     return
   end
   if view.phase == "SCORECARD" then
-    local lines={"HOLE COMPLETE", "PEBBLE BEACH 7  |  PAR 3",
-      string.upper(view.scoreName or ""),
+    local lines={"HOLE COMPLETE", "MAROVITZ 3  |  PAR 3",
+      string.upper(view.scoreLabel or view.scoreName or ""),
       "STROKES: "..tostring(view.strokes or 0).."  PENALTIES: "..tostring(view.penalties or 0)}
     local panelW=math.min(35,w-4)
     local x=math.floor((w-panelW)/2)+1
@@ -112,7 +114,7 @@ function ui.draw(t, view, buttons, sceneRows)
   end
   if view.phase == "HELP" then
     writeAt(t, 1, 4, "KEYBOARD CONTROLS", bright, black, w)
-    writeAt(t, 1, 5, "ARROWS aim and power   Q/E choose club", white, black, w)
+    writeAt(t, 1, 5, "ARROWS aim/power  Q/E or C club  A cup", white, black, w)
     writeAt(t, 1, 6, "SPACE swing   TAB view   F fine adjust", white, black, w)
     writeAt(t, 1, 7, "P menu  H help  R restart  Backspace quit", white, black, w)
   end
@@ -120,4 +122,5 @@ function ui.draw(t, view, buttons, sceneRows)
   t.setCursorPos(1, h)
 end
 
+ui.writeAt = writeAt
 return ui

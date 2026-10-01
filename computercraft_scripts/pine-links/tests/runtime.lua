@@ -4,7 +4,7 @@ local App=require('lib.app')
 local ui=require('lib.ui')
 local M={}
 local keyNames={start='space',swing='space',aim_left='left',aim_right='right',
-  power_up='up',power_down='down',club_next='e',club_prev='q',fine='f',view='tab',
+  power_up='up',power_down='down',club_next='e',club_prev='q',fine='f',view='tab',aim_cup='a',
   help='h',pause='p',restart='r',skip='s',quit='backspace'}
 
 function M.run(mode,steps)
@@ -40,7 +40,7 @@ function M.run(mode,steps)
   end
   options.record=function(kind,data,app)
     if kind=='resolved' then
-      events[#events+1]={outcome=data.outcome,position=data.position,strokes=app.state.strokes,penalties=app.state.penalties}
+      events[#events+1]={outcome=data.outcome,position=data.position,strokes=app:state().strokes,penalties=app:state().penalties}
     elseif kind=='frame' then
       frameCount=frameCount+1; frames[#frames+1]=data.renderMs
       assert(frameCount<2000,'runtime frame limit')
@@ -48,8 +48,8 @@ function M.run(mode,steps)
         local step=steps[index]
         if step.wait then
           if app.phase~=step.wait then return end
-          if step.strokes then assert(app.state.strokes==step.strokes,'wrong stroke total at step '..index) end
-          if step.penalties then assert(app.state.penalties==step.penalties,'wrong penalty total') end
+          if step.strokes then assert(app:state().strokes==step.strokes,'wrong stroke total at step '..index) end
+          if step.penalties then assert(app:state().penalties==step.penalties,'wrong penalty total') end
           index=index+1
         elseif step.check then
           step.check(app); index=index+1
@@ -63,10 +63,17 @@ function M.run(mode,steps)
         elseif step.control then
           local goal=step.control
           local action
-          if not app.fine then action='fine'
-          elseif goal.club and app:view().club.id~=goal.club then action='club_next'
-          elseif goal.power and math.abs(app.power-goal.power)>0.005 then action=app.power<goal.power and 'power_up' or 'power_down'
-          elseif goal.aim and math.abs(app.aim-goal.aim)>math.rad(0.1) then action=app.aim<goal.aim and 'aim_right' or 'aim_left' end
+          -- Coarse steps (2 deg / 5%) when far from the goal, fine (0.5 / 0.5%) when close.
+          local function stepToward(current,target,coarse,up,down)
+            local diff=target-current
+            if math.abs(diff)<0.01 then return nil end
+            local wantFine=math.abs(diff)<coarse
+            if wantFine~=app.fine then return 'fine' end
+            return diff>0 and up or down
+          end
+          if goal.club and app:view().club.id~=goal.club then action='club_next'
+          elseif goal.power then action=stepToward(app.power,goal.power,5,'power_up','power_down') end
+          if not action and goal.aim then action=stepToward(app.aim,goal.aim,2,'aim_right','aim_left') end
           if action then queue(action,app); return end
           index=index+1
         else
@@ -96,6 +103,6 @@ function M.run(mode,steps)
     assert(math.abs(r-rgb[1])<1e-6 and math.abs(g-rgb[2])<1e-6 and math.abs(b-rgb[3])<1e-6,'terminal palette not restored')
   end
   if monitorName then periphemu.remove(monitorName) end
-  return {mode=mode,frames=frames,events=events,strokes=final.state.strokes,complete=final.state.complete}
+  return {mode=mode,frames=frames,events=events,strokes=final:state().strokes,complete=final:state().phase=='finished'}
 end
 return M

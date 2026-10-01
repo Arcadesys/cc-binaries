@@ -27,12 +27,15 @@ See the [ArcadeOS README](./arcadeos/README.md) for usage and for writing apps.
 
 ## Pine games
 
-The three standalone Pine3D games are in [`computercraft_scripts`](./computercraft_scripts). Copy an entire game folder to a CC:Tweaked computer so its bundled libraries stay beside the launcher.
+The standalone Pine3D games are in [`computercraft_scripts`](./computercraft_scripts). Copy an entire game folder to a CC:Tweaked computer so its bundled libraries stay beside the launcher.
 
 | Game | Launcher after copying its folder | Details |
 | --- | --- | --- |
-| [Pine Links](./computercraft_scripts/pine-links/README.md) | `/pine-links/golf.lua` | Pebble Beach hole 7 golf prototype |
-| [Pine Lanes](./computercraft_scripts/pine-lanes/README.md) | `/pine-lanes/bowl.lua` | Ten-frame arcade bowling for 1–4 players |
+| [Pine Ball](./computercraft_scripts/pine-ball/README.md) | `/pine-ball/ball.lua` | Furball baseball vs CPU or a 2-player duel |
+| [Pine Links](./computercraft_scripts/pine-links/README.md) | `/pine-links/golf.lua` | Furball's Marovitz-inspired Hole 3, par 3 |
+| [Pine Lanes](./computercraft_scripts/pine-lanes/README.md) | `/pine-lanes/bowl.lua` | Furball ten-frame bowling for 1–4 players |
 | [Pine Dungeon](./computercraft_scripts/pine-dungeon/README.md) | `/pine-dungeon/dungeon.lua` | First-person crawler with an ASCII map |
+
+Pine Ball, Pine Links and Pine Lanes run Lua ports of the [furball-simulator](https://github.com/Arcadesys/furball-simulator) sport engines, checked against fixtures generated from the TypeScript. After tuning furball, run `computercraft_scripts/tools/furball-fixtures/update.sh` and then each game's `tools/test_craftos.sh`.
 
 Note: [Arcadesys/computercraft](https://github.com/Arcadesys/computercraft) was skipped — it's an empty repository on GitHub (no commits).
