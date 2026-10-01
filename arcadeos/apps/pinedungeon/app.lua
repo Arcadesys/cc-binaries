@@ -1,6 +1,7 @@
 return {
     name = "Pine Dungeon",
     group = "Games",
+    showcase = "pine3d",
     icon = "DUNG",
     entry = "/pkg/scripts/pine-dungeon/dungeon.lua",
     args = { "--terminal" },

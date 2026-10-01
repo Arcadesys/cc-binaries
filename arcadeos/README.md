@@ -1,6 +1,6 @@
 # ArcadeOS 1.00
 
-A Windows 1.0–style shell for [CC: Tweaked](https://tweaked.cc) that runs every program in this repo as an app: arcade and card games, the Pine3D games, media players, turtle tools, and a set of Windows 1.0 accessories.
+A Windows 1.0–style shell for [CC: Tweaked](https://tweaked.cc), with a launcher dedicated to **Pine Ball, Pine Dungeon, Pine Lanes, and Pine Links**. The four games use Pine3D and are the only programs shown in the icon menu. Other installed apps remain available through the file manager or API.
 
 ![Tiled desktop with the MS-DOS Executive, Clock, Calculator and Notepad](docs/desktop.png)
 
@@ -40,7 +40,7 @@ Setup options:
 
 ## Using it
 
-- **Launch programs** from the MS-DOS Executive: double-click an entry, or select it and press Enter. View → Files switches to a file manager. Opening a `.txt` file starts Notepad, `.nfp` starts Paint, and `.lua` runs the program in a window.
+- **Launch programs** from the MS-DOS Executive: the Pine3D games each have a pixel icon and a text label. Use arrow keys to select and Enter to open, or double-click anywhere on its tile. Page Up/Down, the mouse wheel, or the header arrows move through pages. The selected program and its category appear below the grid. Small windows reflow to fewer columns or a compact list. View → Files switches to a file manager. Opening a `.txt` file starts Notepad, `.nfp` starts Paint, and `.lua` runs the program in a window.
 - **Tiling:** up to four windows share the screen. Opening a fifth iconizes the one you used least recently.
 - **Title bar:**
   - `[-]` opens the system menu (Restore, Iconize, Zoom, Close).
@@ -122,6 +122,7 @@ end
 | `needs` | A file that must exist for the app to be listed, such as a library from an optional package. |
 | `opens` | File extensions this app opens from the Executive, e.g. `{ "txt" }`. |
 | `hold` | Keep the window open after the program exits, for command-line tools. |
+| `showcase` | Set to `"pine3d"` for Pine3D games featured in the launcher. |
 | `hidden` | Leave the app out of the Programs list. |
 
 **The `arcadeos` API** (a global, like `multishell`):

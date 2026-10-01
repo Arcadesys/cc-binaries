@@ -28,7 +28,10 @@
           "src": "cc-arcade",
           "dest": "/pkg/arcade",
           "include": [
-            "*.lua"
+            "*.lua",
+            "derby/vendor/LICENSE",
+            "derby/vendor/REVISION.txt",
+            "derby/odds.json"
           ],
           "exclude": [
             "menu.lua",
@@ -40,7 +43,10 @@
             "config.lua",
             "startup.lua",
             "install.lua",
-            "update.lua"
+            "update.lua",
+            "derby/tests/**",
+            "derby/tools/**",
+            "derby/docs/**"
           ]
         }
       ]

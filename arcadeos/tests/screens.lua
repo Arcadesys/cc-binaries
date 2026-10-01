@@ -203,6 +203,27 @@ scenario("18-pine-dungeon", function(k, parent)
     dump(parent, "18-pine-dungeon")
 end)
 
+scenario("19-launcher-games", function(k, parent)
+    H.pump(k, 0.1)
+    send(k, "key", keys.pageDown, false)
+    send(k, "key", keys.pageDown, false)
+    dump(parent, "19-launcher-games")
+end)
+
+scenario("20-launcher-narrow", function(k, parent)
+    parent.reposition(1, 1, 26, 15)
+    send(k, "term_resize")
+    H.pump(k, 0.1)
+    dump(parent, "20-launcher-narrow")
+end)
+
+scenario("21-launcher-compact", function(k, parent)
+    parent.reposition(1, 1, 26, 9)
+    send(k, "term_resize")
+    H.pump(k, 0.1)
+    dump(parent, "21-launcher-compact")
+end)
+
 local args = { ... }
 local names = #args > 0 and args or ORDER
 for _, name in ipairs(names) do

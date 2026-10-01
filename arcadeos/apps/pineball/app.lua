@@ -1,6 +1,7 @@
 return {
     name = "Pine Ball",
     group = "Games",
+    showcase = "pine3d",
     icon = "BALL",
     entry = "/pkg/scripts/pine-ball/ball.lua",
     args = { "--terminal" },
