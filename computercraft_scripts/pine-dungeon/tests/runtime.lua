@@ -1,5 +1,6 @@
 -- Full campaigns through the real input dispatcher. No test-only state mutation.
 local App=require("lib.app")
+local world=require("lib.world")
 local ui=require("lib.ui")
 local runtime={}
 local moves={{1,0,"east"},{0,1,"south"},{-1,0,"west"},{0,-1,"north"}}
@@ -61,8 +62,31 @@ function runtime.run(mode)
     end
     if app.state.phase=="play" then
       assert(app.state.turn<300,"turn budget")
-      local action=app.state.player.hp<=5 and app.state.player.potions>0 and "heal"
-        or relativeAction(app.state,route(app.state))
+      local st=app.state;local pl=st.player;local boss=world.boss(st)
+      local target;local best=99
+      for _,m in ipairs(st.monsters) do
+        if m.hp>0 then
+          local d=math.abs(m.x-pl.x)+math.abs(m.z-pl.z)
+          if d<best and (m.kind=="W" or d<=2) then best=d;target=m end
+        end
+      end
+      local action
+      if pl.hp<=5 and pl.potions>0 then action="heal"
+      elseif boss and boss.charging then
+        for _,d in ipairs(moves) do
+          local x,z=pl.x+d[1],pl.z+d[2]
+          if not action and st.tiles[z][x]~="#" and not world.monsterAt(st,x,z) and x~=boss.x and z~=boss.z then
+            action=relativeAction(st,d[3])
+          end
+        end
+      end
+      if not action and target then
+        local dx,dz=target.x-pl.x,target.z-pl.z
+        local dir=math.abs(dx)>=math.abs(dz) and (dx>0 and "east" or "west") or (dz>0 and "south" or "north")
+        local ahead=({east=dx==1 and dz==0,west=dx==-1 and dz==0,south=dz==1 and dx==0,north=dz==-1 and dx==0})[pl.facing]
+        if best==1 and ahead then action="attack" else action=relativeAction(st,dir) end
+      end
+      action=action or relativeAction(st,route(st))
       assert(action,"route to stairs")
       queue(action,app)
     elseif app.state.phase=="won" then

@@ -24,7 +24,7 @@ function ui.layout(w,h,phase)
     labels={
       {"forward","FORWARD"},{"backward","BACKWARD"},
       {"turn_left","TURN","LEFT"},{"turn_right","TURN","RIGHT"},
-      {"attack","ATTACK"},{"heal","POTION"},{"map","MAP"},{"help","HELP"},
+      {"attack","ATTACK"},{"heal","EAT"},{"map","MAP"},{"help","HELP"},
       {"wait","WAIT"},{"menu","MENU"},{"quit","QUIT"},
     }
   end
@@ -59,28 +59,37 @@ function ui.draw(t,view,buttons)
     put(t,1,3,"OR PRESS Q TO QUIT",colors.white,colors.black,w)
     drawButtons(t,buttons);return
   end
-  put(t,1,1,"PINE DUNGEON | FLOOR "..s.floor.."/3 | "..string.upper(s.phase),colors.black,colors.yellow,w)
-  put(t,1,2,string.format("HP %d/%d  POTIONS %d  GOLD %d  KILLS %d  TURN %d",
-    p.hp,p.maxHp,p.potions,p.gold,s.kills,s.turn),colors.white,colors.black,w)
-  put(t,1,3,s.message,colors.yellow,colors.black,w)
+  local boss=world.boss(s)
+  if boss and s.phase=="play" then
+    local max=boss.maxHp or world.kinds.W.hp;local cells=10
+    local full=math.max(0,math.ceil(boss.hp/max*cells))
+    local bar=string.rep("#",full)..string.rep("-",cells-full)
+    put(t,1,1,string.format("WARDEN [%s] %d/%d  FL %d/3",bar,boss.hp,max,s.floor),
+      colors.white,boss.charging and colors.orange or colors.red,w)
+  else
+    put(t,1,1,"PINE DUNGEON | FLOOR "..s.floor.."/3 | "..string.upper(s.phase),colors.black,colors.yellow,w)
+  end
+  put(t,1,2,string.format("HEARTS %d/%d STEAK %d EMERALDS %d T%d",
+    p.hp,p.maxHp,p.potions,p.gold,s.turn),colors.white,colors.black,w)
+  put(t,1,3,s.message,boss and boss.charging and colors.orange or colors.yellow,colors.black,w)
   local sceneBottom=h-buttons.rowH*3
   if view.overlay=="help" then
     local lines={"UP/W forward  DOWN/S backward",
       "LEFT/A turn left  RIGHT/D turn right",
       "SPACE attack ahead  |  . wait",
-      "H: drink potion  |  TAB: map",
+      "E/H: eat steak  |  TAB: map",
       "F1: help  |  P: menu  |  Q: quit",
       "Move into a monster to strike it.",
-      "@ YOU  g/s MONSTERS  P POTION",
-      "$ GOLD  > STAIRS  # WALL",
-      "Reach > on floor 3 to escape."}
+      "@ YOU  z zombie  k skeleton  W Warden",
+      "% STEAK  $ EMERALD  > LADDER  O PORTAL",
+      "Slay the Warden, enter the portal."}
     for i,line in ipairs(lines) do put(t,1,3+i,line,colors.white,colors.black,w) end
   elseif view.overlay=="menu" then
     put(t,1,5,"PAUSED",colors.yellow,colors.black,w)
     put(t,1,7,"RESUME, NEW GAME, or QUIT.",colors.white,colors.black,w)
   elseif s.phase=="won" or s.phase=="lost" then
-    put(t,1,5,s.phase=="won" and "YOU ESCAPED!" or "GAME OVER",colors.yellow,colors.black,w)
-    put(t,1,7,string.format("FLOOR %d  GOLD %d  TURNS %d",s.floor,p.gold,s.turn),colors.white,colors.black,w)
+    put(t,1,5,s.phase=="won" and "YOU BEAT THE DUNGEON!" or "YOU DIED!",colors.yellow,colors.black,w)
+    put(t,1,7,string.format("FLOOR %d  EMERALDS %d  TURNS %d",s.floor,p.gold,s.turn),colors.white,colors.black,w)
   elseif view.map then
     put(t,1,4,"MAP: N UP  E RIGHT  @ YOU",colors.yellow,colors.black,w)
     for z=1,s.height do
@@ -90,10 +99,10 @@ function ui.draw(t,view,buttons)
         put(t,2,z+4,table.concat(line),colors.white,colors.black,s.width)
       end
     end
-    put(t,16,6,"g/s FOES",colors.white,colors.black,w-15)
-    put(t,16,7,"P POTION",colors.white,colors.black,w-15)
-    put(t,16,8,"$ GOLD",colors.white,colors.black,w-15)
-    put(t,16,9,"> STAIRS",colors.white,colors.black,w-15)
+    put(t,16,6,"z k W MOBS",colors.white,colors.black,w-15)
+    put(t,16,7,"% STEAK",colors.white,colors.black,w-15)
+    put(t,16,8,"$ EMERALD",colors.white,colors.black,w-15)
+    put(t,16,9,"> LADDER O PORTAL",colors.white,colors.black,w-15)
   else
     local panelX=w-12
     put(t,panelX,4,"LOOK "..string.upper(p.facing).." N^",colors.yellow,colors.black,13)

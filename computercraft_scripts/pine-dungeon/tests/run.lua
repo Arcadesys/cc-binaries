@@ -8,7 +8,7 @@ local function pathExists(rows)
   local start,goal
   for z,row in ipairs(rows) do for x=1,#row do
     local c=row:sub(x,x)
-    if c=="@" then start={x,z} elseif c==">" then goal={x,z} end
+    if c=="@" then start={x,z} elseif (c==">" or c=="O") then goal={x,z} end
   end end
   check(start and goal,"each floor has a start and exit")
   local q={start};local seen={[start[1]..":"..start[2]]=true};local head=1
@@ -49,15 +49,46 @@ local function relativeAction(s,direction)
   local difference=(facingIndex[direction]-facingIndex[s.player.facing])%4
   return ({[0]="forward",[1]="turn_right",[2]="backward",[3]="turn_left"})[difference]
 end
+local function bot(s)
+  local p=s.player;local boss=world.boss(s)
+  if p.hp<=5 and p.potions>0 then return "heal" end
+  local target
+  local best=99
+  for _,m in ipairs(s.monsters) do
+    if m.hp>0 then
+      local d=math.abs(m.x-p.x)+math.abs(m.z-p.z)
+      if d<best and (m.kind=="W" or d<=2) then best=d;target=m end
+    end
+  end
+  if boss and boss.charging then
+    -- break line of sight: step to a tile off the boss's row and column
+    local dirs={{1,0,"east"},{0,1,"south"},{-1,0,"west"},{0,-1,"north"}}
+    for _,d in ipairs(dirs) do
+      local x,z=p.x+d[1],p.z+d[2]
+      if world.tile(s,x,z)~="#" and not world.monsterAt(s,x,z) and x~=boss.x and z~=boss.z then
+        return relativeAction(s,d[3])
+      end
+    end
+  end
+  if target then
+    local dx,dz=target.x-p.x,target.z-p.z
+    local dir=math.abs(dx)>=math.abs(dz) and (dx>0 and "east" or "west") or (dz>0 and "south" or "north")
+    if dx==0 and dz==0 then dir=nil end
+    if best==1 and ((p.facing=="east" and dx==1) or (p.facing=="west" and dx==-1)
+      or (p.facing=="south" and dz==1) or (p.facing=="north" and dz==-1)) then return "attack" end
+    if best==1 then return relativeAction(s,dir=="east" and dx==1 and "east" or dir) end
+    return relativeAction(s,dir)
+  end
+  return relativeAction(s,routeToExit(s))
+end
 local campaign=world.new()
-for _=1,300 do
+for _=1,600 do
   if campaign.phase~="play" then break end
-  local action=campaign.player.hp<=5 and campaign.player.potions>0 and "heal"
-    or relativeAction(campaign,routeToExit(campaign))
+  local action=bot(campaign)
   check(action,"campaign route exists")
   world.act(campaign,action)
 end
-check(campaign.phase=="won","full three-floor campaign is winnable with ordinary moves")
+check(campaign.phase=="won","full three-floor campaign defeats the Warden: phase="..campaign.phase.." floor="..campaign.floor.." hp="..campaign.player.hp.." turn="..campaign.turn.." at "..campaign.player.x..","..campaign.player.z.." "..campaign.player.facing.." msg="..campaign.message)
 local s=world.new()
 check(s.floor==1 and s.player.hp==12 and #s.monsters>0,"new adventure")
 s.monsters={}
@@ -67,21 +98,21 @@ check(world.act(s,"turn_left") and s.player.facing=="north" and s.player.x==2
 check(not world.act(s,"forward") and s.turn==turn+1 and s.player.facing=="north",
   "wall does not consume a turn or change facing")
 check(world.act(s,"turn_right") and s.player.facing=="east","right turn rotates in place")
-s.monsters={{x=s.player.x+1,z=s.player.z,kind="g",hp=2}}
+s.monsters={{x=s.player.x+1,z=s.player.z,kind="z",hp=2}}
 check(world.act(s,"forward"),"attack by moving into monster")
 check(s.kills==1 and s.player.x==2 and s.turn==3,"monster defeated without entering its square")
 check(world.act(s,"forward") and s.player.x==3,"dead monster no longer blocks")
 s.items["3:3"]="$";s.monsters={}
 check(world.act(s,"turn_right") and s.player.facing=="south","turn toward gold")
 check(world.act(s,"forward") and s.player.gold==5,"gold pickup")
-s.items["3:4"]="P";check(world.act(s,"turn_left") and s.player.facing=="east","turn toward potion")
+s.items["3:4"]="%";check(world.act(s,"turn_left") and s.player.facing=="east","turn toward potion")
 check(world.act(s,"forward") and s.player.potions==2,"potion pickup")
 check(world.act(s,"backward") and s.player.x==3 and s.player.z==3
   and s.player.facing=="east","backward step keeps facing")
-local rear=world.new();rear.monsters={{x=2,z=2,kind="g",hp=2}};rear.player.x=3
+local rear=world.new();rear.monsters={{x=2,z=2,kind="z",hp=2}};rear.player.x=3
 check(world.act(rear,"backward") and rear.kills==1 and rear.player.x==3
   and rear.player.facing=="east","backward step attacks a monster behind without turning")
-local turning=world.new();turning.monsters={{x=3,z=2,kind="g",hp=2}}
+local turning=world.new();turning.monsters={{x=3,z=2,kind="z",hp=2}}
 check(world.act(turning,"turn_left") and turning.player.hp==11,
   "turning consumes a turn and allows adjacent monster attack")
 turning.monsters={}
@@ -90,7 +121,7 @@ check(turning.player.facing=="north" and turning.player.x==2 and turning.player.
   "four right turns return to the same position and facing")
 s.player.hp=4;check(world.act(s,"heal") and s.player.hp==9 and s.player.potions==1,"healing consumes potion")
 check(world.act(s,"attack") and s.turn==11,"empty attack consumes turn")
-local death=world.new();death.monsters={{x=death.player.x+1,z=death.player.z,kind="s",hp=3}}
+local death=world.new();death.monsters={{x=death.player.x+1,z=death.player.z,kind="k",hp=3}}
 death.player.hp=1;world.act(death,"wait")
 check(death.phase=="lost" and death.player.hp==0,"enemy turn can defeat player")
 local stairs=world.new();stairs.monsters={}
@@ -99,6 +130,36 @@ world.act(stairs,"forward");check(stairs.floor==2 and stairs.player.hp==12,"stai
 stairs.monsters={};stairs.floor=3;stairs.exit={x=stairs.player.x+1,z=stairs.player.z}
 world.act(stairs,"forward");check(stairs.phase=="won","last stairs end game")
 check(not world.act(stairs,"backward"),"ended game cannot move")
+-- Warden checks
+local function arena()
+  local a=world.new();a.player.hp=12
+  a.floor=3;a.tiles={};a.items={};a.monsters={}
+  for z=1,9 do a.tiles[z]={};for x=1,11 do a.tiles[z][x]=(x==1 or x==11 or z==1 or z==9) and "#" or "." end end
+  a.width,a.height=11,9;a.exit={x=10,z=5};a.exitGlyph="O"
+  a.player.x,a.player.z,a.player.facing=2,5,"east"
+  a.monsters={{x=6,z=5,kind="W",hp=14,maxHp=14}}
+  return a
+end
+local a=arena()
+check(world.sealed(a),"portal sealed while Warden lives")
+a=arena();a.player.x=9;a.monsters[1].x=2;a.monsters[1].z=2
+check(not world.act(a,"forward") and a.phase=="play" and a.player.x==9,"portal blocks stepping while sealed")
+a=arena();world.act(a,"wait")
+check(a.monsters[1].charging==2,"Warden telegraphs sonic boom in open line")
+world.act(a,"wait");check(a.player.hp==12,"no damage during warning")
+world.act(a,"wait");check(a.player.hp==8,"unbroken line takes sonic boom")
+a=arena();world.act(a,"wait")
+a.tiles[5][4]="#";world.act(a,"wait");world.act(a,"wait")
+check(a.player.hp==12,"pillar breaks line of sight and dodges boom")
+a=arena();a.monsters[1].hp=7;a.monsters[1].x=3;a.monsters[1].charging=nil
+world.act(a,"wait");local zs=0
+for _,m in ipairs(a.monsters) do if m.kind=="z" then zs=zs+1 end end
+check(a.monsters[1].enraged and zs==2,"enrage summons two zombies")
+world.act(a,"wait");zs=0
+for _,m in ipairs(a.monsters) do if m.kind=="z" then zs=zs+1 end end
+check(zs==2,"summon happens once")
+a=arena();a.monsters[1].hp=2;a.monsters[1].x=3
+check(world.act(a,"attack") and not world.boss(a) and not world.sealed(a),"killing the Warden opens the portal")
 local app=App.new()
 app:action("forward");local x,turn,facing=app.state.player.x,app.state.turn,app.state.player.facing
 app:action("help");app:action("turn_left")
