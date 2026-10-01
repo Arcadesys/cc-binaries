@@ -239,6 +239,9 @@ local function finish(status)
         finalPos = { world.turtle.x, world.turtle.y, world.turtle.z },
         visited = {},
     }
+    if cfg.dumpBlocks then
+        summary.blocks = world:placedBlocks()
+    end
     -- Cells the turtle passed through, so fleet runs can check for overlap.
     for k in pairs(world.visited) do
         summary.visited[#summary.visited + 1] = k

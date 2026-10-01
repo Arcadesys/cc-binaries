@@ -22,6 +22,9 @@ Options (anywhere before SCRIPT; anywhere at all for `mine`):
   --real-time         don't fast-forward sleep()
   --timeout SECONDS   kill the emulator after this long (default 300)
   --keep              keep the temp emulator folder and print its path
+  --file SRC:DEST     copy SRC onto the turtle's disk at DEST (repeatable), e.g. a schema
+  --results DIR       write summary.json, output.txt and actions.txt to DIR after the run
+  --dump-blocks       include every placed/scripted block in summary.json ("blocks")
 
 Scale options for `mine` (runs go in parallel, then print one table):
   --seeds A-B         one run per seed, e.g. --seeds 1-8, to compare layouts or settings
@@ -54,8 +57,8 @@ CRAFTOS = os.environ.get("CRAFTOS_BIN", "/Applications/CraftOS-PC.app/Contents/M
 SKIP = {".git", "__pycache__", "node_modules", ".DS_Store", "dist"}
 
 VALUE_OPTS = {"--world", "--root", "--fuel", "--give", "--answer", "--key", "--idle", "--timeout",
-              "--facing", "--seed", "--seeds", "--fleet", "--spacing", "-j"}
-FLAG_OPTS = {"--trace", "--ui", "--real-time", "--keep"}
+              "--facing", "--file", "--results", "--seed", "--seeds", "--fleet", "--spacing", "-j"}
+FLAG_OPTS = {"--trace", "--ui", "--real-time", "--keep", "--dump-blocks"}
 
 
 def die(msg):
@@ -70,7 +73,7 @@ def parse(argv, passthrough=False):
     after belongs to the script. With passthrough, unknown options are kept
     for the script too (used by `mine`, which forwards to factory.lua).
     """
-    opts = {"give": [], "answers": [], "keys": [], "timeout": 300.0}
+    opts = {"give": [], "answers": [], "keys": [], "files": [], "timeout": 300.0}
     rest = []
     i = 0
     while i < len(argv):
@@ -90,6 +93,8 @@ def parse(argv, passthrough=False):
                 opts["keys"].append(v)
             elif a == "--timeout":
                 opts["timeout"] = float(v)
+            elif a == "--file":
+                opts["files"].append(v)
             else:
                 opts[a.lstrip("-")] = v
         elif a in FLAG_OPTS:
@@ -141,7 +146,15 @@ def run_one(script, args, opts, quiet=False):
     data = os.path.join(tmp, "emulator")
     results = os.path.join(tmp, "results")
     os.makedirs(results)
-    copy_root(root, os.path.join(data, "computer", "0"))
+    disk = os.path.join(data, "computer", "0")
+    copy_root(root, disk)
+    for spec in opts.get("files", []):
+        src, sep, dest = spec.partition(":")
+        if not sep or not dest or not os.path.isfile(src):
+            die("--file wants SRC:DEST with an existing SRC file, got " + spec)
+        target = os.path.join(disk, dest.lstrip("/"))
+        os.makedirs(os.path.dirname(target), exist_ok=True)
+        shutil.copy2(src, target)
 
     world = resolve_world(opts.get("world"))
     if world:
@@ -159,6 +172,7 @@ def run_one(script, args, opts, quiet=False):
         "keys": opts["keys"],
         "idle": opts.get("idle"),
         "trace": bool(opts.get("trace")),
+        "dumpBlocks": bool(opts.get("dump_blocks")),
         "interactive": bool(opts.get("ui")),
         "realTime": bool(opts.get("real_time")),
     }
@@ -223,6 +237,12 @@ def run_one(script, args, opts, quiet=False):
         summary["note"] = note
         if not quiet:
             print("\nturtle: " + note)
+
+    if opts.get("results"):
+        os.makedirs(opts["results"], exist_ok=True)
+        for name in ("summary.json", "status.json", "output.txt", "actions.txt"):
+            if os.path.exists(os.path.join(results, name)):
+                shutil.copy2(os.path.join(results, name), os.path.join(opts["results"], name))
 
     if opts.get("keep"):
         print("turtle: emulator files kept in " + tmp)

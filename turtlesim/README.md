@@ -33,6 +33,22 @@ Headless runs answer `read()` with Enter, or the `--answer` values in order. Pro
 
 Timers and `sleep()` are fast-forwarded, so a program pacing itself with `os.startTimer` runs at full speed. Pass `--real-time` if timing matters.
 
+## Building a schema
+
+Run cc-factory's schema builder on a blueprint kept outside `cc-factory/`, and get the result as JSON:
+
+```bash
+turtlesim/turtle --world my_world.lua --file my.txt:/my.txt \
+  --results out/ --dump-blocks cc-factory/factory.lua my.txt
+```
+
+- `--file SRC:DEST` copies a file onto the turtle's disk (repeatable).
+- `--results DIR` keeps `summary.json`, `status.json`, `output.txt` and `actions.txt` after the run.
+- `--dump-blocks` adds `blocks` to `summary.json`: every placed or scripted block as `[x, y, z, name, facing?]`.
+- The builder only counts the turtle's own inventory, so put every material (and fuel) in the world's `turtle.inventory` or pass `--give`.
+- With the default origin (north), blueprint `(x, y, z)` is built at world `(-(x+1), y, z+1)`, with y at the turtle's own level: mirrored left to right and behind-left of the turtle.
+- The exit status only says the run did not crash. Judge a build by comparing `blocks` with the blueprint.
+
 ## Other commands
 
 ```bash

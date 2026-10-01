@@ -955,6 +955,26 @@ function World:mapLines()
 end
 
 
+-- Every explicitly placed or scripted block (natural floor and ore excluded),
+-- as {x, y, z, name, facing?} sorted by position. For build-vs-blueprint diffs.
+function World:placedBlocks()
+    local out = {}
+    for k, b in pairs(self.blocks) do
+        if type(b) == "table" and not b.implicit then
+            local x, y, z = k:match("^(-?%d+),(-?%d+),(-?%d+)$")
+            if x then
+                out[#out + 1] = { tonumber(x), tonumber(y), tonumber(z), b.name, b.state and b.state.facing or nil }
+            end
+        end
+    end
+    table.sort(out, function(a, c)
+        if a[2] ~= c[2] then return a[2] < c[2] end
+        if a[3] ~= c[3] then return a[3] < c[3] end
+        return a[1] < c[1]
+    end)
+    return out
+end
+
 -- Ore mined, plus ore still touching the tunnel (i.e. missed by the miner).
 function World:oreSummary()
     local mined, missed = {}, {}
