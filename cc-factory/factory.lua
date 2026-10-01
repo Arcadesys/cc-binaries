@@ -116,7 +116,7 @@ local function run(args)
         elseif value == "--torch-interval" then
             index = index + 1
             ctx.config.torchInterval = tonumber(args[index]) or -1
-        elseif not value:find("^--") and not ctx.config.schemaPath and ctx.config.mode ~= "mine" and ctx.config.mode ~= "farm" then
+        elseif not value:find("^%-%-") and not ctx.config.schemaPath and ctx.config.mode ~= "mine" and ctx.config.mode ~= "farm" then
             ctx.config.schemaPath = value
         end
         index = index + 1

@@ -654,7 +654,7 @@
    "description": "Pine3D games: Pine Ball, Pine Links, Pine Lanes, Pine Dungeon",
    "required": false,
    "turtle": false,
-   "size": 530753,
+   "size": 536461,
    "files": [
     {
      "src": "computercraft_scripts/pine-ball/ball.lua",
@@ -739,22 +739,22 @@
     {
      "src": "computercraft_scripts/pine-dungeon/lib/input.lua",
      "dest": "/pkg/scripts/pine-dungeon/lib/input.lua",
-     "size": 1144
+     "size": 1160
     },
     {
      "src": "computercraft_scripts/pine-dungeon/lib/render.lua",
      "dest": "/pkg/scripts/pine-dungeon/lib/render.lua",
-     "size": 6199
+     "size": 8413
     },
     {
      "src": "computercraft_scripts/pine-dungeon/lib/ui.lua",
      "dest": "/pkg/scripts/pine-dungeon/lib/ui.lua",
-     "size": 4474
+     "size": 4955
     },
     {
      "src": "computercraft_scripts/pine-dungeon/lib/world.lua",
      "dest": "/pkg/scripts/pine-dungeon/lib/world.lua",
-     "size": 5675
+     "size": 8672
     },
     {
      "src": "computercraft_scripts/pine-dungeon/vendor/LICENSE",
@@ -970,12 +970,12 @@
    "description": "Factory and TurtleOS turtle automation (turtles only)",
    "required": false,
    "turtle": true,
-   "size": 494465,
+   "size": 494467,
    "files": [
     {
      "src": "cc-factory/factory.lua",
      "dest": "/pkg/factory/factory.lua",
-     "size": 9354
+     "size": 9356
     },
     {
      "src": "cc-factory/fleet_coordinator.lua",
