@@ -21,7 +21,8 @@ function M.items(state)
 end
 local KEYS_BACK={[keys.backspace]=true}
 -- opts: dir (install folder holding .get.json), target, args (as given to pinearcade),
--- clock(), button(event,p1), launch(item,args) -> ok, setBoot(name|'off') -> ok
+-- clock(), button(event,p1), launch(item,args) -> ok[, problem], pause(item) (waits after a
+-- game stops, so its error can be read), setBoot(name|'off') -> ok
 function M.run(opts)
  local dir=opts.dir
  local state=readJSON(fs.combine(dir,STATE))
@@ -35,7 +36,15 @@ function M.run(opts)
  for i,a in ipairs(args) do if a=='--monitor' then monitorName=args[i+1] end end
  if not monitorName and peripheral.getName then local ok,name=pcall(peripheral.getName,t); if ok then monitorName=name end end
  local launch=opts.launch or function(item,gameArgs)
-  return shell.run('/'..fs.combine(dir,item.entry),table.unpack(gameArgs))
+  local path='/'..fs.combine(dir,item.entry)
+  if not fs.exists(path) then return false,'NOT INSTALLED, RUN GET UPDATE' end
+  return shell.run(path,table.unpack(gameArgs))
+ end
+ local pause=opts.pause or function()
+  -- Whatever the game printed is still on screen; hold it until a key is pressed.
+  local w,h=term.getSize()
+  term.setCursorPos(1,h); term.setTextColor(colors.yellow); term.write('Press any key to return to the menu')
+  os.pullEventRaw('key')
  end
  local setBoot=opts.setBoot or function(name)
   -- get.lua prints as it works; keep that off the menu.
@@ -102,10 +111,13 @@ function M.run(opts)
     elseif a=='--monitor' then gameArgs[#gameArgs+1]=a; gameArgs[#gameArgs+1]=args[i+1] end
    end
   end
-  local ok=launch(it,gameArgs)
+  local ok,problem=launch(it,gameArgs)
+  -- A failed run (a crash, or Ctrl+T) keeps its output up until a key is pressed.
+  if not ok and not problem then pause(it) end
   palette.apply(t); t.setBackgroundColor(colors.black); t.clear()
   mode='browse'
-  if not ok then say(it.title:upper()..' STOPPED WITH AN ERROR') end
+  if problem then say(it.title:upper()..' '..problem)
+  elseif not ok then say(it.title:upper()..' STOPPED') end
  end
  local function press(b)
   local it=item()

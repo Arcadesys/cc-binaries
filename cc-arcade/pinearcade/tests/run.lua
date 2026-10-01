@@ -39,9 +39,10 @@ check(shell.run(dir..'/get.lua','boot','pinearcade','--dir',dir),'Back to the me
 -- The menu, through its event loop with a fake clock.
 local app=require('pinearcade.app')
 local t=window.create(term.current(),1,1,51,19,false)
-local now=0; local launched={}
+local now=0; local launched={}; local paused=0
 local opts={dir=dir,target=t,clock=function() return now end,
- launch=function(item,args) launched[#launched+1]=item.name; return item.name~='pinedungeon' end}
+ launch=function(item,args) launched[#launched+1]=item.name; return item.name~='pinedungeon' end,
+ pause=function() paused=paused+1 end}
 local co=coroutine.create(function() app.run(opts) end)
 local oldPull,oldTimer=os.pullEventRaw,os.startTimer
 os.pullEventRaw=function() return coroutine.yield() end; os.startTimer=function() return 1 end
@@ -61,7 +62,7 @@ key(keys.right)
 eq(state_().boot,'pinejack','START AT BOOT'); check(read('/startup.lua'):find('pinejack.lua',1,true),'Startup runs Pine Jack')
 check(text(18):find('PINE JACK NOW STARTS AT BOOT',1,true),'Confirmation shown')
 check(text(19):find('MENU AT BOOT',1,true),'Card offers the menu back')
-key(keys.enter); eq(launched[1],'pinejack','PLAY launches the game'); check(text(19):find('CHOOSE',1,true),'Back to browsing after play')
+key(keys.enter); eq(launched[1],'pinejack','PLAY launches the game'); eq(paused,0,'No pause after a clean run'); check(text(19):find('CHOOSE',1,true),'Back to browsing after play')
 -- Left past the first game wraps to the STARTUP tile.
 key(keys.left); key(keys.left); check(text(16):find('STARTUP',1,true),'Wraps to STARTUP')
 dump(t,'arcade-51-startup')
@@ -72,7 +73,7 @@ key(keys.backspace); check(text(19):find('NEXT',1,true),'Backspace leaves the ca
 -- Touch: the bar's thirds are the buttons; a game that errors is reported.
 key(keys.left); check(text(16):find('PINE DUNGEON',1,true),'Previous game')
 send('mouse_click',1,25,19); run(.6); send('mouse_click',1,25,19); run(.6)
-eq(launched[2],'pinedungeon','Clicked PLAY'); check(text(18):find('STOPPED WITH AN ERROR',1,true),'Error reported')
+eq(launched[2],'pinedungeon','Clicked PLAY'); check(text(18):find('STOPPED',1,true),'Stop reported'); eq(paused,1,'Output held after a failed run')
 send('terminate'); check(coroutine.status(co)=='dead','Terminate leaves the menu')
 os.pullEventRaw,os.startTimer=oldPull,oldTimer
 -- Screens at a monitor size, mid-turn and with a card open.
