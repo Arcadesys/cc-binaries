@@ -28,6 +28,11 @@ function ui.layout(w, h, phase)
   end
 
   if phase == "TITLE" then
+    if cols == 4 then
+      add(1,1,"club_prev","< MASCOT",2); add(1,3,"club_next","MASCOT >",2)
+    else
+      add(1,1,"club_prev","< MASCOT",1); add(1,2,"club_next","MASCOT >",1)
+    end
     add(2, 1, "start", "START", cols)
     add(3, 1, "help", "HELP", cols)
   elseif phase == "SCORECARD" then
@@ -77,7 +82,10 @@ function ui.draw(t, view, buttons, sceneRows)
   local bright = colors.yellow
 
   local rowY = math.max(1, h - math.min(3, math.floor(h / 5)) * 3 + 1)
-  if view.message and view.phase ~= "HELP" and view.phase ~= "PAUSED" then
+  if view.phase == "TITLE" then
+    local m=require("lib.mascots").get(view.mascot or 1)
+    writeAt(t,1,4,"CHOOSE YOUR MASCOT: "..m.name,colors.yellow,colors.black,w)
+  elseif view.message and view.phase ~= "HELP" and view.phase ~= "PAUSED" then
     writeAt(t, 1, 4, view.message, colors.yellow, colors.black, w)
   end
   for i = 1, #buttons do
