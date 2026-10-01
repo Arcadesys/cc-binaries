@@ -25,6 +25,7 @@ function M.run(opts)
  local seats=2
  local players -- {list=scores, current=i, avatars=mascot indexes} during a match
  local soloAvatar=1
+ local soloShowing=false
  local board=rules.full
  local tiles={}; for n=1,9 do tiles[n]={from=0,to=0,t0=0} end
  local selection=0
@@ -184,6 +185,7 @@ function M.run(opts)
  end
  -- Before a match: LEFT/RIGHT set how many play, CENTER starts.
  local function pickSoloMascot()
+  soloShowing=true
   while true do
    local mascot=avatarName(soloAvatar)
    say(('YOUR MASCOT: %s'):format(mascot),true)
@@ -233,6 +235,7 @@ function M.run(opts)
      pickSoloMascot()
      if (balance() or 0)<bet() then say('NOT ENOUGH CREDITS: LOWER THE BET'); wait(1)
      else round(1) end
+     soloShowing=false
     end
     resetBoard()
    end
@@ -285,7 +288,7 @@ function M.run(opts)
   end
   local party=now<celebrate
   local phase=math.floor(now*(party and 12 or 4))
-  local avatar=players and players.current and players.avatars and players.avatars[players.current] or (not players and soloAvatar or nil)
+  local avatar=players and players.current and players.avatars and players.avatars[players.current] or (soloShowing and soloAvatar or nil)
   local ready=false
   if request and request.ask then for _,o in ipairs(request.ask) do if o.name=='roll' then ready=true break end end end
   view:draw({tiles=view_tiles,players=players,dice=d,camera=camera,credits=balance(),bet=bet(),title=wallet.title,info=info,
