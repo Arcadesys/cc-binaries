@@ -7603,7 +7603,9 @@ function placement.executeBuildState(ctx, opts)
                 pointer = world.copyPosition(pointer),
             }
         end
-        if err == "blocked" then
+        -- A block in the way that couldn't be cleared (e.g. obsidian with
+        -- digging off) is reported as mismatched_block; wait it out in BLOCKED.
+        if err == "blocked" or err == "mismatched_block" then
             state.resumeState = "BUILD"
             logger.log(ctx, "warn", "Placement blocked; invoking BLOCKED state")
             return "BLOCKED", {
@@ -8099,16 +8101,16 @@ function strategy.generate(length, branchInterval, branchLength, torchInterval)
     local x, y, z = 0, 0, 0
     local facing = 0 -- 0: forward, 1: right, 2: back, 3: left
 
+    -- The spine is two blocks tall: clear the block above each spine cell
+    -- before scanning, so ore up there is taken rather than refilled.
+    pushStep(steps, x, y, z, facing, "dig_up")
     pushStep(steps, x, y, z, facing, "mine_neighbors")
 
     for i = 1, length do
         x, z = forward(x, z, facing)
         pushStep(steps, x, y, z, facing, "move")
+        pushStep(steps, x, y, z, facing, "dig_up")
         pushStep(steps, x, y, z, facing, "mine_neighbors")
-
-        if i % torchInterval == 0 then
-            pushStep(steps, x, y, z, facing, "place_torch")
-        end
 
         if i % branchInterval == 0 then
             -- Left branch
@@ -8170,6 +8172,12 @@ function strategy.generate(length, branchInterval, branchLength, torchInterval)
             -- Back from the right branch facing left; face down the spine.
             facing = turnRight(facing)
             pushStep(steps, x, y, z, facing, "turn", "right")
+        end
+
+        -- After any branches: a branch returns through the upper spine cell,
+        -- which is where the torch goes, and would dig it back up.
+        if i % torchInterval == 0 then
+            pushStep(steps, x, y, z, facing, "place_torch")
         end
 
         if i % 5 == 0 then
@@ -10842,6 +10850,15 @@ local function MINE(ctx)
             movement.turnRight(ctx)
         end
         
+    elseif step.type == "dig_up" then
+        -- Loop for gravel/sand falling into the gap; give up after a few.
+        for _ = 1, 10 do
+            if not turtle.detectUp() then
+                break
+            end
+            turtle.digUp()
+        end
+
     elseif step.type == "mine_neighbors" then
         mining.scanAndMineNeighbors(ctx)
         
@@ -10851,8 +10868,9 @@ local function MINE(ctx)
             ctx.resumeState = "MINE"
             return "RESTOCK"
         end
-        if not turtle.placeDown() then
-            turtle.placeUp()
+        -- Head height in the two-tall spine; the floor is the fallback.
+        if not turtle.placeUp() then
+            turtle.placeDown()
         end
         
     elseif step.type == "dump_trash" then

@@ -371,7 +371,9 @@ function placement.executeBuildState(ctx, opts)
                 pointer = world.copyPosition(pointer),
             }
         end
-        if err == "blocked" then
+        -- A block in the way that couldn't be cleared (e.g. obsidian with
+        -- digging off) is reported as mismatched_block; wait it out in BLOCKED.
+        if err == "blocked" or err == "mismatched_block" then
             state.resumeState = "BUILD"
             logger.log(ctx, "warn", "Placement blocked; invoking BLOCKED state")
             return "BLOCKED", {
