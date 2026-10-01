@@ -64,7 +64,27 @@ local function run(args)
     local index = 1
     while index <= #args do
         local value = args[index]
-        if value == "--verbose" then
+        if value == "--resume" then
+            ctx.config.resume = true
+        elseif value == "--job" or value == "--dimension" or value == "--heading" or value == "--output-side" or value == "--supply-side" or value == "--checkpoint" then
+            index = index + 1
+            local fields = { ["--job"]="job", ["--dimension"]="dimension", ["--heading"]="heading", ["--output-side"]="outputSide", ["--supply-side"]="supplySide", ["--checkpoint"]="checkpointPath" }
+            ctx.config[fields[value]] = args[index]
+        elseif value == "--home" or value == "--bounds-min" or value == "--bounds-max" then
+            local point = {x=tonumber(args[index+1]), y=tonumber(args[index+2]), z=tonumber(args[index+3])}
+            if value == "--home" then ctx.config.home = point
+            else
+                ctx.config.bounds = ctx.config.bounds or {}
+                ctx.config.bounds[value == "--bounds-min" and "min" or "max"] = point
+            end
+            index = index + 3
+        elseif value == "--fuel-margin" or value == "--torch-reserve" or value == "--fill-reserve" then
+            local fields = { ["--fuel-margin"]="fuelMargin", ["--torch-reserve"]="torchReserve", ["--fill-reserve"]="fillReserve" }
+            index = index + 1; ctx.config[fields[value]] = tonumber(args[index]) or -1
+        elseif value == "--fuel-item" or value == "--torch-item" or value == "--fill-item" then
+            local fields = { ["--fuel-item"]="fuelItem", ["--torch-item"]="torchItem", ["--fill-item"]="fillItem" }
+            index = index + 1; ctx.config[fields[value]] = args[index]
+        elseif value == "--verbose" then
             ctx.config.verbose = true
         elseif value == "mine" then
             ctx.config.mode = "mine"
@@ -90,16 +110,16 @@ local function run(args)
             ctx.config.depth = tonumber(args[index])
         elseif value == "--length" then
             index = index + 1
-            ctx.config.length = tonumber(args[index])
+            ctx.config.length = tonumber(args[index]) or -1
         elseif value == "--branch-interval" then
             index = index + 1
-            ctx.config.branchInterval = tonumber(args[index])
+            ctx.config.branchInterval = tonumber(args[index]) or -1
         elseif value == "--branch-length" then
             index = index + 1
-            ctx.config.branchLength = tonumber(args[index])
+            ctx.config.branchLength = tonumber(args[index]) or -1
         elseif value == "--torch-interval" then
             index = index + 1
-            ctx.config.torchInterval = tonumber(args[index])
+            ctx.config.torchInterval = tonumber(args[index]) or -1
         elseif not value:find("^--") and not ctx.config.schemaPath and ctx.config.mode ~= "mine" and ctx.config.mode ~= "farm" then
             ctx.config.schemaPath = value
         end
@@ -109,6 +129,9 @@ local function run(args)
     if not ctx.config.schemaPath and ctx.config.mode ~= "mine" and ctx.config.mode ~= "farm" then
         ctx.config.schemaPath = "schema.json"
     end
+
+    if ctx.config.home then ctx.config.home.facing = ctx.config.heading end
+    ctx.config.heading = nil
 
     -- Initialize logger
     local logOpts = {
@@ -129,11 +152,39 @@ local function run(args)
         end
     end
 
+    local miningTimer
     while ctx.state ~= "EXIT" do
         local stateHandler = states[ctx.state]
         if not stateHandler then
             ctx.logger:error("Unknown state: " .. tostring(ctx.state), buildPayload(ctx))
             break
+        end
+
+        if ctx.config.mode == "mine" and ctx.state == "MINE" then
+            local miner = require("lib_safe_miner")
+            local status = require("lib_mining_status")
+            status.render(ctx, not ctx.startConfirmed)
+            if ctx.startConfirmed and not miningTimer then miningTimer = os.startTimer(0.05) end
+            local timer = miningTimer
+            local event, value = os.pullEvent()
+            local runStep = event == "timer" and value == timer and ctx.startConfirmed
+            if runStep then miningTimer = nil end
+            if event == "key" and status.key(ctx, value) then
+                runStep = false
+            elseif event == "key" and keys and value == keys.q then
+                ctx.state = miner.requestStop(ctx)
+            elseif event == "key" and keys and value == keys.r and ctx.startConfirmed then
+                ctx.state = miner.requestReturn(ctx)
+            elseif event == "key" and keys and value == keys.enter then
+                ctx.startConfirmed = true
+            elseif event == "timer" and value == timer then
+                -- Run one bounded instruction below.
+            end
+            if ctx.state == "EXIT" then status.render(ctx); break end
+            if ctx.state ~= "MINE" then stateHandler = states[ctx.state]
+            elseif not runStep then
+                stateHandler = function() return "MINE" end
+            end
         end
 
         ctx.logger:debug("Entering state: " .. ctx.state)
@@ -161,7 +212,18 @@ local function run(args)
         sleep(0)
     end
 
-    ctx.logger:info("Agent finished.")
+    if ctx.config.mode == "mine" then
+        local status=require("lib_mining_status")
+        status.render(ctx)
+        if ctx.phase=="NEEDS_HELP" and os and os.pullEvent and keys then
+            while true do
+                local event,key=os.pullEvent()
+                if event=="key" and key==keys.q then break end
+                if event=="key" and status.key(ctx,key) then status.render(ctx) end
+            end
+        end
+    else ctx.logger:info("Agent finished.") end
+    return ctx
 end
 
 local module = { run = run }
@@ -183,6 +245,7 @@ Graphical Schema Designer (Paint-style)
 local ui = require("lib_ui")
 local json = require("lib_json")
 local items = require("lib_items")
+local schema_utils = require("lib_schema")
 
 local designer = {}
 
@@ -224,48 +287,55 @@ local TOOLS = {
 
 -- --- State ---
 
-local state = {
-    running = true,
-    w = 14, h = 14, d = 5, -- Canvas dimensions
-    data = {}, -- [x][y][z] = material_index (0 or nil for air)
-    palette = {}, -- Initialized from DEFAULT_MATERIALS
-    paletteEditMode = false,
-    
-    view = {
+local state = {}
+
+local function resetState()
+    state.running = true
+    state.w = 14
+    state.h = 14
+    state.d = 5
+    state.data = {} -- [x][y][z] = material_index (0 or nil for air)
+    state.meta = {} -- [x][y][z] = meta table
+    state.palette = {}
+    state.paletteEditMode = false
+    state.offset = { x = 0, y = 0, z = 0 }
+
+    state.view = {
         layer = 0, -- Current Y level
         offsetX = 4, -- Screen X offset of canvas
         offsetY = 3, -- Screen Y offset of canvas
         scrollX = 0,
         scrollY = 0,
-    },
-    
-    menuOpen = false,
-    inventoryOpen = false,
-    searchOpen = false,
-    searchQuery = "",
-    searchResults = {},
-    searchScroll = 0,
-    dragItem = nil, -- { id, sym, color }
-    
-    tool = TOOLS.PENCIL,
-    primaryColor = 1, -- Index in palette
-    secondaryColor = 0, -- 0 = Air/Eraser
-    
-    mouse = {
+    }
+
+    state.menuOpen = false
+    state.inventoryOpen = false
+    state.searchOpen = false
+    state.searchQuery = ""
+    state.searchResults = {}
+    state.searchScroll = 0
+    state.dragItem = nil -- { id, sym, color }
+
+    state.tool = TOOLS.PENCIL
+    state.primaryColor = 1 -- Index in palette
+    state.secondaryColor = 0 -- 0 = Air/Eraser
+
+    state.mouse = {
         down = false,
         drag = false,
         startX = 0, startY = 0, -- Canvas coords
         currX = 0, currY = 0,   -- Canvas coords
         btn = 1
-    },
-    
-    status = "Ready"
-}
+    }
 
--- Initialize palette
-for i, m in ipairs(DEFAULT_MATERIALS) do
-    state.palette[i] = { id = m.id, color = m.color, sym = m.sym }
+    state.status = "Ready"
+
+    for i, m in ipairs(DEFAULT_MATERIALS) do
+        state.palette[i] = { id = m.id, color = m.color, sym = m.sym }
+    end
 end
+
+resetState()
 
 -- --- Helpers ---
 
@@ -280,17 +350,177 @@ local function getBlock(x, y, z)
     return state.data[x][y][z] or 0
 end
 
-local function setBlock(x, y, z, matIdx)
+local function setBlock(x, y, z, matIdx, meta)
     if x < 0 or x >= state.w or z < 0 or z >= state.h or y < 0 or y >= state.d then return end
-    
+
     if not state.data[x] then state.data[x] = {} end
     if not state.data[x][y] then state.data[x][y] = {} end
-    
+    if not state.meta[x] then state.meta[x] = {} end
+    if not state.meta[x][y] then state.meta[x][y] = {} end
+
     if matIdx == 0 then
         state.data[x][y][z] = nil
+        if state.meta[x] and state.meta[x][y] then
+            state.meta[x][y][z] = nil
+        end
     else
         state.data[x][y][z] = matIdx
+        state.meta[x][y][z] = meta or {}
     end
+end
+
+local function getBlockMeta(x, y, z)
+    if not state.meta[x] or not state.meta[x][y] then return {} end
+    return schema_utils.cloneMeta(state.meta[x][y][z])
+end
+
+local function findItemDef(id)
+    for _, item in ipairs(items) do
+        if item.id == id then
+            return item
+        end
+    end
+    return nil
+end
+
+local function ensurePaletteMaterial(material)
+    for idx, mat in ipairs(state.palette) do
+        if mat.id == material then
+            return idx
+        end
+    end
+
+    local fallback = findItemDef(material)
+    local entry = {
+        id = material,
+        color = fallback and fallback.color or colors.white,
+        sym = fallback and fallback.sym or "?",
+    }
+
+    table.insert(state.palette, entry)
+    return #state.palette
+end
+
+local function clearCanvas()
+    state.data = {}
+    state.meta = {}
+end
+
+local function loadCanonical(schema, metadata)
+    if type(schema) ~= "table" then
+        return false, "invalid_schema"
+    end
+
+    clearCanvas()
+
+    local bounds = schema_utils.newBounds()
+    local blockCount = 0
+
+    for xKey, xColumn in pairs(schema) do
+        if type(xColumn) == "table" then
+            local x = tonumber(xKey) or xKey
+            if type(x) ~= "number" then return false, "invalid_coordinate" end
+            for yKey, yColumn in pairs(xColumn) do
+                if type(yColumn) == "table" then
+                    local y = tonumber(yKey) or yKey
+                    if type(y) ~= "number" then return false, "invalid_coordinate" end
+                    for zKey, block in pairs(yColumn) do
+                        if type(block) == "table" and block.material then
+                            local z = tonumber(zKey) or zKey
+                            if type(z) ~= "number" then return false, "invalid_coordinate" end
+                            schema_utils.updateBounds(bounds, x, y, z)
+                            blockCount = blockCount + 1
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    if blockCount == 0 then
+        state.status = "Loaded empty schema"
+        return true
+    end
+
+    state.offset = {
+        x = bounds.min.x,
+        y = bounds.min.y,
+        z = bounds.min.z,
+    }
+
+    state.w = math.max(1, (bounds.max.x - bounds.min.x) + 1)
+    state.d = math.max(1, (bounds.max.y - bounds.min.y) + 1)
+    state.h = math.max(1, (bounds.max.z - bounds.min.z) + 1)
+
+    for xKey, xColumn in pairs(schema) do
+        if type(xColumn) == "table" then
+            local x = tonumber(xKey) or xKey
+            if type(x) ~= "number" then return false, "invalid_coordinate" end
+            for yKey, yColumn in pairs(xColumn) do
+                if type(yColumn) == "table" then
+                    local y = tonumber(yKey) or yKey
+                    if type(y) ~= "number" then return false, "invalid_coordinate" end
+                    for zKey, block in pairs(yColumn) do
+                        if type(block) == "table" and block.material then
+                            local z = tonumber(zKey) or zKey
+                            if type(z) ~= "number" then return false, "invalid_coordinate" end
+                            local matIdx = ensurePaletteMaterial(block.material)
+                            local localX = x - state.offset.x
+                            local localY = y - state.offset.y
+                            local localZ = z - state.offset.z
+                            setBlock(localX, localY, localZ, matIdx, schema_utils.cloneMeta(block.meta))
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    state.status = string.format("Loaded %d blocks", blockCount)
+    if metadata and metadata.path then
+        state.status = state.status .. " from " .. metadata.path
+    end
+
+    return true
+end
+
+local function exportCanonical()
+    local schema = {}
+    local bounds = schema_utils.newBounds()
+    local total = 0
+
+    for x, xColumn in pairs(state.data) do
+        for y, yColumn in pairs(xColumn) do
+            for z, matIdx in pairs(yColumn) do
+                local mat = getMaterial(matIdx)
+                if mat then
+                    local worldX = x + state.offset.x
+                    local worldY = y + state.offset.y
+                    local worldZ = z + state.offset.z
+                    schema[worldX] = schema[worldX] or {}
+                    schema[worldX][worldY] = schema[worldX][worldY] or {}
+                    schema[worldX][worldY][worldZ] = {
+                        material = mat.id,
+                        meta = getBlockMeta(x, y, z),
+                    }
+                    schema_utils.updateBounds(bounds, worldX, worldY, worldZ)
+                    total = total + 1
+                end
+            end
+        end
+    end
+
+    local info = { totalBlocks = total }
+    if total > 0 then
+        info.bounds = bounds
+    end
+
+    return schema, info
+end
+
+local function exportVoxelDefinition()
+    local canonical, info = exportCanonical()
+    return schema_utils.canonicalToVoxelDefinition(canonical), info
 end
 
 -- --- Algorithms ---
@@ -440,7 +670,7 @@ local function drawInventory()
     for row = 0, 3 do
         for col = 0, 3 do
             local slot = row * 4 + col + 1
-            local item = turtle.getItemDetail(slot)
+            local item = turtle and turtle.getItemDetail(slot)
             
             term.setCursorPos(ix + 1 + (col * 4), iy + 1 + row)
             
@@ -689,24 +919,12 @@ local function saveSchema()
     local name = read()
     if name == "" then return end
     if not name:find("%.json$") then name = name .. ".json" end
-    
-    -- Convert to sparse format for saving
-    local export = {}
-    for x, yRow in pairs(state.data) do
-        for y, zRow in pairs(yRow) do
-            for z, matIdx in pairs(zRow) do
-                local mat = getMaterial(matIdx)
-                if mat then
-                    if not export[tostring(x)] then export[tostring(x)] = {} end
-                    if not export[tostring(x)][tostring(y)] then export[tostring(x)][tostring(y)] = {} end
-                    export[tostring(x)][tostring(y)][tostring(z)] = { material = mat.id }
-                end
-            end
-        end
-    end
-    
+    if arcadeos and name:sub(1, 1) ~= "/" then name = "/home/" .. name end
+
+    local exportDef = exportVoxelDefinition()
+
     local f = fs.open(name, "w")
-    f.write(json.encode(export))
+    f.write(json.encode(exportDef))
     f.close()
     state.status = "Saved to " .. name
 end
@@ -802,9 +1020,19 @@ end
 
 -- --- Main ---
 
-function designer.run()
+function designer.run(opts)
+    opts = opts or {}
+    resetState()
+
+    if opts.schema then
+        local ok, err = loadCanonical(opts.schema, opts.metadata)
+        if not ok then
+            return false, err
+        end
+    end
+
     state.running = true
-    
+
     while state.running do
         drawUI()
         drawCanvas()
@@ -812,29 +1040,29 @@ function designer.run()
         drawInventory()
         drawSearch()
         drawDragItem()
-        
+
         local event, p1, p2, p3 = os.pullEvent()
-        
+
         if event == "char" and state.searchOpen then
             state.searchQuery = state.searchQuery .. p1
             updateSearchResults()
-            
+
         elseif event == "mouse_scroll" and state.searchOpen then
             local dir = p1
             state.searchScroll = math.max(0, state.searchScroll + dir)
-            
+
         elseif event == "mouse_click" then
             local btn, mx, my = p1, p2, p3
             state.mouse.screenX = mx
             state.mouse.screenY = my
             local handled = false
-            
+
             -- 0. Check Search (Topmost)
             if state.searchOpen then
                 local w, h = term.getSize()
                 local sw, sh = 24, 14
                 local sx, sy = math.floor((w - sw)/2), math.floor((h - sh)/2)
-                
+
                 if mx >= sx and mx < sx + sw and my >= sy and my < sy + sh then
                     -- Inside Search Window
                     if my >= sy + 3 then
@@ -851,7 +1079,7 @@ function designer.run()
                     handled = true
                 end
             end
-            
+
             -- 1. Check Menu (Topmost)
             if not handled and state.menuOpen then
                 local w, h = term.getSize()
@@ -864,7 +1092,7 @@ function designer.run()
                         elseif options[idx] == "Inventory" then state.inventoryOpen = not state.inventoryOpen
                         elseif options[idx] == "Resize" then resizeCanvas()
                         elseif options[idx] == "Save" then saveSchema()
-                        elseif options[idx] == "Clear" then state.data = {}
+                        elseif options[idx] == "Clear" then clearCanvas()
                         -- Load logic...
                         end
                         if options[idx] ~= "Inventory" then state.menuOpen = false end
@@ -876,13 +1104,13 @@ function designer.run()
                     handled = true -- Consume click
                 end
             end
-            
+
             -- 2. Check Inventory (Topmost)
             if not handled and state.inventoryOpen then
                 local w, h = term.getSize()
                 local iw, ih = 18, 6
                 local ix, iy = math.floor((w - iw)/2), math.floor((h - ih)/2)
-                
+
                 if mx >= ix and mx < ix + iw and my >= iy and my < iy + ih then
                     -- Check slot click
                     local relX, relY = mx - ix - 1, my - iy - 1
@@ -891,7 +1119,7 @@ function designer.run()
                         local row = relY
                         if col >= 0 and col <= 3 and row >= 0 and row <= 3 then
                             local slot = row * 4 + col + 1
-                            local item = turtle.getItemDetail(slot)
+                            local item = turtle and turtle.getItemDetail(slot)
                             if item then
                                 state.dragItem = {
                                     id = item.name,
@@ -904,13 +1132,13 @@ function designer.run()
                     handled = true
                 end
             end
-            
+
             -- 3. Check [M] Button
             if not handled and mx >= 1 and mx <= 3 and my == 1 then
                 state.menuOpen = not state.menuOpen
                 handled = true
             end
-            
+
             -- 4. Check Palette (Drop Target & Selection)
             local palX = 2 + state.w + 2
             if not handled and mx >= palX and mx <= palX + 18 then -- Expanded for Search button
@@ -918,8 +1146,8 @@ function designer.run()
                     -- Check Edit vs Search
                     if mx >= palX + 14 and mx <= palX + 17 then
                         state.searchOpen = not state.searchOpen
-                        if state.searchOpen then 
-                            state.searchQuery = "" 
+                        if state.searchOpen then
+                            state.searchQuery = ""
                             updateSearchResults()
                         end
                     elseif mx <= palX + 13 then
@@ -937,7 +1165,7 @@ function designer.run()
                     handled = true
                 end
             end
-            
+
             -- 5. Check Tools
             if not handled and mx >= 1 and mx <= 3 and my >= 3 and my < 3 + 8 then
                 local idx = my - 2
@@ -945,12 +1173,12 @@ function designer.run()
                 if toolsList[idx] then state.tool = toolsList[idx] end
                 handled = true
             end
-            
+
             -- 6. Check Canvas
             if not handled then
                 local cx = mx - state.view.offsetX
                 local cy = my - state.view.offsetY
-                
+
                 if cx >= 0 and cx < state.w and cy >= 0 and cy < state.h then
                     state.mouse.down = true
                     state.mouse.btn = btn
@@ -958,37 +1186,37 @@ function designer.run()
                     state.mouse.startY = cy
                     state.mouse.currX = cx
                     state.mouse.currY = cy
-                    
+
                     if state.tool == TOOLS.PENCIL or state.tool == TOOLS.BUCKET or state.tool == TOOLS.PICKER then
                         applyTool(cx, cy, btn)
                     end
                 end
             end
-            
+
         elseif event == "mouse_drag" then
             local btn, mx, my = p1, p2, p3
             state.mouse.screenX = mx
             state.mouse.screenY = my
             local cx = mx - state.view.offsetX
             local cy = my - state.view.offsetY
-            
+
             if state.mouse.down then
                 -- Clamp to canvas
                 cx = math.max(0, math.min(state.w - 1, cx))
                 cy = math.max(0, math.min(state.h - 1, cy))
-                
+
                 state.mouse.currX = cx
                 state.mouse.currY = cy
                 state.mouse.drag = true
-                
+
                 if state.tool == TOOLS.PENCIL then
                     applyTool(cx, cy, state.mouse.btn)
                 end
             end
-            
+
         elseif event == "mouse_up" then
             local btn, mx, my = p1, p2, p3
-            
+
             -- Handle Drag Drop to Palette
             if state.dragItem then
                 local palX = 2 + state.w + 2
@@ -1009,10 +1237,10 @@ function designer.run()
             end
             state.mouse.down = false
             state.mouse.drag = false
-            
+
         elseif event == "key" then
             local key = p1
-            
+
             if state.searchOpen then
                 if key == keys.backspace then
                     state.searchQuery = state.searchQuery:sub(1, -2)
@@ -1039,13 +1267,21 @@ function designer.run()
                 end
                 if key == keys.s then saveSchema() end
                 if key == keys.r then resizeCanvas() end
-                if key == keys.c then state.data = {} end -- Clear all
+                if key == keys.c then clearCanvas() end -- Clear all
                 if key == keys.pageUp then state.view.layer = math.min(state.d - 1, state.view.layer + 1) end
                 if key == keys.pageDown then state.view.layer = math.max(0, state.view.layer - 1) end
             end
         end
     end
+
+    if opts.returnSchema then
+        return exportCanonical()
+    end
 end
+
+designer.loadCanonical = loadCanonical
+designer.exportCanonical = exportCanonical
+designer.exportVoxelDefinition = exportVoxelDefinition
 
 return designer
 
@@ -4552,6 +4788,10 @@ function json_utils.decodeJson(text)
     return nil, "json_decoder_unavailable"
 end
 
+function json_utils.encode(value)
+    return textutils.serializeJSON(value)
+end
+
 return json_utils
 
 ]===]
@@ -5015,110 +5255,407 @@ end
 return logger
 
 ]===]
-bundled_modules["lib_mining"] = [===[
---[[
-Mining library for CC:Tweaked turtles.
-Handles ore detection, extraction, and hole filling.
-]]
-
----@diagnostic disable: undefined-global
-
-local mining = {}
-local inventory = require("lib_inventory")
-local movement = require("lib_movement")
-local logger = require("lib_logger")
-
--- Blocks that are considered "trash" and should be ignored during ore scanning.
--- Also used to determine what blocks can be used to fill holes.
-mining.TRASH_BLOCKS = inventory.DEFAULT_TRASH
-
--- Blocks that should NEVER be placed to fill holes (liquids, gravity blocks, etc)
-mining.FILL_BLACKLIST = {
-    ["minecraft:air"] = true,
-    ["minecraft:water"] = true,
-    ["minecraft:lava"] = true,
-    ["minecraft:sand"] = true,
-    ["minecraft:gravel"] = true,
-    ["minecraft:torch"] = true,
-    ["minecraft:bedrock"] = true,
-}
-
---- Check if a block is considered "ore" (valuable)
-function mining.isOre(name)
-    if not name then return false end
-    return not mining.TRASH_BLOCKS[name]
+bundled_modules["lib_mine_policy"] = [===[
+-- Fail-closed mining policy. No tags or name fragments confer dig permission.
+local policy = {}
+local strategy = require('lib_strategy_branchmine')
+local terrain, ores = {}, {}
+for _,n in ipairs({'stone','deepslate','granite','diorite','andesite','tuff','calcite','dirt','grass_block','cobblestone','cobbled_deepslate','sand','red_sand','gravel','netherrack','basalt','blackstone','end_stone'}) do terrain['minecraft:'..n]=true end
+for _,n in ipairs({'coal','iron','copper','gold','redstone','emerald','lapis','diamond'}) do ores['minecraft:'..n..'_ore']=true; ores['minecraft:deepslate_'..n..'_ore']=true end
+for _,n in ipairs({'nether_gold_ore','nether_quartz_ore','ancient_debris'}) do ores['minecraft:'..n]=true end
+policy.TERRAIN, policy.ORES = terrain, ores
+function policy.key(p) return p.x..','..p.y..','..p.z end
+local function protected(name)
+    return type(name)~='string' or name:find('chest',1,true) or name:find('barrel',1,true) or name:find('shulker',1,true) or name:find('turtle',1,true) or name:find('computer',1,true) or name:find('machine',1,true) or name:find('furnace',1,true) or name:find('hopper',1,true) or name:find('spawner',1,true)
 end
-
---- Find a suitable trash block in inventory to use for filling
-local function findFillMaterial(ctx)
-    inventory.scan(ctx)
-    local state = inventory.ensureState(ctx)
-    if not state or not state.slots then return nil end
-    for slot, item in pairs(state.slots) do
-        if mining.TRASH_BLOCKS[item.name] and not mining.FILL_BLACKLIST[item.name] then
-            return slot, item.name
-        end
-    end
-    return nil
+function policy.classify(block, config)
+    local name=type(block)=='table' and block.name or block
+    if protected(name) then return 'protected' end
+    if name=='minecraft:water' or name=='minecraft:lava' then return 'fluid' end
+    if ores[name] or (type(config)=='table' and type(config.mineableOres)=='table' and config.mineableOres[name]==true) then return 'ore' end
+    if terrain[name] or (type(config)=='table' and type(config.mineableBlocks)=='table' and config.mineableBlocks[name]==true) then return 'terrain' end
+    return 'unknown'
 end
-
---- Mine a block in a specific direction if it's valuable, then fill the hole
--- @param dir "front", "up", "down"
-function mining.mineAndFill(ctx, dir)
-    local inspect, dig, place
-    if dir == "front" then
-        inspect = turtle.inspect
-        dig = turtle.dig
-        place = turtle.place
-    elseif dir == "up" then
-        inspect = turtle.inspectUp
-        dig = turtle.digUp
-        place = turtle.placeUp
-    elseif dir == "down" then
-        inspect = turtle.inspectDown
-        dig = turtle.digDown
-        place = turtle.placeDown
-    else
-        return false, "Invalid direction"
-    end
-
-    local hasBlock, data = inspect()
-    if hasBlock and mining.isOre(data.name) then
-        logger.log(ctx, "info", "Mining valuable: " .. data.name)
-        if dig() then
-            -- Attempt to fill the hole
-            local slot = findFillMaterial(ctx)
-            if slot then
-                turtle.select(slot)
-                place()
-            else
-                logger.log(ctx, "warn", "No trash blocks available to fill hole")
+function policy.create(origin, steps, config)
+    local p={allowed={},knownAir={},config=config or {},maxFallingBlocks=8,placedTorches={}}
+    p.knownAir[policy.key(origin)]=true
+    local failure
+    local function allow(v)
+        -- The bay and its floor/ceiling/storage are never neighbor excavation.
+        if v.z<1 then return end
+        local world=strategy.localToWorld(origin,v)
+        local bounds=(config or {}).bounds
+        if bounds then
+            for _,axis in ipairs({'x','y','z'}) do
+                if not bounds.min or not bounds.max or type(bounds.min[axis])~='number' or type(bounds.max[axis])~='number' or bounds.min[axis]~=bounds.min[axis] or bounds.max[axis]~=bounds.max[axis] or math.abs(bounds.min[axis])==math.huge or math.abs(bounds.max[axis])==math.huge or world[axis]<bounds.min[axis] or world[axis]>bounds.max[axis] then
+                    failure='planned excavation outside configured bounds'; return
+                end
             end
-            return true
-        else
-            logger.log(ctx, "warn", "Failed to dig " .. data.name)
+        end
+        p.allowed[policy.key(world)]=true
+    end
+    for _,s in ipairs(steps) do
+        if s.type=='move' then allow(s) end
+        if s.torchTarget then allow(s.torchTarget) end
+        if s.type=='mine_neighbors' then
+            for _,d in ipairs({{1,0,0},{-1,0,0},{0,1,0},{0,-1,0},{0,0,1},{0,0,-1}}) do allow({x=s.x+d[1],y=s.y+d[2],z=s.z+d[3]}) end
         end
     end
+    if failure then return nil,failure end
+    return p
+end
+function policy.checkTarget(ctx,pos)
+    local p=ctx.miningPolicy
+    if not p then return false,'mining policy missing' end
+    if p.allowed[policy.key(pos)] or p.knownAir[policy.key(pos)] then return true end
+    return false,'outside excavation bounds'
+end
+function policy.checkDig(ctx,block,pos)
+    local ok,err=policy.checkTarget(ctx,pos); if not ok then return false,err end
+    if not ctx.miningPolicy.allowed[policy.key(pos)] then return false,'protected home cell' end
+    local kind=policy.classify(block,ctx.miningPolicy.config)
+    if kind=='ore' or kind=='terrain' then return true end
+    return false,kind..' block: '..tostring(block and block.name)
+end
+function policy.markAir(ctx,pos) ctx.miningPolicy.knownAir[policy.key(pos)]=true end
+return policy
+
+]===]
+bundled_modules["lib_mining"] = [===[
+-- Checked mining primitives; every failure is returned to the caller.
+local mining = {}
+local inventory = require('lib_inventory')
+local movement = require('lib_movement')
+local policy = require('lib_mine_policy')
+mining.TRASH_BLOCKS = inventory.DEFAULT_TRASH
+mining.FILL_BLACKLIST={['minecraft:sand']=true,['minecraft:red_sand']=true,['minecraft:gravel']=true}
+function mining.isOre(name) return policy.classify(name)=='ore' end
+local vectors={north={0,0,-1},east={1,0,0},south={0,0,1},west={-1,0,0}}
+function mining.target(ctx,dir)
+    local p=movement.getPosition(ctx)
+    local d=dir=='up' and {0,1,0} or dir=='down' and {0,-1,0} or vectors[movement.getFacing(ctx)]
+    return {x=p.x+d[1],y=p.y+d[2],z=p.z+d[3]}
+end
+local function apis(dir)
+    if dir=='front' then return turtle.inspect,turtle.dig,turtle.place
+    elseif dir=='up' then return turtle.inspectUp,turtle.digUp,turtle.placeUp
+    elseif dir=='down' then return turtle.inspectDown,turtle.digDown,turtle.placeDown end
+end
+local function fill(ctx,dir,pos)
+    local inspect,_,place=apis(dir)
+    for slot=1,16 do
+        local item=turtle.getItemDetail(slot)
+        if item and policy.classify(item.name)=='terrain' and not mining.FILL_BLACKLIST[item.name] then
+            if not turtle.select(slot) then return false,'fill selection failed' end
+            local ok,err=place(); if not ok then return false,'sealing failed: '..tostring(err) end
+            local present,block=inspect()
+            if not present or block.name~=item.name then return false,'seal verification failed' end
+            ctx.miningPolicy.knownAir[policy.key(pos)]=nil
+            return true
+        end
+    end
+    return false,'no permitted solid fill blocks'
+end
+function mining.prepareMove(ctx,dir)
+    local inspect,dig=apis(dir); if not inspect then return false,'invalid direction' end
+    local pos=mining.target(ctx,dir)
+    local ok,err=policy.checkTarget(ctx,pos); if not ok then return false,err end
+    local limit=ctx.miningPolicy.maxFallingBlocks or 8
+    if type(limit)~='number' or limit%1~=0 or limit<1 or limit>32 then return false,'invalid falling block limit' end
+    for count=0,limit do
+        local present,block=inspect()
+        if not present then
+            if ctx.miningPolicy.knownAir[policy.key(pos)] then return true end
+            return false,'unknown opening at '..policy.key(pos)
+        end
+        ok,err=policy.checkDig(ctx,block,pos); if not ok then return false,err end
+        if count==limit then return false,'falling block limit exceeded' end
+        -- One instruction may collect several different drops. Recheck before
+        -- each physical dig so a long scan/falling stack cannot spill inventory.
+        local empty=0
+        for slot=1,16 do if turtle.getItemCount(slot)==0 then empty=empty+1 end end
+        if empty<2 then return false,'inventory_capacity' end
+        ok,err=dig(); if not ok then return false,'dig failed: '..tostring(err) end
+        policy.markAir(ctx,pos)
+    end
+    return false,'falling block limit exceeded'
+end
+function mining.mineAndFill(ctx,dir)
+    if not ctx.miningPolicy then return false,'mining policy missing' end
+    local inspect=apis(dir); if not inspect then return false,'invalid direction' end
+    local pos=mining.target(ctx,dir)
+    local allowed=policy.checkTarget(ctx,pos)
+    if not allowed then return true end -- preserve bay and anything beyond bounds
+    local present,block=inspect()
+    if not present then
+        if ctx.miningPolicy.knownAir[policy.key(pos)] then return true end
+        return false,'unknown opening at '..policy.key(pos)
+    end
+    if ctx.miningPolicy.placedTorches and ctx.miningPolicy.placedTorches[policy.key(pos)] and (block.name=='minecraft:torch' or block.name=='minecraft:wall_torch') then return true end
+    local kind=policy.classify(block,ctx.miningPolicy.config)
+    if kind=='terrain' then return true end
+    if kind~='ore' then return false,kind..' block: '..tostring(block.name) end
+    local ok,err=mining.prepareMove(ctx,dir); if not ok then return false,err end
+    return fill(ctx,dir,pos)
+end
+function mining.scanAndMineNeighbors(ctx)
+    for _,dir in ipairs({'up','down'}) do
+        local ok,err=mining.mineAndFill(ctx,dir); if not ok then return false,err end
+    end
+    for i=1,4 do
+        local ok,err=mining.mineAndFill(ctx,'front'); if not ok then return false,err end
+        ok,err=movement.turnRight(ctx); if not ok then return false,err end
+    end
+    return true
+end
+function mining.placeTorch(ctx,dir)
+    if not ctx.miningPolicy then return false,'mining policy missing' end
+    dir=dir or 'down'
+    local inspect,_,place=apis(dir)
+    if not inspect then return false,'invalid torch direction' end
+    local pos=mining.target(ctx,dir)
+    local seen,existing=inspect()
+    if seen and ctx.miningPolicy.placedTorches and ctx.miningPolicy.placedTorches[policy.key(pos)] and (existing.name=='minecraft:torch' or existing.name=='minecraft:wall_torch') then return true end
+    local ok,err=mining.prepareMove(ctx,dir)
+    if not ok then return false,err end
+    local present=inspect(); if present then return false,'torch target obstructed' end
+    local name=(ctx.config or {}).torchItem or 'minecraft:torch'
+    -- Lifecycle service changes turtle slots directly; cached slot assignments
+    -- cannot identify the item that will actually be placed after resupply.
+    ok=inventory.selectMaterial(ctx,name,{force=true})
+    if not ok then ctx.missingMaterial=name; return false,'missing torches' end
+    local selected=turtle.getItemDetail(turtle.getSelectedSlot())
+    if not selected or selected.name~=name then return false,'selected torch item changed; placement stopped' end
+    ok,err=place(); if not ok then return false,'torch placement failed: '..tostring(err) end
+    local seen,block=inspect()
+    if not seen or (block.name~='minecraft:torch' and block.name~='minecraft:wall_torch') then return false,'torch verification failed' end
+    ctx.miningPolicy.knownAir[policy.key(pos)]=nil
+    ctx.miningPolicy.placedTorches=ctx.miningPolicy.placedTorches or {}
+    ctx.miningPolicy.placedTorches[policy.key(pos)]=true
+    return true
+end
+return mining
+
+]===]
+bundled_modules["lib_mining_checkpoint"] = [===[
+-- Durable mining journal. A staging file is deliberately a recovery blocker:
+-- an interrupted replacement may contain an action intent newer than the main file.
+local M = {}
+local fields = { 'config', 'origin', 'pose', 'path', 'workPath', 'workPose', 'pointer',
+    'phase', 'travelIndex', 'returnReason', 'intent', 'lastError', 'stoppedPhase', 'knownAir', 'placedTorches', 'identity', 'failedPhase' }
+M.fields = fields
+function M.path(ctx)
+    return ctx.config.checkpointPath or ('mining-' .. ctx.config.job .. '.checkpoint')
+end
+function M.save(ctx)
+    if not (fs and fs.open and fs.exists and fs.move and fs.delete and textutils) then
+        return false, 'Persistent filesystem unavailable'
+    end
+    local record = { version = 1 }
+    for _, key in ipairs(fields) do record[key] = ctx[key] end
+    if ctx.miningPolicy then record.knownAir = ctx.miningPolicy.knownAir; record.placedTorches = ctx.miningPolicy.placedTorches end
+    local path, stage = M.path(ctx), M.path(ctx) .. '.next'
+    if fs.exists(stage) then return false, 'Pending checkpoint write requires manual reconciliation' end
+    local ok, err = pcall(function()
+        local data = textutils.serialize(record)
+        local file = assert(fs.open(stage, 'w'), 'Checkpoint cannot be opened')
+        file.write(data); file.close()
+        local verify = assert(fs.open(stage, 'r'), 'Checkpoint cannot be verified')
+        local stored = verify.readAll(); verify.close()
+        assert(stored == data, 'Checkpoint readback mismatch')
+        if fs.exists(path) then fs.delete(path) end
+        fs.move(stage, path)
+    end)
+    return ok, ok and nil or tostring(err)
+end
+function M.load(ctx)
+    if not (fs and fs.exists and fs.open and textutils) then return nil, 'Persistent filesystem unavailable' end
+    local path = M.path(ctx)
+    if fs.exists(path .. '.next') then return nil, 'Interrupted checkpoint write; manual reconciliation required' end
+    if not fs.exists(path) then return false end
+    local ok, record = pcall(function()
+        local file = assert(fs.open(path, 'r'))
+        local contents = file.readAll(); file.close()
+        return textutils.unserialize(contents)
+    end)
+    if not ok or type(record) ~= 'table' or record.version ~= 1 then return nil, 'Invalid mining checkpoint' end
+    if record.intent then return nil, 'Interrupted action; pose or inventory uncertain. Reconcile manually; no automatic movement.' end
+    return record
+end
+return M
+
+]===]
+bundled_modules["lib_mining_setup"] = [===[
+-- One labelled keyboard question per screen. No turtle actions in setup.
+local strategy = require('lib_strategy_branchmine')
+local M = {}
+local function wrap(text,width)
+    local lines={}
+    while #text>width do
+        local cut=text:sub(1,width):match('^.*() ')
+        if cut and cut>1 then lines[#lines+1]=text:sub(1,cut-1);text=text:sub(cut+1)
+        else lines[#lines+1]=text:sub(1,width);text=text:sub(width+1) end
+    end
+    lines[#lines+1]=text;return lines
+end
+function M.renderPrompt(label,help,default,errorMessage)
+    if not term or not term.getSize then return end
+    local w,h=term.getSize()
+    if colors and term.setBackgroundColor then term.setBackgroundColor(colors.black);term.setTextColor(colors.white) end
+    term.clear()
+    local row=1
+    local function show(text)
+        for _,line in ipairs(wrap(text,w)) do
+            if row<=h-3 then term.setCursorPos(1,row);term.write(line);row=row+1 end
+        end
+    end
+    show('SAFE BRANCH MINE SETUP')
+    row=row+1;show(label);show(help)
+    if default then show('ENTER keeps: '..tostring(default)) end
+    if errorMessage then show('CHECK: '..errorMessage) end
+    term.setCursorPos(1,math.max(1,h-2));term.write(('Q + ENTER: CANCEL'):sub(1,w))
+    term.setCursorPos(1,math.max(1,h-1));term.write('VALUE: ');term.setCursorPos(8,math.max(1,h-1))
+end
+local function ask(label,help,default,parse)
+    local problem
+    while true do
+        M.renderPrompt(label,help,default,problem)
+        local answer=read()
+        if answer==nil or answer:lower()=='q' then return nil end
+        if answer=='' and default~=nil then answer=tostring(default) end
+        local value,err=parse(answer)
+        if value~=nil then return value end
+        problem=err or 'Enter a valid value.'
+    end
+end
+local function text(answer)
+    if answer=='' then return nil,'This field is required.' end
+    return answer
+end
+local function point(answer)
+    local x,y,z=answer:match('^%s*([+-]?%d+)[,%s]+([+-]?%d+)[,%s]+([+-]?%d+)%s*$')
+    if not x then return nil,'Use three integers: X Y Z.' end
+    return {x=tonumber(x),y=tonumber(y),z=tonumber(z)}
+end
+local function pointText(p) return p.x..' '..p.y..' '..p.z end
+local function number(max)
+    return function(answer)
+        local n=tonumber(answer)
+        if not n or n%1~=0 or n<1 or n>max then return nil,'Use an integer from 1 to '..max..'.' end
+        return n
+    end
+end
+local function choice(values)
+    return function(answer)
+        answer=answer:lower()
+        if values[answer] then return answer end
+        return nil,'Use '..table.concat(values,', ')..'.'
+    end
+end
+local function choices(list)
+    for _,value in ipairs(list) do list[value]=true end
+    return list
+end
+function M.collect()
+    local c={}
+    c.job=ask('JOB NAME','Use a unique name for this turtle.',nil,function(a)
+        if a:match('^[%w_-]+$') then return a end
+        return nil,'Use letters, numbers, dash or underscore.'
+    end);if not c.job then return nil end
+    c.mode=ask('NEW OR RESUME','Resume requires the same saved settings.','new',choice(choices({'new','resume'})));if not c.mode then return nil end
+    c.home=ask('HOME COORDINATES','Enter your marked home: X Y Z.',nil,point);if not c.home then return nil end
+    c.heading=ask('HOME HEADING','Enter north, east, south or west.',nil,choice(choices({'north','east','south','west'})));if not c.heading then return nil end
+    c.home.facing=c.heading
+    c.dimension=ask('WORLD / DIMENSION','Enter its exact ID, e.g. minecraft:overworld.',nil,text);if not c.dimension then return nil end
+    for _,field in ipairs({{'length','SPINE LENGTH',6,256},{'interval','BRANCH INTERVAL',3,4096},{'branch','BRANCH LENGTH',2,64},{'torch','TORCH INTERVAL',3,4096}}) do
+        c[field[1]]=ask(field[2],'Tiny pilot defaults: 6 / 3 / 2 / 3.',field[3],number(field[4]));if not c[field[1]] then return nil end
+    end
+    c.output=ask('OUTPUT INVENTORY SIDE','Separate receiving inventory at home.','down',choice(choices({'front','up','down'})));if not c.output then return nil end
+    c.supply=ask('SUPPLY INVENTORY SIDE','Fuel, torches and solid fill at home.','up',function(a)
+        local side,err=choice(choices({'front','up','down'}))(a)
+        if side==c.output then return nil,'Supply must differ from output.' end
+        return side,err
+    end);if not c.supply then return nil end
+    local plan=strategy.generate(c.length,c.interval,c.branch,c.torch)
+    local b=plan.bounds
+    local min,max={x=math.huge,y=math.huge,z=math.huge},{x=-math.huge,y=-math.huge,z=-math.huge}
+    for _,x in ipairs({b.min.x,b.max.x}) do
+        for _,y in ipairs({b.min.y,b.max.y}) do
+            for _,z in ipairs({b.min.z,b.max.z}) do
+                local p=strategy.localToWorld(c.home,{x=x,y=y,z=z})
+                for _,axis in ipairs({'x','y','z'}) do min[axis]=math.min(min[axis],p[axis]);max[axis]=math.max(max[axis],p[axis]) end
+            end
+        end
+    end
+    c.min=ask('EXCAVATION BOUNDS MIN','Review proposed world limits: X Y Z.',pointText(min),point);if not c.min then return nil end
+    c.max=ask('EXCAVATION BOUNDS MAX','Include neighbours and torch niches.',pointText(max),point);if not c.max then return nil end
+    local argv={'mine','--job',c.job,'--dimension',c.dimension,'--heading',c.heading,
+        '--length',tostring(c.length),'--branch-interval',tostring(c.interval),'--branch-length',tostring(c.branch),
+        '--torch-interval',tostring(c.torch),'--output-side',c.output,'--supply-side',c.supply}
+    for _,field in ipairs({{'--home',c.home},{'--bounds-min',c.min},{'--bounds-max',c.max}}) do
+        argv[#argv+1]=field[1]
+        for _,axis in ipairs({'x','y','z'}) do argv[#argv+1]=tostring(field[2][axis]) end
+    end
+    if c.mode=='resume' then argv[#argv+1]='--resume' end
+    return argv
+end
+return M
+
+]===]
+bundled_modules["lib_mining_status"] = [===[
+-- High contrast reflow and keyboard paging, including every error-reason line.
+local M = {}
+function M.render(ctx, ready)
+    if not term or not term.getSize then return end
+    local w,h=term.getSize()
+    if term.setBackgroundColor and colors then term.setBackgroundColor(colors.black); term.setTextColor(colors.white) end
+    term.clear()
+    local title=ready and (ctx.config.resume and 'READY - VERIFY SAVED POSE' or 'READY - VERIFY HOME') or ctx.phase=='MINING' and 'MINING' or ctx.phase=='RETURNING' and 'RETURNING HOME' or ctx.phase=='RESUMING' and 'RETURNING TO WORK' or ctx.phase=='SERVICE' and 'HOME: UNLOAD / SUPPLY' or ctx.phase=='DONE' and 'DONE - HOME AND UNLOADED' or ctx.phase=='STOPPED' and 'STOPPED' or 'NEEDS HELP'
+    local lines={'JOB: '..tostring(ctx.config.job or '(required)'), 'STEP: '..tostring(ctx.pointer or 1)..' / '..tostring(ctx.strategy and #ctx.strategy or '?')}
+    local p=ctx.pose or ctx.config.home
+    if p then lines[#lines+1]='POSE: '..tostring(p.x)..', '..tostring(p.y)..', '..tostring(p.z)..' '..tostring(p.facing) end
+    lines[#lines+1]='WORLD: '..tostring(ctx.config.dimension or '(required)')
+    local b=ctx.config.bounds
+    if b and b.min and b.max then
+        lines[#lines+1]='BOUNDS MIN: '..tostring(b.min.x)..', '..tostring(b.min.y)..', '..tostring(b.min.z)
+        lines[#lines+1]='BOUNDS MAX: '..tostring(b.max.x)..', '..tostring(b.max.y)..', '..tostring(b.max.z)
+    end
+    lines[#lines+1]='OUTPUT: '..tostring(ctx.config.outputSide or 'down')..'  SUPPLY: '..tostring(ctx.config.supplySide or 'up')
+    if turtle and turtle.getFuelLevel then lines[#lines+1]='FUEL: '..tostring(turtle.getFuelLevel()) end
+    if ctx.lastError then lines[#lines+1]='REASON: '..ctx.lastError end
+    if ready then lines[#lines+1]=ctx.config.resume and 'Verify saved pose, heading and world.' or 'Verify home, heading and world.' end
+    local wrapped={}
+    for _,line in ipairs(lines) do
+        line=line:gsub('[\r\n]+',' ')
+        while #line>w do
+            local cut=line:sub(1,w):match('^.*() ')
+            if cut and cut>1 then
+                wrapped[#wrapped+1]=line:sub(1,cut-1); line=line:sub(cut+1)
+            else
+                wrapped[#wrapped+1]=line:sub(1,w); line=line:sub(w+1)
+            end
+        end
+        if #line>0 then wrapped[#wrapped+1]=line end
+    end
+    local capacity=math.max(1,h-4); local pages=math.max(1,math.ceil(#wrapped/capacity))
+    ctx.statusPage=math.min(math.max(1,ctx.statusPage or 1),pages); ctx.statusPages=pages
+    term.setCursorPos(1,1); term.write(title:sub(1,w))
+    for row=1,capacity do
+        local line=wrapped[(ctx.statusPage-1)*capacity+row]
+        if line then term.setCursorPos(1,row+1); term.write(line) end
+    end
+    term.setCursorPos(1,math.max(1,h-2)); term.write(('PAGE '..ctx.statusPage..'/'..pages..((ctx.phase=='DONE' or ctx.phase=='STOPPED') and not ready and '' or '  LEFT/RIGHT: DETAILS')):sub(1,w))
+    local controls=ready and 'ENTER: START   Q: STOP' or ctx.phase=='NEEDS_HELP' and 'Q: EXIT   LEFT/RIGHT: DETAILS' or (ctx.phase=='DONE' or ctx.phase=='STOPPED') and 'Returned to shell.' or 'Q: STOP   R: RETURN HOME'
+    term.setCursorPos(1,math.max(1,h-1)); term.write(controls:sub(1,w))
+    term.setCursorPos(1,h); term.write((ctx.phase=='NEEDS_HELP' and 'Reconcile before explicit resume.' or ctx.phase=='DONE' and 'Job complete; no automatic restart.' or ctx.phase=='STOPPED' and 'Saved. Explicit --resume to continue.' or ready and 'No action before ENTER confirmation.' or 'Keyboard: stop, return, view details.'):sub(1,w))
+end
+function M.key(ctx,key)
+    if not keys then return false end
+    if key==keys.right or key==keys.pageDown then ctx.statusPage=(ctx.statusPage or 1)+1; return true end
+    if key==keys.left or key==keys.pageUp then ctx.statusPage=math.max(1,(ctx.statusPage or 1)-1); return true end
     return false
 end
-
---- Scan all 6 directions around the turtle, mine ores, and fill holes.
--- The turtle will return to its original facing.
-function mining.scanAndMineNeighbors(ctx)
-    -- Check Up
-    mining.mineAndFill(ctx, "up")
-    
-    -- Check Down
-    mining.mineAndFill(ctx, "down")
-
-    -- Check 4 horizontal directions
-    for i = 1, 4 do
-        mining.mineAndFill(ctx, "front")
-        movement.turnRight(ctx)
-    end
-end
-
-return mining
+return M
 
 ]===]
 bundled_modules["lib_movement"] = [===[
@@ -5568,6 +6105,30 @@ local function moveWithRetries(ctx, opts, moveFns, delta)
     end
 
     local maxRetries, allowDig, allowAttack, delay = getMoveConfig(ctx, opts)
+    -- Mining is opt-in: builders retain their existing clearing behavior.
+    if ctx.miningPolicy then
+        local policy = require("lib_mine_policy")
+        local mining = require("lib_mining")
+        local target = vecAdd(state.position, delta)
+        local ok, err = policy.checkTarget(ctx, target)
+        if not ok then return false, err end
+        local dir = delta.y == 1 and "up" or delta.y == -1 and "down" or "front"
+        if allowDig then
+            ok, err = mining.prepareMove(ctx, dir)
+            if not ok then return false, err end
+        else
+            local present = moveFns.inspect()
+            if present then return false, "cleared return path obstructed" end
+            if not ctx.miningPolicy.knownAir[policy.key(target)] then
+                return false, "return path is not known clear"
+            end
+        end
+        -- Never attack, soft-clear, or dig a newly arrived falling block unchecked.
+        if not moveFns.move() then return false, "safe mining movement failed" end
+        state.position = target
+        policy.markAir(ctx, target)
+        return true
+    end
     if type(maxRetries) ~= "number" or maxRetries < 1 then
         maxRetries = 1
     else
@@ -7540,6 +8101,412 @@ end
 return reporter
 
 ]===]
+bundled_modules["lib_safe_miner"] = [===[
+-- Branch-mining lifecycle. Legacy builders and excavators do not use this engine.
+local strategy = require('lib_strategy_branchmine')
+local mining = require('lib_mining')
+local policy = require('lib_mine_policy')
+local journal = require('lib_mining_checkpoint')
+local inventory = require('lib_inventory')
+local M = {}
+local headings = { north=0, east=1, south=2, west=3 }
+local names = { [0]='north', [1]='east', [2]='south', [3]='west' }
+local vectors = { north={0,-1}, east={1,0}, south={0,1}, west={-1,0} }
+local function copy(t)
+    if type(t) ~= 'table' then return t end
+    local r = {}; for k,v in pairs(t) do r[k]=copy(v) end; return r
+end
+local function equal(a,b)
+    if type(a) ~= type(b) then return false end
+    if type(a) ~= 'table' then return a == b end
+    for k,v in pairs(a) do if not equal(v,b[k]) then return false end end
+    for k in pairs(b) do if a[k] == nil then return false end end
+    return true
+end
+local function samePosition(a,b) return a.x==b.x and a.y==b.y and a.z==b.z end
+local function fail(ctx, reason)
+    ctx.lastError=tostring(reason); ctx.failedPhase=ctx.phase; ctx.phase='NEEDS_HELP'
+    if ctx.pose and ctx.path and not ctx.intent then journal.save(ctx) end
+    return 'ERROR'
+end
+local function save(ctx)
+    local ok,err=journal.save(ctx)
+    if not ok then return false, 'Checkpoint failed: '..tostring(err) end
+    return true
+end
+local function transact(ctx, name, fn)
+    ctx.intent={ action=name, pointer=ctx.pointer, phase=ctx.phase, pose=copy(ctx.pose) }
+    local ok,err=save(ctx); if not ok then return false,err end
+    inventory.invalidate(ctx)
+    local ran,result,detail=pcall(fn)
+    inventory.invalidate(ctx)
+    if not ran then return false,'Interrupted/failed action: '..tostring(result)..'; manual reconciliation required' end
+    ctx.intent=nil
+    ok,err=save(ctx); if not ok then return false,err end
+    return result,detail
+end
+local function stock(ctx,name)
+    local n=0; for slot=1,16 do local item=turtle.getItemDetail(slot); if item and item.name==name then n=n+turtle.getItemCount(slot) end end
+    return n
+end
+local function emptySlots()
+    local n=0; for slot=1,16 do if turtle.getItemCount(slot)==0 then n=n+1 end end; return n
+end
+local function fuel(ctx,need)
+    local level=turtle.getFuelLevel()
+    if level=='unlimited' then return true end
+    if type(level)~='number' then return false,'Invalid fuel reading' end
+    if level>=need then return true end
+    for slot=1,16 do
+        local item=turtle.getItemDetail(slot)
+        if item and item.name==ctx.config.fuelItem then
+            turtle.select(slot)
+            while turtle.getItemCount(slot)>0 and turtle.getFuelLevel()<need do
+                if not turtle.refuel(1) then break end
+            end
+        end
+    end
+    return turtle.getFuelLevel()>=need, 'Insufficient fuel for recorded return route and reserve'
+end
+local function routeMoves(path,first,last)
+    local count=0
+    for i=first or 2,last or #path do if not samePosition(path[i-1],path[i]) then count=count+1 end end
+    return count
+end
+local function sync(ctx)
+    ctx.movement={ position={x=ctx.pose.x,y=ctx.pose.y,z=ctx.pose.z}, facing=ctx.pose.facing }
+end
+local function syncBack(ctx)
+    local p=ctx.movement.position
+    ctx.pose={x=p.x,y=p.y,z=p.z,facing=ctx.movement.facing}
+end
+local function turn(ctx,direction)
+    local ok,err=turtle[direction=='left' and 'turnLeft' or 'turnRight']()
+    if not ok then return false,'Turn failed: '..tostring(err) end
+    ctx.pose.facing=names[(headings[ctx.pose.facing]+(direction=='left' and 3 or 1))%4]
+    sync(ctx); return true
+end
+-- One checked primitive per return/resume step. No digging or attacking here.
+local function approach(ctx,target,excavate)
+    if type(target)~='table' then return false,'Invalid recorded target' end
+    if not samePosition(ctx.pose,target) then
+        local dx,dy,dz=target.x-ctx.pose.x,target.y-ctx.pose.y,target.z-ctx.pose.z
+        if math.abs(dx)+math.abs(dy)+math.abs(dz)~=1 then return false,'Recorded path is not adjacent' end
+        local action
+        if dy==1 then action='up' elseif dy==-1 then action='down'
+        else
+            local vector=vectors[ctx.pose.facing]
+            if dx==vector[1] and dz==vector[2] then action='forward'
+            elseif dx==-vector[1] and dz==-vector[2] and not excavate then action='back'
+            else
+                local required=dx==1 and 'east' or dx==-1 and 'west' or dz==1 and 'south' or 'north'
+                local delta=(headings[required]-headings[ctx.pose.facing])%4
+                return turn(ctx,delta==3 and 'left' or 'right')
+            end
+        end
+        if excavate then
+            local ok,err=mining.prepareMove(ctx,action=='forward' and 'front' or action)
+            if not ok then syncBack(ctx); return false,err end
+        end
+        local ok,err=turtle[action]()
+        if not ok then return false,'Movement failed on '..action..': '..tostring(err) end
+        ctx.pose.x,ctx.pose.y,ctx.pose.z=target.x,target.y,target.z
+        sync(ctx)
+        if ctx.miningPolicy and ctx.miningPolicy.knownAir then
+            ctx.miningPolicy.knownAir[target.x..','..target.y..','..target.z]=true
+        end
+        return true
+    end
+    if ctx.pose.facing~=target.facing then
+        local delta=(headings[target.facing]-headings[ctx.pose.facing])%4
+        return turn(ctx,delta==3 and 'left' or 'right')
+    end
+    return true
+end
+local function receiver(side)
+    if not peripheral or not peripheral.wrap then return nil,'Inventory receiver unavailable on '..side end
+    if peripheral.hasType and not peripheral.hasType(side,'inventory') then return nil,'No inventory on '..side end
+    local wrapped=peripheral.wrap(side)
+    if not wrapped or type(wrapped.list)~='function' then return nil,'Receiver is not a verified inventory on '..side end
+    local ok,items=pcall(wrapped.list)
+    if not ok or type(items)~='table' then return nil,'Cannot read receiver on '..side end
+    return wrapped
+end
+local function countListed(items,name)
+    local n=0; for _,item in pairs(items) do if item.name==name then n=n+item.count end end; return n
+end
+local dropMethods={front='drop',up='dropUp',down='dropDown'}
+local suckMethods={front='suck',up='suckUp',down='suckDown'}
+local function service(ctx)
+    if not equal(ctx.pose,ctx.origin) then return false,'Service requires exact home position and heading' end
+    local output,err=receiver(ctx.config.outputSide); if not output then return false,err end
+    local keep = {}
+    if ctx.returnReason~='complete' and ctx.returnReason~='manual' then
+        keep[ctx.config.fuelItem]=16
+        keep[ctx.config.torchItem]=ctx.config.torchReserve
+        keep[ctx.config.fillItem]=ctx.config.fillReserve
+    end
+    for slot=1,16 do
+        local item=turtle.getItemDetail(slot)
+        if item then
+            local before=turtle.getItemCount(slot)
+            local retained=math.min(before,keep[item.name] or 0)
+            keep[item.name]=math.max(0,(keep[item.name] or 0)-retained)
+            local amount=before-retained
+            if amount>0 then
+                local receivedBefore=countListed(output.list(),item.name)
+                turtle.select(slot)
+                local dropped=turtle[dropMethods[ctx.config.outputSide]](amount)
+                local transferred=before-turtle.getItemCount(slot)
+                local receivedAfter=countListed(output.list(),item.name)
+                if not dropped or transferred~=amount or receivedAfter-receivedBefore~=transferred then
+                    return false,'Output transfer failed or receiver full; remaining items retained'
+                end
+            end
+        end
+    end
+    if ctx.returnReason=='complete' then ctx.phase='DONE'; return true end
+    if ctx.returnReason=='manual' then ctx.phase='STOPPED'; ctx.stoppedPhase='SERVICE'; return true end
+    local supply; supply,err=receiver(ctx.config.supplySide); if not supply then return false,err end
+    local need=routeMoves(ctx.workPath)*2+ctx.config.fuelMargin+2
+    for _=1,16 do
+        local fuelOK=fuel(ctx,need)
+        if fuelOK and stock(ctx,ctx.config.torchItem)>=ctx.config.torchReserve and stock(ctx,ctx.config.fillItem)>=ctx.config.fillReserve then
+            ctx.phase='RESUMING'; ctx.travelIndex=2; return true
+        end
+        local slot
+        for i=1,16 do if turtle.getItemCount(i)==0 then slot=i; break end end
+        if not slot then return false,'Supply inventory has no free slot' end
+        turtle.select(slot)
+        if not turtle[suckMethods[ctx.config.supplySide]](64) then return false,'Missing fuel, torches or fill blocks in supply' end
+        local item=turtle.getItemDetail(slot)
+        if not item or (item.name~=ctx.config.fuelItem and item.name~=ctx.config.torchItem and item.name~=ctx.config.fillItem) then
+            return false,'Unexpected supply item; correct supply and reconcile before resume'
+        end
+    end
+    return false,'Required supplies unavailable after bounded restock'
+end
+local function recordPose(ctx)
+    if equal(ctx.path[#ctx.path],ctx.pose) then return end
+    -- Remove completed loops while retaining the checked route and home heading.
+    local previous
+    for i=#ctx.path,1,-1 do if samePosition(ctx.path[i],ctx.pose) then previous=i; break end end
+    if previous then for i=#ctx.path,previous+1,-1 do ctx.path[i]=nil end end
+    if not equal(ctx.path[#ctx.path],ctx.pose) then ctx.path[#ctx.path+1]=copy(ctx.pose) end
+end
+local function beginReturn(ctx,reason)
+    ctx.workPath=copy(ctx.path); ctx.workPose=copy(ctx.pose)
+    ctx.travelIndex=#ctx.path-1; ctx.returnReason=reason; ctx.phase='RETURNING'
+    local ok,err=save(ctx); if not ok then return fail(ctx,err) end
+    return 'MINE'
+end
+function M.initialize(ctx)
+    local c=ctx.config or {}; ctx.config=c
+    if type(c.job)~='string' or not c.job:match('^[%w_-]+$') then return fail(ctx,'Supply a unique --job name (letters, numbers, dash, underscore)') end
+    if type(c.dimension)~='string' or c.dimension=='' then return fail(ctx,'Explicit dimension required') end
+    if type(c.home)~='table' or not headings[c.home.facing] then return fail(ctx,'Explicit home coordinates and heading required') end
+    for _,axis in ipairs({'x','y','z'}) do if type(c.home[axis])~='number' or c.home[axis]%1~=0 then return fail(ctx,'Home coordinates must be integers') end end
+    if type(c.bounds)~='table' or type(c.bounds.min)~='table' or type(c.bounds.max)~='table' then return fail(ctx,'Explicit excavation bounds required') end
+    for _,axis in ipairs({'x','y','z'}) do
+        local a,b=c.bounds.min[axis],c.bounds.max[axis]
+        if type(a)~='number' or type(b)~='number' or a%1~=0 or b%1~=0 or a>b then return fail(ctx,'Invalid excavation bounds') end
+    end
+    local defaults={length=6,branchInterval=3,branchLength=2,torchInterval=3,fuelMargin=8,torchReserve=1,fillReserve=8}
+    for key,value in pairs(defaults) do
+        if c[key]==nil then c[key]=value end
+        if type(c[key])~='number' or c[key]%1~=0 or c[key]<1 or c[key]>4096 then return fail(ctx,'Invalid '..key..' (integer 1..4096 required)') end
+    end
+    if c.length>256 or c.branchLength>64 then return fail(ctx,'Job exceeds bounded pilot size (length 256, branch length 64)') end
+    if c.torchReserve>64 or c.fillReserve>64 then return fail(ctx,'Supply reserves must fit one stack each (1..64)') end
+    c.fuelItem=c.fuelItem or 'minecraft:coal'; c.torchItem=c.torchItem or 'minecraft:torch'; c.fillItem=c.fillItem or 'minecraft:cobblestone'
+    if c.torchItem~='minecraft:torch' then return fail(ctx,'Supported torch item is minecraft:torch') end
+    if type(c.fuelItem)~='string' or not c.fuelItem:match('^[%w_]+:[%w_]+$') or type(c.fillItem)~='string' or policy.classify(c.fillItem,c)~='terrain' or mining.FILL_BLACKLIST[c.fillItem] then return fail(ctx,'Configure a valid fuel item and permitted solid fill item') end
+    c.outputSide=c.outputSide or 'down'; c.supplySide=c.supplySide or 'up'
+    if not dropMethods[c.outputSide] or not suckMethods[c.supplySide] or c.outputSide==c.supplySide then return fail(ctx,'Choose separate output/supply sides: front, up or down') end
+    ctx.identity={ computerId=os and os.getComputerID and os.getComputerID() or 'unavailable', label=os and os.getComputerLabel and os.getComputerLabel() or '' }
+    ctx.origin=copy(c.home)
+    local ok,steps=pcall(strategy.generate,c.length,c.branchInterval,c.branchLength,c.torchInterval)
+    if not ok or type(steps)~='table' or #steps==0 then return fail(ctx,'Invalid mining strategy: '..tostring(steps)) end
+    ctx.strategy=steps
+    local createOK,p,err=pcall(policy.create,ctx.origin,steps,c)
+    if not createOK or not p then return fail(ctx,'Unsafe job bounds: '..tostring(err or p)) end
+    ctx.miningPolicy=p
+    local stored; stored,err=journal.load(ctx)
+    if stored==nil then return fail(ctx,err) end
+    if stored then
+        if not c.resume then return fail(ctx,'Existing job checkpoint; use explicit --resume after verifying physical pose') end
+        if not equal(ctx.identity,stored.identity) then return fail(ctx,'Saved job belongs to a different turtle identity') end
+        if type(stored.config)~='table' then return fail(ctx,'Corrupt saved configuration') end
+        local config=copy(c); config.resume=nil
+        local oldConfig=copy(stored.config); oldConfig.resume=nil
+        if not equal(config,oldConfig) then return fail(ctx,'Resume configuration differs from saved job') end
+        if type(stored.config)~='table' or not equal(stored.origin,ctx.origin) then return fail(ctx,'Corrupt saved job identity or home') end
+        if type(stored.pose)~='table' or not headings[stored.pose.facing] or type(stored.path)~='table' or #stored.path<1 or type(stored.pointer)~='number' or stored.pointer<1 or stored.pointer>#steps+1 then return fail(ctx,'Corrupt saved job state') end
+        for _,axis in ipairs({'x','y','z'}) do if type(stored.pose[axis])~='number' then return fail(ctx,'Corrupt saved pose') end end
+        local phases={MINING=true,RETURNING=true,SERVICE=true,RESUMING=true,DONE=true,STOPPED=true,NEEDS_HELP=true}
+        if not phases[stored.phase] then return fail(ctx,'Corrupt saved phase') end
+        local function validPose(pose)
+            if type(pose)~='table' or not headings[pose.facing] then return false end
+            for _,axis in ipairs({'x','y','z'}) do if type(pose[axis])~='number' or pose[axis]%1~=0 then return false end end
+            return equal(pose,ctx.origin) or p.allowed[policy.key(pose)] or samePosition(pose,ctx.origin)
+        end
+        local function validPath(path)
+            if type(path)~='table' or #path<1 or #path>50000 or not equal(path[1],ctx.origin) then return false end
+            local entries=0
+            for key in pairs(path) do if type(key)~='number' or key%1~=0 or key<1 or key>#path then return false end; entries=entries+1 end
+            if entries~=#path then return false end
+            for i,pose in ipairs(path) do
+                if not validPose(pose) then return false end
+                if i>1 then
+                    local last=path[i-1]
+                    if math.abs(last.x-pose.x)+math.abs(last.y-pose.y)+math.abs(last.z-pose.z)>1 then return false end
+                end
+            end
+            return true
+        end
+        if stored.pointer%1~=0 or not validPose(stored.pose) or not validPath(stored.path) then return fail(ctx,'Corrupt saved pose or return path') end
+        local recoveryPhase=stored.phase=='STOPPED' and stored.stoppedPhase or stored.phase=='NEEDS_HELP' and stored.failedPhase or stored.phase
+        if not phases[recoveryPhase] or recoveryPhase=='NEEDS_HELP' or recoveryPhase=='STOPPED' then return fail(ctx,'Corrupt saved recovery phase') end
+        if recoveryPhase=='RETURNING' or recoveryPhase=='RESUMING' or recoveryPhase=='SERVICE' then
+            if not validPath(stored.workPath) or not validPose(stored.workPose) or not equal(stored.workPath[#stored.workPath],stored.workPose) or type(stored.travelIndex)~='number' or stored.travelIndex%1~=0 or stored.travelIndex<0 or stored.travelIndex>#stored.workPath+1 then return fail(ctx,'Corrupt saved service route') end
+        end
+        if recoveryPhase=='MINING' and not equal(stored.path[#stored.path],stored.pose) then return fail(ctx,'Saved mining pose differs from return path') end
+        if (recoveryPhase=='DONE' or recoveryPhase=='SERVICE') and not equal(stored.pose,ctx.origin) then return fail(ctx,'Saved home phase is away from home') end
+        if recoveryPhase=='RETURNING' or recoveryPhase=='RESUMING' then
+            local at=stored.travelIndex
+            local a=stored.workPath[at]
+            local b=stored.workPath[recoveryPhase=='RETURNING' and at+1 or at-1]
+            if not ((a and samePosition(stored.pose,a)) or (b and samePosition(stored.pose,b))) then return fail(ctx,'Saved travel pose differs from route cursor') end
+        end
+        for _,map in ipairs({stored.knownAir,stored.placedTorches}) do
+            if type(map)~='table' then return fail(ctx,'Corrupt saved policy') end
+            for key,value in pairs(map) do
+                if type(key)~='string' or value~=true or (not p.allowed[key] and key~=policy.key(ctx.origin)) then return fail(ctx,'Corrupt saved excavation permissions') end
+            end
+        end
+        for _,k in ipairs(journal.fields) do if k~='config' then ctx[k]=stored[k] end end
+        if ctx.phase=='NEEDS_HELP' then ctx.phase=ctx.failedPhase; ctx.lastError=nil; ctx.failedPhase=nil end
+        if ctx.phase=='STOPPED' then
+            ctx.phase=ctx.stoppedPhase or 'MINING'; ctx.stoppedPhase=nil
+            if ctx.returnReason=='manual' then ctx.returnReason='inventory' end
+        end
+        if type(ctx.knownAir)~='table' or type(ctx.placedTorches)~='table' then return fail(ctx,'Corrupt saved policy state') end
+        ctx.miningPolicy.knownAir=ctx.knownAir
+        ctx.miningPolicy.placedTorches=ctx.placedTorches
+    else
+        if c.resume then return fail(ctx,'No saved job to resume') end
+        ctx.pose=copy(ctx.origin); ctx.path={copy(ctx.pose)}; ctx.pointer=1; ctx.phase='MINING'
+    end
+    sync(ctx)
+    if equal(ctx.pose,ctx.origin) and ctx.phase~='DONE' then
+        local output,why=receiver(c.outputSide); if not output then return fail(ctx,why) end
+        local supply; supply,why=receiver(c.supplySide); if not supply then return fail(ctx,why) end
+    end
+    local saved; saved,err=save(ctx); if not saved then return fail(ctx,err) end
+    return (ctx.phase=='DONE' or ctx.phase=='STOPPED') and 'EXIT' or 'MINE'
+end
+function M.requestStop(ctx)
+    if ctx.intent then return fail(ctx,'Cannot checkpoint stop during uncertain action') end
+    ctx.stoppedPhase=ctx.phase; ctx.phase='STOPPED'
+    local ok,err=save(ctx); if not ok then return fail(ctx,err) end
+    return 'EXIT'
+end
+function M.requestReturn(ctx)
+    if ctx.phase=='MINING' then return beginReturn(ctx,'manual') end
+    if ctx.phase=='RETURNING' or ctx.phase=='SERVICE' then
+        ctx.returnReason='manual'
+        local ok,err=save(ctx); if not ok then return fail(ctx,err) end
+        return 'MINE'
+    end
+    if ctx.phase=='RESUMING' then
+        local prefix={}
+        for i=1,math.min(#ctx.workPath,ctx.travelIndex-1) do prefix[i]=copy(ctx.workPath[i]) end
+        ctx.path=prefix; recordPose(ctx)
+        return beginReturn(ctx,'manual')
+    end
+    return 'MINE'
+end
+function M.step(ctx)
+    if ctx.phase=='DONE' or ctx.phase=='STOPPED' then return 'EXIT' end
+    if ctx.phase=='NEEDS_HELP' or ctx.intent then return fail(ctx,ctx.lastError or 'Uncertain action requires reconciliation') end
+    if ctx.phase=='RETURNING' or ctx.phase=='RESUMING' then
+        local returning=ctx.phase=='RETURNING'
+        local path=ctx.workPath
+        if not path or not ctx.travelIndex then return fail(ctx,'Missing persisted travel path') end
+        if (returning and ctx.travelIndex<1) or (not returning and ctx.travelIndex>#path) then
+            if returning then
+                if not equal(ctx.pose,ctx.origin) then return fail(ctx,'Home pose verification failed') end
+                ctx.phase='SERVICE'
+            else
+                if not equal(ctx.pose,ctx.workPose) then return fail(ctx,'Work pose restoration failed') end
+                ctx.path=copy(path); ctx.phase='MINING'
+            end
+            local ok,err=save(ctx); if not ok then return fail(ctx,err) end; return 'MINE'
+        end
+        local target=path[ctx.travelIndex]
+        local ok,err=transact(ctx,'cleared route',function()
+            local enough,why=fuel(ctx,routeMoves(path,2,returning and ctx.travelIndex+1 or #path)+ctx.config.fuelMargin+1)
+            if not enough then return false,why end
+            local moved,reason=approach(ctx,target,false)
+            if moved and equal(ctx.pose,target) then ctx.travelIndex=ctx.travelIndex+(returning and -1 or 1) end
+            return moved,reason
+        end)
+        if not ok then return fail(ctx,err) end; return 'MINE'
+    end
+    if ctx.phase=='SERVICE' then
+        local ok,err=transact(ctx,'checked unload and resupply',function() return service(ctx) end)
+        if not ok then return fail(ctx,err) end
+        return (ctx.phase=='DONE' or ctx.phase=='STOPPED') and 'EXIT' or 'MINE'
+    end
+    if ctx.phase~='MINING' then return fail(ctx,'Unknown mining phase') end
+    local instruction=ctx.strategy[ctx.pointer]
+    if not instruction or instruction.type=='done' then return beginReturn(ctx,'complete') end
+    if emptySlots()<2 then return beginReturn(ctx,'inventory') end
+    if stock(ctx,ctx.config.torchItem)<ctx.config.torchReserve or stock(ctx,ctx.config.fillItem)<ctx.config.fillReserve then return beginReturn(ctx,'supplies') end
+    local enough,why=transact(ctx,'fuel reserve',function() return fuel(ctx,routeMoves(ctx.path)+ctx.config.fuelMargin+2) end)
+    if not enough then
+        if turtle.getFuelLevel()~='unlimited' and turtle.getFuelLevel()<routeMoves(ctx.path)+ctx.config.fuelMargin then return fail(ctx,why) end
+        return beginReturn(ctx,'fuel')
+    end
+    local expected=(headings[ctx.origin.facing]+instruction.facing)%4
+    if instruction.type=='turn' then expected=(expected+(instruction.data=='left' and 1 or 3))%4 end
+    if ctx.pose.facing~=names[expected] then
+        local aligned,reason=transact(ctx,'restore instruction heading',function()
+            local delta=(expected-headings[ctx.pose.facing])%4
+            local moved,detail=turn(ctx,delta==3 and 'left' or 'right')
+            recordPose(ctx); return moved,detail
+        end)
+        if not aligned then return fail(ctx,reason) end
+        return 'MINE'
+    end
+    local ok,err=transact(ctx,instruction.type,function()
+        local success,reason=true
+        if instruction.type=='move' then
+            local target=strategy.localToWorld(ctx.origin,instruction)
+            target.facing=ctx.pose.facing
+            success,reason=approach(ctx,target,true)
+        elseif instruction.type=='turn' then success,reason=turn(ctx,instruction.data)
+        elseif instruction.type=='mine_neighbors' then success,reason=mining.scanAndMineNeighbors(ctx); syncBack(ctx)
+        elseif instruction.type=='place_torch' then success,reason=mining.placeTorch(ctx,instruction.data or 'down'); syncBack(ctx)
+        elseif instruction.type=='dump_trash' then -- Keep items until a checked receiver is reached.
+        else return false,'Unsupported mining instruction: '..tostring(instruction.type) end
+        recordPose(ctx)
+        if success and instruction.type=='move' then
+            local destination=strategy.localToWorld(ctx.origin,instruction)
+            if not samePosition(ctx.pose,destination) then return true end
+        end
+        if success then ctx.pointer=ctx.pointer+1 end
+        return success,reason
+    end)
+    if not ok then
+        if err=='inventory_capacity' and not ctx.intent then return beginReturn(ctx,'inventory') end
+        return fail(ctx,err)
+    end
+    return 'MINE'
+end
+return M
+
+]===]
 bundled_modules["lib_schema"] = [===[
 --[[
 Schema library for CC:Tweaked turtles.
@@ -7549,18 +8516,19 @@ Provides helpers for working with build schemas.
 ---@diagnostic disable: undefined-global
 
 local schema_utils = {}
+local table_utils = require("lib_table")
+
+local function copyTable(tbl)
+    if type(tbl) ~= "table" then return {} end
+    return table_utils.shallowCopy(tbl)
+end
 
 function schema_utils.pushMaterialCount(counts, material)
     counts[material] = (counts[material] or 0) + 1
 end
 
-local table_utils = require("lib_table")
-
 function schema_utils.cloneMeta(meta)
-    if type(meta) ~= "table" then
-        return {}
-    end
-    return table_utils.shallowCopy(meta)
+    return copyTable(meta)
 end
 
 function schema_utils.newBounds()
@@ -7687,6 +8655,43 @@ function schema_utils.fetchSchemaEntry(schema, pos)
     return block
 end
 
+function schema_utils.canonicalToGrid(schema, opts)
+    opts = opts or {}
+    local grid = {}
+    if type(schema) ~= "table" then
+        return grid
+    end
+    for x, xColumn in pairs(schema) do
+        if type(xColumn) == "table" then
+            for y, yColumn in pairs(xColumn) do
+                if type(yColumn) == "table" then
+                    for z, block in pairs(yColumn) do
+                        if block and type(block) == "table" then
+                            local material = block.material
+                            if material and material ~= "" then
+                                local gx = tostring(x)
+                                local gy = tostring(y)
+                                local gz = tostring(z)
+                                grid[gx] = grid[gx] or {}
+                                grid[gx][gy] = grid[gx][gy] or {}
+                                grid[gx][gy][gz] = {
+                                    material = material,
+                                    meta = copyTable(block.meta),
+                                }
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+    return grid
+end
+
+function schema_utils.canonicalToVoxelDefinition(schema, opts)
+    return { grid = schema_utils.canonicalToGrid(schema, opts) }
+end
+
 function schema_utils.printMaterials(io, info)
     if not io.print then
         return
@@ -7805,170 +8810,105 @@ return strategy_utils
 
 ]===]
 bundled_modules["lib_strategy_branchmine"] = [===[
---[[
-Strategy generator for branch mining.
-Produces a linear list of steps for the turtle to execute without moving the turtle at generation time.
-]]
-
+-- Local x is right, z is forward; headings are clockwise from home.
 local strategy = {}
-
-local function normalizePositiveInt(value, default)
-    local numberValue = tonumber(value)
-    if not numberValue or numberValue < 1 then
-        return default
+local function positive(v, default)
+    v = tonumber(v)
+    if v and (v~=v or v==math.huge or v==-math.huge or v>4096) then error('strategy parameter must be finite and at most 4096') end
+    return v and v >= 1 and math.floor(v) or default
+end
+function strategy.localToWorld(origin, p)
+    local f = origin.facing
+    local dx, dz
+    if f == 'north' then dx, dz = p.x, -p.z
+    elseif f == 'east' then dx, dz = p.z, p.x
+    elseif f == 'south' then dx, dz = -p.x, p.z
+    elseif f == 'west' then dx, dz = -p.z, -p.x
+    else error('invalid origin heading') end
+    return {x=origin.x+dx,y=origin.y+p.y,z=origin.z+dz}
+end
+function strategy.generate(length, interval, branchLength, torchInterval)
+    length, interval = positive(length,60), positive(interval,3)
+    branchLength, torchInterval = positive(branchLength,16), positive(torchInterval,6)
+    if length>256 or branchLength>64 then error('strategy exceeds bounded pilot size') end
+    local steps, x,y,z,f = {},0,0,0,0
+    local function add(kind,data)
+        steps[#steps+1]={type=kind,x=x,y=y,z=z,facing=f,data=data}
     end
-    return math.floor(numberValue)
-end
-
-local function pushStep(steps, x, y, z, facing, stepType, data)
-    steps[#steps + 1] = {
-        type = stepType,
-        x = x,
-        y = y,
-        z = z,
-        facing = facing,
-        data = data,
-    }
-end
-
-local function forward(x, z, facing)
-    if facing == 0 then
-        z = z + 1
-    elseif facing == 1 then
-        x = x + 1
-    elseif facing == 2 then
-        z = z - 1
-    else
-        x = x - 1
+    local function turn(right)
+        f=(f+(right and 1 or 3))%4; add('turn',right and 'right' or 'left')
     end
-    return x, z
-end
-
-local function turnLeft(facing)
-    return (facing + 3) % 4
-end
-
-local function turnRight(facing)
-    return (facing + 1) % 4
-end
-
---- Generate a branch mining strategy
----@param length number Length of the main spine
----@param branchInterval number Distance between branches
----@param branchLength number Length of each branch
----@param torchInterval number Distance between torches on spine
----@return table
-function strategy.generate(length, branchInterval, branchLength, torchInterval)
-    length = normalizePositiveInt(length, 60)
-    branchInterval = normalizePositiveInt(branchInterval, 3)
-    branchLength = normalizePositiveInt(branchLength, 16)
-    torchInterval = normalizePositiveInt(torchInterval, 6)
-
-    local steps = {}
-    local x, y, z = 0, 0, 0
-    local facing = 0 -- 0: forward, 1: right, 2: back, 3: left
-
-    pushStep(steps, x, y, z, facing, "mine_neighbors")
-
-    for i = 1, length do
-        x, z = forward(x, z, facing)
-        pushStep(steps, x, y, z, facing, "move")
-        pushStep(steps, x, y, z, facing, "mine_neighbors")
-
-        if i % torchInterval == 0 then
-            pushStep(steps, x, y, z, facing, "place_torch")
+    local function move()
+        if f==0 then z=z+1 elseif f==1 then x=x+1 elseif f==2 then z=z-1 else x=x-1 end
+        add('move')
+    end
+    local function branch(right)
+        turn(right)
+        for j=1,branchLength do move(); add('mine_neighbors') end
+        y=1; add('move')
+        turn(true); turn(true)
+        for j=branchLength,1,-1 do
+            -- Lower corridor is known clear; torches stand on its solid floor.
+            move()
         end
-
-        if i % branchInterval == 0 then
-            -- Left branch
-            facing = turnLeft(facing)
-            pushStep(steps, x, y, z, facing, "turn", "left")
-            for _ = 1, branchLength do
-                x, z = forward(x, z, facing)
-                pushStep(steps, x, y, z, facing, "move")
-                pushStep(steps, x, y, z, facing, "mine_neighbors")
+        y=0; add('move')
+        -- Left return faces right: left restores forward. Right does the reverse.
+        turn(right)
+    end
+    for i=1,length do
+        move(); add('mine_neighbors')
+        if i%interval==0 then branch(false); branch(true) end
+    end
+    y=1; add('move'); turn(true); turn(true)
+    for i=length,2,-1 do
+        move()
+    end
+    y=0; add('move'); move(); turn(true); turn(true); add('done')
+    -- Select niches only after the whole route is known, so lights never occupy it.
+    local route = {}
+    local function key(a,b,c) return a..','..b..','..c end
+    route[key(0,0,0)] = true
+    for _,s in ipairs(steps) do if s.type=='move' then route[key(s.x,s.y,s.z)] = true end end
+    local lit, count = {}, 0
+    local delta={{0,1},{1,0},{0,-1},{-1,0}}
+    for _,s in ipairs(steps) do
+        lit[#lit+1]=s
+        if s.type=='mine_neighbors' then
+            count=count+1
+            if count%torchInterval==0 or math.abs(s.x)==branchLength or s.z==length then
+                for _,facing in ipairs({(s.facing+1)%4,(s.facing+3)%4}) do
+                    local d=delta[facing+1]
+                    local tx,tz=s.x+d[1],s.z+d[2]
+                    if tz>=1 and not route[key(tx,s.y,tz)] then
+                        local turns=(facing-s.facing)%4
+                        local f=s.facing
+                        for i=1,turns do f=(f+1)%4; lit[#lit+1]={type='turn',x=s.x,y=s.y,z=s.z,facing=f,data='right'} end
+                        lit[#lit+1]={type='place_torch',x=s.x,y=s.y,z=s.z,facing=f,data='front',torchTarget={x=tx,y=s.y,z=tz}}
+                        for i=1,(4-turns)%4 do f=(f+1)%4; lit[#lit+1]={type='turn',x=s.x,y=s.y,z=s.z,facing=f,data='right'} end
+                        break
+                    end
+                end
             end
-
-            -- Go UP
-            y = y + 1
-            pushStep(steps, x, y, z, facing, "move")
-            pushStep(steps, x, y, z, facing, "mine_neighbors")
-
-            -- Turn around and return to spine
-            facing = turnRight(facing)
-            pushStep(steps, x, y, z, facing, "turn", "right")
-            facing = turnRight(facing)
-            pushStep(steps, x, y, z, facing, "turn", "right")
-            for _ = 1, branchLength do
-                x, z = forward(x, z, facing)
-                pushStep(steps, x, y, z, facing, "move")
-                pushStep(steps, x, y, z, facing, "mine_neighbors")
-            end
-
-            -- Go DOWN
-            y = y - 1
-            pushStep(steps, x, y, z, facing, "move")
-
-            -- Face down the spine again
-            facing = turnRight(facing)
-            pushStep(steps, x, y, z, facing, "turn", "right")
-
-            -- Right branch (mirror of left)
-            facing = turnRight(facing)
-            pushStep(steps, x, y, z, facing, "turn", "right")
-            for _ = 1, branchLength do
-                x, z = forward(x, z, facing)
-                pushStep(steps, x, y, z, facing, "move")
-                pushStep(steps, x, y, z, facing, "mine_neighbors")
-            end
-
-            -- Go UP
-            y = y + 1
-            pushStep(steps, x, y, z, facing, "move")
-            pushStep(steps, x, y, z, facing, "mine_neighbors")
-
-            facing = turnRight(facing)
-            pushStep(steps, x, y, z, facing, "turn", "right")
-            facing = turnRight(facing)
-            pushStep(steps, x, y, z, facing, "turn", "right")
-            for _ = 1, branchLength do
-                x, z = forward(x, z, facing)
-                pushStep(steps, x, y, z, facing, "move")
-                pushStep(steps, x, y, z, facing, "mine_neighbors")
-            end
-
-            -- Go DOWN
-            y = y - 1
-            pushStep(steps, x, y, z, facing, "move")
-
-            facing = turnLeft(facing)
-            pushStep(steps, x, y, z, facing, "turn", "left")
-        end
-
-        if i % 5 == 0 then
-            pushStep(steps, x, y, z, facing, "dump_trash")
         end
     end
-
-    -- Return to origin
-    facing = turnRight(facing)
-    pushStep(steps, x, y, z, facing, "turn", "right")
-    facing = turnRight(facing)
-    pushStep(steps, x, y, z, facing, "turn", "right")
-    for _ = 1, length do
-        x, z = forward(x, z, facing)
-        pushStep(steps, x, y, z, facing, "move")
+    steps=lit
+    local bounds={min={x=0,y=0,z=0},max={x=0,y=0,z=0}}
+    local function include(p)
+        for _,axis in ipairs({'x','y','z'}) do bounds.min[axis]=math.min(bounds.min[axis],p[axis]); bounds.max[axis]=math.max(bounds.max[axis],p[axis]) end
     end
-    facing = turnRight(facing)
-    pushStep(steps, x, y, z, facing, "turn", "right")
-    facing = turnRight(facing)
-    pushStep(steps, x, y, z, facing, "turn", "right")
-
-    pushStep(steps, x, y, z, facing, "done")
-
+    for _,s in ipairs(steps) do
+        include(s)
+        if s.torchTarget then include(s.torchTarget) end
+        if s.type=='mine_neighbors' then
+            for _,d in ipairs({{1,0,0},{-1,0,0},{0,1,0},{0,-1,0},{0,0,1},{0,0,-1}}) do
+                local p={x=s.x+d[1],y=s.y+d[2],z=s.z+d[3]}
+                if p.z>=1 then include(p) end
+            end
+        end
+    end
+    steps.bounds=bounds
     return steps
 end
-
 return strategy
 
 ]===]
@@ -8922,6 +9862,26 @@ function ui.runForm(form)
     end
 end
 
+-- Form builder: ui.Form(title), form:addInput(id, label, value), form:run() -> "ok" | "cancel".
+-- Read values back from form.elements (el.id, el.value).
+function ui.Form(title)
+    local _, h = term.getSize()
+    local step = h >= 19 and 2 or 1
+    local form = { title = title, elements = {}, row = 2 }
+    function form:addInput(id, label, value)
+        self.elements[#self.elements + 1] = { type = "label", x = 2, y = self.row, text = label }
+        self.elements[#self.elements + 1] = { type = "input", id = id, x = 17, y = self.row, width = 10, value = value or "" }
+        self.row = self.row + step
+    end
+    function form:run()
+        local y = self.row + 1
+        self.elements[#self.elements + 1] = { type = "button", x = 2, y = y, text = "OK", callback = function() return "ok" end }
+        self.elements[#self.elements + 1] = { type = "button", x = 8, y = y, text = "Cancel", callback = function() return "cancel" end }
+        return ui.runForm(self)
+    end
+    return form
+end
+
 -- Simple Scrollable Menu
 -- items = { { text="Label", callback=function() end }, ... }
 function ui.runMenu(title, items)
@@ -9856,6 +10816,10 @@ Handles navigation failures.
 local logger = require("lib_logger")
 
 local function BLOCKED(ctx)
+    if ctx.config.mode == "mine" then
+        require("lib_mining_status").render(ctx)
+        return "EXIT"
+    end
     local resume = ctx.resumeState or "BUILD"
     logger.log(ctx, "warn", string.format("Movement blocked while executing %s. Retrying in 5 seconds...", resume))
     ---@diagnostic disable-next-line: undefined-global
@@ -10195,6 +11159,7 @@ local movement = require("lib_movement")
 local logger = require("lib_logger")
 
 local function DONE(ctx)
+    if ctx.config.mode == "mine" then return require("lib_safe_miner").step(ctx) end
     logger.log(ctx, "info", "Build complete!")
     movement.goTo(ctx, ctx.origin)
     return "EXIT"
@@ -10213,6 +11178,10 @@ local logger = require("lib_logger")
 local diagnostics = require("lib_diagnostics")
 
 local function ERROR(ctx)
+    if ctx.config.mode == "mine" then
+        require("lib_mining_status").render(ctx)
+        return "EXIT"
+    end
     local message = tostring(ctx.lastError or "Unknown fatal error")
     if ctx.logger then
         ctx.logger:error("Fatal Error: " .. message, { context = diagnostics.snapshot(ctx) })
@@ -10356,18 +11325,7 @@ local function INITIALIZE(ctx)
     logger.log(ctx, "info", "Initializing...")
     
     if ctx.config.mode == "mine" then
-        logger.log(ctx, "info", "Generating mining strategy...")
-        local length = tonumber(ctx.config.length) or 60
-        local branchInterval = tonumber(ctx.config.branchInterval) or 3
-        local branchLength = tonumber(ctx.config.branchLength) or 16
-        local torchInterval = tonumber(ctx.config.torchInterval) or 6
-        
-        ctx.strategy = strategyBranchMine.generate(length, branchInterval, branchLength, torchInterval)
-        ctx.pointer = 1
-        
-        logger.log(ctx, "info", string.format("Mining Plan: %d steps.", #ctx.strategy))
-        ctx.nextState = "MINE"
-        return "CHECK_REQUIREMENTS"
+        return require("lib_safe_miner").initialize(ctx)
     end
 
     if ctx.config.mode == "tunnel" then
@@ -10547,6 +11505,7 @@ local function selectTorch(ctx)
 end
 
 local function MINE(ctx)
+    if ctx.config.mode == "mine" then return require("lib_safe_miner").step(ctx) end
     logger.log(ctx, "info", "State: MINE")
 
     if turtle.getFuelLevel and turtle.getFuelLevel() < 100 then
@@ -10627,6 +11586,7 @@ local fuelLib = require("lib_fuel")
 local logger = require("lib_logger")
 
 local function REFUEL(ctx)
+    if ctx.config.mode == "mine" then return require("lib_safe_miner").step(ctx) end
     logger.log(ctx, "info", "Refueling...")
     
     -- Go home
@@ -10684,6 +11644,7 @@ local inventory = require("lib_inventory")
 local logger = require("lib_logger")
 
 local function RESTOCK(ctx)
+    if ctx.config.mode == "mine" then return require("lib_safe_miner").step(ctx) end
     logger.log(ctx, "info", "Restocking " .. tostring(ctx.missingMaterial))
     
     -- Go home
@@ -10824,6 +11785,9 @@ Graphical launcher for the factory agent.
 local ui = require("lib_ui")
 local designer = require("lib_designer")
 local games = require("lib_games")
+local parser = require("lib_parser")
+local json = require("lib_json")
+local schema_utils = require("lib_schema")
 
 -- Hack to load factory without running it immediately
 _G.__FACTORY_EMBED__ = true
@@ -10840,24 +11804,10 @@ end
 
 -- --- ACTIONS ---
 
-local function runMining(form)
-    local length = 64
-    local interval = 3
-    local torch = 6
-    
-    for _, el in ipairs(form.elements) do
-        if el.id == "length" then length = tonumber(el.value) or 64 end
-        if el.id == "interval" then interval = tonumber(el.value) or 3 end
-        if el.id == "torch" then torch = tonumber(el.value) or 6 end
-    end
-    
-    ui.clear()
-    print("Starting Mining Operation...")
-    print(string.format("Length: %d, Interval: %d", length, interval))
-    sleep(1)
-    
-    factory.run({ "mine", "--length", tostring(length), "--branch-interval", tostring(interval), "--torch-interval", tostring(torch) })
-    
+local function runMining()
+    local argv = require("lib_mining_setup").collect()
+    if not argv then return "stay" end
+    factory.run(argv)
     return pauseAndReturn("stay")
 end
 
@@ -10965,6 +11915,60 @@ local function runBuild(schemaFile)
     return pauseAndReturn("stay")
 end
 
+local function runEditSchema(schemaFile)
+    ui.clear()
+    print("Validating Schema...")
+    print("Schema: " .. schemaFile)
+
+    local ctx = {}
+    local ok, schema, metadata = parser.parseFile(ctx, schemaFile)
+    if not ok then
+        print("Failed to parse schema: " .. tostring(schema))
+        return pauseAndReturn("stay")
+    end
+
+    local editedSchema, exportInfo = designer.run({
+        schema = schema,
+        metadata = metadata,
+        returnSchema = true,
+    })
+
+    if not editedSchema then
+        local errMsg = exportInfo or "Editor closed without returning a schema."
+        print(tostring(errMsg))
+        return pauseAndReturn("stay")
+    end
+
+    print(string.format("Editor returned %d blocks.", (exportInfo and exportInfo.totalBlocks) or 0))
+
+    local defaultName = schemaFile
+    local form = ui.Form("Save Edited Schema")
+    form:addInput("filename", "Filename", defaultName)
+    local result = form:run()
+    if result == "cancel" then return "stay" end
+
+    local filename = defaultName
+    for _, el in ipairs(form.elements) do
+        if el.id == "filename" then filename = el.value end
+    end
+    if filename == "" then filename = defaultName end
+    if not filename:match("%.json$") then filename = filename .. ".json" end
+
+    if fs.exists(filename) then
+        local backup = filename .. ".bak"
+        fs.copy(filename, backup)
+        print("Existing file backed up to " .. backup)
+    end
+
+    local definition = schema_utils.canonicalToVoxelDefinition(editedSchema)
+    local f = fs.open(filename, "w")
+    f.write(json.encode(definition))
+    f.close()
+
+    print("Saved edited schema to " .. filename)
+    return pauseAndReturn("stay")
+end
+
 local function runImportSchema()
     local url = ""
     local filename = "schema.json"
@@ -11055,24 +12059,27 @@ local function showBuildMenu()
     end
 end
 
+local function showEditMenu()
+    while true do
+        local schemas = getSchemaFiles()
+        local items = {}
+
+        for _, schema in ipairs(schemas) do
+            table.insert(items, {
+                text = "Edit " .. schema,
+                callback = function() return runEditSchema(schema) end
+            })
+        end
+
+        table.insert(items, { text = "Back", callback = function() return "back" end })
+
+        local res = ui.runMenu("Validate & Edit Schema", items)
+        if res == "back" then return end
+    end
+end
+
 local function showMiningWizard()
-    local form = {
-        title = "Mining Wizard",
-        elements = {
-            { type = "label", x = 2, y = 2, text = "Tunnel Length:" },
-            { type = "input", x = 18, y = 2, width = 5, value = "64", id = "length" },
-            
-            { type = "label", x = 2, y = 4, text = "Branch Interval:" },
-            { type = "input", x = 18, y = 4, width = 5, value = "3", id = "interval" },
-            
-            { type = "label", x = 2, y = 6, text = "Torch Interval:" },
-            { type = "input", x = 18, y = 6, width = 5, value = "6", id = "torch" },
-            
-            { type = "button", x = 2, y = 9, text = "Start Mining", callback = runMining },
-            { type = "button", x = 18, y = 9, text = "Cancel", callback = function() return "back" end }
-        }
-    }
-    return ui.runForm(form)
+    return runMining()
 end
 
 local function showMineMenu()
@@ -11102,6 +12109,7 @@ local function showSystemMenu()
     while true do
         local res = ui.runMenu("System Tools", {
             { text = "Import Schema", callback = runImportSchema },
+            { text = "Validate & Edit Schema", callback = showEditMenu },
             { text = "Schema Designer", callback = runSchemaDesigner },
             { text = "Back", callback = function() return "back" end }
         })

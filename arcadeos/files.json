@@ -680,12 +680,12 @@
    "description": "Factory and TurtleOS turtle automation (turtles only)",
    "required": false,
    "turtle": true,
-   "size": 400894,
+   "size": 446686,
    "files": [
     {
      "src": "cc-factory/factory.lua",
      "dest": "/pkg/factory/factory.lua",
-     "size": 5718
+     "size": 9354
     },
     {
      "src": "cc-factory/lib_designer.lua",
@@ -748,14 +748,34 @@
      "size": 12290
     },
     {
+     "src": "cc-factory/lib_mine_policy.lua",
+     "dest": "/pkg/factory/lib_mine_policy.lua",
+     "size": 3910
+    },
+    {
      "src": "cc-factory/lib_mining.lua",
      "dest": "/pkg/factory/lib_mining.lua",
-     "size": 3052
+     "size": 6178
+    },
+    {
+     "src": "cc-factory/lib_mining_checkpoint.lua",
+     "dest": "/pkg/factory/lib_mining_checkpoint.lua",
+     "size": 2456
+    },
+    {
+     "src": "cc-factory/lib_mining_setup.lua",
+     "dest": "/pkg/factory/lib_mining_setup.lua",
+     "size": 5806
+    },
+    {
+     "src": "cc-factory/lib_mining_status.lua",
+     "dest": "/pkg/factory/lib_mining_status.lua",
+     "size": 3872
     },
     {
      "src": "cc-factory/lib_movement.lua",
      "dest": "/pkg/factory/lib_movement.lua",
-     "size": 21188
+     "size": 22310
     },
     {
      "src": "cc-factory/lib_navigation.lua",
@@ -783,6 +803,11 @@
      "size": 2057
     },
     {
+     "src": "cc-factory/lib_safe_miner.lua",
+     "dest": "/pkg/factory/lib_safe_miner.lua",
+     "size": 24025
+    },
+    {
      "src": "cc-factory/lib_schema.lua",
      "dest": "/pkg/factory/lib_schema.lua",
      "size": 6528
@@ -795,7 +820,7 @@
     {
      "src": "cc-factory/lib_strategy_branchmine.lua",
      "dest": "/pkg/factory/lib_strategy_branchmine.lua",
-     "size": 5104
+     "size": 4268
     },
     {
      "src": "cc-factory/lib_strategy_excavate.lua",
@@ -850,7 +875,7 @@
     {
      "src": "cc-factory/state_blocked.lua",
      "dest": "/pkg/factory/state_blocked.lua",
-     "size": 619
+     "size": 736
     },
     {
      "src": "cc-factory/state_build.lua",
@@ -865,32 +890,32 @@
     {
      "src": "cc-factory/state_done.lua",
      "dest": "/pkg/factory/state_done.lua",
-     "size": 262
+     "size": 347
     },
     {
      "src": "cc-factory/state_error.lua",
      "dest": "/pkg/factory/state_error.lua",
-     "size": 559
+     "size": 676
     },
     {
      "src": "cc-factory/state_initialize.lua",
      "dest": "/pkg/factory/state_initialize.lua",
-     "size": 9403
+     "size": 8826
     },
     {
      "src": "cc-factory/state_mine.lua",
      "dest": "/pkg/factory/state_mine.lua",
-     "size": 3236
+     "size": 3321
     },
     {
      "src": "cc-factory/state_refuel.lua",
      "dest": "/pkg/factory/state_refuel.lua",
-     "size": 1432
+     "size": 1517
     },
     {
      "src": "cc-factory/state_restock.lua",
      "dest": "/pkg/factory/state_restock.lua",
-     "size": 1883
+     "size": 1968
     },
     {
      "src": "cc-factory/state_treefarm.lua",
@@ -900,7 +925,7 @@
     {
      "src": "cc-factory/turtle_os.lua",
      "dest": "/pkg/factory/turtle_os.lua",
-     "size": 12251
+     "size": 10929
     },
     {
      "src": "cc-turtleos/turtleos/menu.lua",

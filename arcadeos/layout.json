@@ -125,7 +125,10 @@
           "exclude": [
             "harness_*.lua",
             "main.lua",
-            "dist/**"
+            "dist/**",
+            "tests/**",
+            "tools/**",
+            "docs/**"
           ]
         },
         {

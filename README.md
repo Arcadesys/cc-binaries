@@ -25,6 +25,8 @@ See the [ArcadeOS README](./arcadeos/README.md) for usage and for writing apps.
 | [`cc-jukebox`](./cc-jukebox) | [Arcadesys/cc-jukebox](https://github.com/Arcadesys/cc-jukebox) |
 | [`computercraft_scripts`](./computercraft_scripts) | [Arcadesys/computercraft_scripts](https://github.com/Arcadesys/computercraft_scripts) |
 
+For turtle branch mining, start with the [safe mining pilot guide](./cc-factory/SAFE_MINING.md). It covers bounded jobs, checked return/unload, restart recovery, installation, and the supervised in-world checks required before scaling.
+
 ## Pine games
 
 The standalone Pine3D games are in [`computercraft_scripts`](./computercraft_scripts). Copy an entire game folder to a CC:Tweaked computer so its bundled libraries stay beside the launcher.
