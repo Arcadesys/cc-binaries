@@ -12,7 +12,7 @@ for p in sorted(root.rglob('*')):
  rel=p.relative_to(root).as_posix()
  if rel=='install.lua' or any(rel.startswith('derby/'+x+'/') for x in ['tests','tools','docs']): continue
  if p.suffix!='.lua' and rel not in ['derby/vendor/LICENSE','derby/vendor/REVISION.txt','derby/odds.json']: continue
- text=p.read_text(); level=''
+ text=re.sub(r'(?m)^[ \t]+$', '', p.read_text()); level=''
  while ']'+level+']' in text: level+='='
  chunks.append("writeFile('%s', [%s[\n%s]%s])\n"%(rel,level,text,level))
 chunks.append(footer+'\n')

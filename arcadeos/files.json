@@ -258,7 +258,7 @@
    "description": "Arcade games: Blackjack, Slots, Can't Stop, Race, RPS Rogue, IdleCraft",
    "required": false,
    "turtle": false,
-   "size": 267162,
+   "size": 269266,
    "files": [
     {
      "src": "cc-arcade/audio.lua",
@@ -278,7 +278,7 @@
     {
      "src": "cc-arcade/credits.lua",
      "dest": "/pkg/arcade/credits.lua",
-     "size": 4713
+     "size": 4974
     },
     {
      "src": "cc-arcade/house.lua",
@@ -323,7 +323,7 @@
     {
      "src": "cc-arcade/derby/cashier.lua",
      "dest": "/pkg/arcade/derby/cashier.lua",
-     "size": 3463
+     "size": 3577
     },
     {
      "src": "cc-arcade/derby/client.lua",
@@ -368,12 +368,12 @@
     {
      "src": "cc-arcade/derby/render.lua",
      "dest": "/pkg/arcade/derby/render.lua",
-     "size": 3244
+     "size": 3499
     },
     {
      "src": "cc-arcade/derby/scene.lua",
      "dest": "/pkg/arcade/derby/scene.lua",
-     "size": 3678
+     "size": 5152
     },
     {
      "src": "cc-arcade/derby/server.lua",

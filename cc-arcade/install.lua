@@ -120,11 +120,11 @@ local jazzPlaying = false
 function audio.playJazz()
     if not speaker then return end
     jazzPlaying = true
-    
+
     -- Jazz chord progressions (ii-V-I patterns, swing feel)
     -- Notes: 0=F#, 1=G, 2=G#, 3=A, 4=A#, 5=B, 6=C, 7=C#, 8=D, 9=D#, 10=E, 11=F, 12=F#...
     -- Using Minecraft note block range: 0-24 (F#3 to F#5)
-    
+
     local chords = {
         -- Dm7 (ii)
         { bass = 8, notes = {8, 12, 15, 19} },
@@ -143,54 +143,54 @@ function audio.playJazz()
         -- A7
         { bass = 3, notes = {3, 8, 10, 13} },
     }
-    
+
     local tempo = 0.35  -- Swing tempo
     local bars = 0
-    
+
     while jazzPlaying and bars < 32 do
         for _, chord in ipairs(chords) do
             if not jazzPlaying then break end
-            
+
             -- Beat 1: Bass note + chord stab
             play("bass", 1.5, chord.bass)
             play("harp", 0.8, chord.notes[1])
             play("harp", 0.6, chord.notes[3])
             sleep(tempo)
             if not jazzPlaying then break end
-            
+
             -- Beat 2: Walking bass
             play("bass", 1.0, chord.bass + 2)
             sleep(tempo * 0.6)
             if not jazzPlaying then break end
-            
+
             -- Swing eighth
             play("harp", 0.5, chord.notes[2])
             sleep(tempo * 0.4)
             if not jazzPlaying then break end
-            
+
             -- Beat 3: Chord hit
             play("bass", 1.2, chord.bass + 4)
             play("harp", 0.7, chord.notes[2])
             play("harp", 0.5, chord.notes[4])
             sleep(tempo)
             if not jazzPlaying then break end
-            
+
             -- Beat 4: Walk back down
             play("bass", 1.0, chord.bass + 2)
             sleep(tempo * 0.5)
             if not jazzPlaying then break end
-            
+
             -- Add some melodic fills occasionally
             if math.random() > 0.6 then
                 play("harp", 0.6, chord.notes[math.random(1, 4)] + math.random(-2, 2))
             end
             sleep(tempo * 0.5)
-            
+
             bars = bars + 1
             if bars >= 32 then break end
         end
     end
-    
+
     jazzPlaying = false
 end
 
@@ -209,7 +209,7 @@ function audio.playDFPWM(path, volume)
 
     local dfpwm = require("cc.audio.dfpwm")
     local decoder = dfpwm.make_decoder()
-    
+
     local file = fs.open(path, "rb")
     if not file then return false end
 
@@ -217,14 +217,14 @@ function audio.playDFPWM(path, volume)
     while true do
         local chunk = file.read(16 * 1024)
         if not chunk then break end
-        
+
         local buffer = decoder(chunk)
-        
+
         while not speaker.playAudio(buffer, volume or 1.0) do
             os.pullEvent("speaker_audio_empty")
         end
     end
-    
+
     file.close()
     return true
 end
@@ -322,16 +322,16 @@ local function animateSparkles(x, y, width, height)
     local duration = 1.5
     local startTime = os.clock()
     local colorsList = {colors.yellow, colors.gold or colors.orange, colors.white}
-    
+
     while os.clock() - startTime < duration do
         local rx = math.random(x, x + width - 1)
         local ry = math.random(y, y + height - 1)
         local color = colorsList[math.random(1, #colorsList)]
-        
+
         term.setCursorPos(rx, ry)
         term.setTextColor(color)
         term.write("*")
-        
+
         sleep(0.05)
     end
 end
@@ -340,19 +340,19 @@ local function animateChips(startX, startY, endX, endY)
     local steps = 10
     local dx = (endX - startX) / steps
     local dy = (endY - startY) / steps
-    
+
     for i = 1, steps do
         local cx = math.floor(startX + dx * i)
         local cy = math.floor(startY + dy * i)
-        
+
         -- Draw Chip
         term.setCursorPos(cx, cy)
         term.setBackgroundColor(colors.yellow)
         term.setTextColor(colors.black)
         term.write("O")
-        
+
         sleep(0.05)
-        
+
         -- Clear Chip (simple clear, might overwrite background)
         term.setCursorPos(cx, cy)
         term.setBackgroundColor(colors.green) -- Assuming table color
@@ -385,12 +385,12 @@ end
 local function drawGraphicalCard(x, y, card, hidden)
     -- Card Background
     term.setBackgroundColor(hidden and C_HIDDEN or C_CARD_BG)
-    
+
     for i=0, CARD_H-1 do
         term.setCursorPos(x, y+i)
         term.write(string.rep(" ", CARD_W))
     end
-    
+
     if hidden then
         -- Pattern for hidden card
         term.setTextColor(colors.white)
@@ -400,18 +400,18 @@ local function drawGraphicalCard(x, y, card, hidden)
         -- Rank and Suit
         local sColor = getSuitColor(card.suit)
         term.setTextColor(sColor)
-        
+
         local rankStr = card.rank
         if #rankStr == 1 then rankStr = rankStr .. " " end
-        
+
         -- Top Left
         term.setCursorPos(x, y)
         term.write(rankStr)
-        
+
         -- Center Suit
         term.setCursorPos(x+1, y+1)
         term.write(getSuitChar(card.suit))
-        
+
         -- Bottom Right (Rotated/Inverted conceptually, but just text here)
         term.setCursorPos(x+CARD_W-#rankStr, y+CARD_H-1)
         term.write(rankStr)
@@ -425,11 +425,11 @@ local function drawHandGraphical(centerX, y, name, hand, hideFirst, isActive, st
     local spacing = CARD_W + 1
     local totalW = (#hand * spacing) - 1
     local startX = math.floor(centerX - totalW/2)
-    
+
     -- Draw Name Label
     local labelColor = isActive and colors.yellow or colors.lightGray
     drawText(startX, y - 1, name, labelColor, C_TABLE)
-    
+
     -- Draw Status if present
     if status and status ~= "Playing" then
         local sColor = colors.lightGray
@@ -437,14 +437,14 @@ local function drawHandGraphical(centerX, y, name, hand, hideFirst, isActive, st
         if status == "Bust!" or string.find(status, "LOSE") then sColor = colors.red end
         drawText(startX + #name + 2, y - 1, status, sColor, C_TABLE)
     end
-    
+
     -- Draw Cards
     for i, card in ipairs(hand) do
         local cx = startX + (i-1)*spacing
         local isHidden = hideFirst and (i == 1)
         drawGraphicalCard(cx, y, card, isHidden)
     end
-    
+
     -- Draw Score
     if not hideFirst then
         local score = calculateHand(hand)
@@ -455,19 +455,19 @@ end
 local function drawTable(players, dealerHand, currentPlayerIdx, message, showDealer)
     term.setBackgroundColor(C_TABLE)
     term.clear()
-    
+
     -- Header
     drawCenter(1, " BLACKJACK ", colors.black, colors.lime)
-    
+
     -- Dealer Area (Top Center)
     local dealerY = 3
     drawHandGraphical(w/2, dealerY, "DEALER", dealerHand, not showDealer, false, nil)
-    
+
     -- Player Area (Bottom)
     -- Distribute players evenly
     local playerY = h - 6 -- Leave room for controls
     local sectionW = w / #players
-    
+
     for i, p in ipairs(players) do
         local pCenterX = (i-1)*sectionW + sectionW/2
         local isActive = (i == currentPlayerIdx)
@@ -477,7 +477,7 @@ local function drawTable(players, dealerHand, currentPlayerIdx, message, showDea
         end
         drawHandGraphical(pCenterX, playerY, "P"..i, p.hand, false, isActive, p.status)
     end
-    
+
     -- Message / Controls Area (Bottom 2 lines)
     local footerY = h - 1
     term.setBackgroundColor(colors.black)
@@ -485,17 +485,17 @@ local function drawTable(players, dealerHand, currentPlayerIdx, message, showDea
     term.clearLine()
     term.setCursorPos(1, h)
     term.clearLine()
-    
+
     if message then
         drawCenter(h-1, message, C_MSG, colors.black)
     end
-    
+
     -- Draw 3-Column Footer
     local colW = math.floor(w / 3)
     local c1 = "Hit"
     local c2 = "Stand"
     local c3 = "Shift >"
-    
+
     if currentPlayerIdx == 0 then
         c1 = "-"
         c2 = "Deal"
@@ -505,21 +505,21 @@ local function drawTable(players, dealerHand, currentPlayerIdx, message, showDea
         c2 = "Surrender"
         c3 = "Back"
     end
-    
+
     -- Left Button
     term.setCursorPos(1, h)
     term.setBackgroundColor(colors.red)
     term.setTextColor(colors.white)
     term.write(string.rep(" ", colW))
     drawText(math.floor(colW/2 - #c1/2)+1, h, c1, colors.white, colors.red)
-    
+
     -- Center Button
     term.setCursorPos(colW + 1, h)
     term.setBackgroundColor(colors.yellow)
     term.setTextColor(colors.black)
     term.write(string.rep(" ", colW))
     drawText(colW + math.floor(colW/2 - #c2/2)+1, h, c2, colors.black, colors.yellow)
-    
+
     -- Right Button
     term.setCursorPos(colW * 2 + 1, h)
     term.setBackgroundColor(colors.blue)
@@ -670,15 +670,15 @@ end
 local function main()
     term.setBackgroundColor(colors.black)
     term.clear()
-    
+
     local creditsAPI = require("credits")
     local audio = require("audio")
-    
+
     while true do
         drawCenter(h/2 - 2, "BLACKJACK", colors.lime, colors.black)
         drawCenter(h/2, "Insert Cards (Max 3)", colors.white, colors.black)
         drawCenter(h/2 + 2, "[C] Start Game   [R] Exit", colors.gray, colors.black)
-        
+
         -- Lobby Loop
         local detectedCards = {}
         local attractDelay = 8
@@ -743,7 +743,7 @@ local function main()
                 end
                 drawCenter(h/2 + 4, msg, colors.yellow, colors.black)
             end
-            
+
             -- Initial scan if just opened
             if #detectedCards == 0 then
                  detectedCards = creditsAPI.findCards()
@@ -759,7 +759,7 @@ local function main()
                 end
             end
         end
-        
+
         -- Limit to 3 players
         local players = {}
         for i, card in ipairs(detectedCards) do
@@ -791,10 +791,10 @@ local function main()
             end
             players[#players].houseRound = round
         end
-        
+
         local deck = createDeck()
         local dealerHand = {}
-        
+
         -- Initial Deal
         for _=1,2 do
             for _, p in ipairs(players) do 
@@ -806,7 +806,7 @@ local function main()
             audio.playDeal()
             sleep(0.2)
         end
-        
+
         -- Player Turns
         for i, p in ipairs(players) do
             while true do
@@ -818,10 +818,10 @@ local function main()
                     p.status = "Bust!"
                     break
                 end
-                
+
                 drawTable(players, dealerHand, i, p.name .. "'s Turn", false)
                 local action = waitKey()
-                
+
                 -- Normal Mode
                 if action == "LEFT" then -- Hit
                     table.insert(p.hand, drawCardDeck(deck))
@@ -833,7 +833,7 @@ local function main()
                     -- Show Advanced Options
                     drawTable(players, dealerHand, i, "ADV: [L] Dbl [C] Surr [R] Back", false)
                     local advAction = waitKey()
-                    
+
                     if advAction == "LEFT" then -- Double Down
                         if creditsAPI.get(p.mountPath) >= p.bet then
                             local accepted, err = creditsAPI.increaseRound(p.houseRound, p.bet, p.bet * 4)
@@ -859,7 +859,7 @@ local function main()
             drawTable(players, dealerHand, i, p.name .. " Done", false)
             sleep(0.5)
         end
-        
+
         -- Dealer Turn
         drawTable(players, dealerHand, 0, "Dealer's Turn...", true)
         sleep(1)
@@ -869,11 +869,11 @@ local function main()
             drawTable(players, dealerHand, 0, "Dealer Hits...", true)
             sleep(1)
         end
-        
+
         -- Resolve
         local dealerScore = calculateHand(dealerHand)
         local dealerBust = dealerScore > 21
-        
+
         for _, p in ipairs(players) do
             local pScore = calculateHand(p.hand)
             local returned = 0
@@ -897,43 +897,43 @@ local function main()
             else
                 p.status = "LOSE"
             end
-            
+
             creditsAPI.settleRound(p.houseRound, returned)
             -- Unlock card
             creditsAPI.unlock(p.mountPath)
         end
-        
+
         drawTable(players, dealerHand, 0, "Round Over!", true)
-        
+
         -- Play Animations for Winners
         local sectionW = w / #players
         local playerY = h - 6
         local dealerX, dealerY = w/2, 3
-        
+
         for i, p in ipairs(players) do
             if p.status == "WIN!" or p.status == "Blackjack!" then
                 local pCenterX = math.floor((i-1)*sectionW + sectionW/2)
-                
+
                 -- Animate Chips from Dealer to Player
                 audio.playChip()
                 animateChips(dealerX, dealerY, pCenterX, playerY)
                 audio.playWin()
-                
+
                 -- Animate Sparkles around Player
                 animateSparkles(pCenterX - 6, playerY - 2, 12, 6)
-                
+
                 drawTable(players, dealerHand, 0, "Round Over!", true) -- Redraw to clear noise
             end
         end
-        
+
         drawTable(players, dealerHand, 0, "Round Over! [C] Play Again", true)
-        
+
         local endAction = waitKey()
         if endAction == "RIGHT" then
             break
         end
     end
-    
+
     -- Exit to Menu
     term.setBackgroundColor(colors.black)
     term.clear()
@@ -1676,14 +1676,14 @@ local function waitForInput(buttonName)
     print("")
     print("Please press the " .. buttonName .. " button.")
     print("(Press a Key or activate Redstone)")
-    
+
     while true do
         local event, p1 = os.pullEvent()
-        
+
         if event == "key" then
             -- p1 is key code
             return { type = "key", value = p1 }
-            
+
         elseif event == "redstone" then
             -- Check all sides for active input
             for _, side in ipairs(rs.getSides()) do
@@ -1793,6 +1793,11 @@ function M.beginRound(game,stake,maximum,path)
  local c=cardAt(path); if not c or not c.account then return nil,'Insert a house account card' end
  local cli=network(); local localState=cli:localState()
  local old=localState.rounds[c.account]
+ -- A lost reservation reply may have been recovered from another house screen.
+ if not old and localState.last and localState.last.result.ok then
+  local q=localState.last.request
+  if q.op=='reserve' and q.account==c.account then old={round=q.round} end
+ end
  if old then
   local status=cli:read({op='roundStatus',round=old.round,account=c.account})
   if not status.ok or status.status=='open' then return nil,'Interrupted round '..old.round..': cashier must review/refund it' end
@@ -2023,6 +2028,7 @@ function M.run(client,t)
   local _,h=t.getSize(); ui.line(t,h,' '..status,colors.yellow)
  end
  local function create()
+  if not ui.usable(t) then return end
   refresh()
   if not card or card.account then status='Insert a disk without a house account'; return end
   local original=card
@@ -2037,10 +2043,12 @@ function M.run(client,t)
   refresh()
  end
  local function choose(op)
+  if not ui.usable(t) then return end
   refresh()
   if card and card.account and balance then review={op=op,account=card.account,amount=amounts[index]} else status='Insert an issued card and connect to house' end
  end
  local function confirm()
+  if not ui.usable(t) then return end
   if not review then return end
   local current=ui.card()
   if not current or current.account~=review.account then status='Card changed. Transfer not sent.'; review=nil; return end
@@ -2359,7 +2367,7 @@ return {version='sim-1-calibration-100000-v1',simulation=1,samples=100000,wins={
 ]])
 
 writeFile('derby/palette.lua', [[
-local M={values={0xf5f5f5,0xcd783c,0xaf52af,0x8cc5e0,0xffe36b,0x79bc51,0xeea0bc,0x455162,0xc6ced8,0x287e91,0x8751b5,0x17395e,0x886044,0x486b40,0xbc443a,0x10151c}}
+local M={values={0xf5f5f5,0xcd783c,0xaf52af,0x8cc5e0,0xffe36b,0x79bc51,0x5c3a24,0x455162,0xc6ced8,0x287e91,0x8751b5,0x17395e,0x886044,0x486b40,0xbc443a,0x10151c}}
 function M.apply(t)
  for i,hex in ipairs(M.values) do t.setPaletteColor(2^(i-1),hex) end
 end
@@ -2396,6 +2404,7 @@ function M.new(t)
  end
  term.redirect(old)
  local api={}
+ local smooth
  local function look(x,y,z,tx,ty,tz)
   local dx,dz=tx-x,tz-z
   f:setCamera({x=x,y=y,z=z,rotX=-90,rotY=math.deg(math.atan2(dz,dx)),rotZ=math.deg(math.atan2(ty-y,math.sqrt(dx*dx+dz*dz)))})
@@ -2414,12 +2423,17 @@ function M.new(t)
    local running=v.phase=='RUNNING'; local p=running and math.floor((v.tick or 0)*.8)%8+1 or 1
    o:setModel(frames[i][p]); o:setPos(x,running and math.abs(math.sin((v.tick or 0)*.45+i))*.13 or 0,z); o:setRot(0,a,0)
   end
+  if camera~='follow' then smooth=nil end
   if camera=='overview' then look(-65,58,60,0,0,0); f:setFoV(68)
   elseif camera=='finish' then look(-36,9,30,-17,1,16); f:setFoV(70)
   elseif v.phase~='RUNNING' then look(-43,15,36,-9,1,16); f:setFoV(70)
   else
-   local x,z,a=scene.pose(positions[leader],2)
-   look(x-math.cos(a)*13+math.sin(a)*11,9,z+math.sin(a)*13+math.cos(a)*11,x,1.3,z); f:setFoV(72)
+   local progress=(positions[1]+positions[2]+positions[3])/3
+   local x,z,a=scene.pose(math.min(.999,progress),2)
+   local target={x-math.cos(a)*15+math.sin(a)*13,10,z+math.sin(a)*15+math.cos(a)*13,x,1.3,z}
+   smooth=smooth or target
+   for i=1,6 do smooth[i]=smooth[i]+(target[i]-smooth[i])*.2 end
+   look(table.unpack(smooth)); f:setFoV(76)
   end
   f:drawObjects(objects); f:drawBuffer()
   line(t,1,' PINE3D DERBY'..(exhibition and ' | EXHIBITION - NO MONEY' or ' | '..tostring(v.id or 'CONNECTING')),colors.white,colors.blue)
@@ -2478,35 +2492,59 @@ function M.track(detail)
  for n=0,7 do
   quad(m,{-20,.02,13+n},{-19,.02,13+n},{-19,.02,14+n},{-20,.02,14+n},n%2==0 and colors.white or colors.black)
  end
- -- Tiered grandstand on the near straight, with a bold roof and simplified seating.
- for n=0,3 do M.box(m,-12,0,27+n*2,32,1.5+n*1.2,2, n%2==0 and colors.lightGray or colors.gray) end
- M.box(m,-14,7.5,26,36,.5,10,colors.red)
- for _,x in ipairs({-13,20}) do M.box(m,x,0,33,.45,7.5,.45,colors.white) end
+ -- Tiered grandstand behind the far straight, so every camera looks across the track at it
+ -- rather than through it. A shallow cantilevered roof covers only the back rows.
+ for n=0,3 do M.box(m,-16,0,-32-n*2,32,1.2+n*1.2,2, n%2==0 and colors.lightGray or colors.gray) end
+ M.box(m,-16,0,-40.5,32,6.2,.5,colors.gray)
+ M.box(m,-17,6.2,-41,34,.25,5,colors.red)
+ for _,x in ipairs({-16,15.6}) do M.box(m,x,0,-40.5,.4,6.2,.4,colors.white) end
  -- Tote board in the infield: three large light panels instead of tiny scenery text.
  M.box(m,5,0,-5,.5,6,.5,colors.gray); M.box(m,18,0,-5,.5,6,.5,colors.gray)
  M.box(m,4,4,-5.2,15,5,.5,colors.black)
  for i=1,3 do M.box(m,5,4+i,-4.65,12,.5,.1,colors.white) end
  return m
 end
+-- A box along a line in the side (x-y) plane: used for legs, neck, head and tail so the
+-- horse reads as a silhouette instead of a stack of axis-aligned blocks.
+function M.limb(m,x1,y1,x2,y2,thick,z,width,c)
+ local dx,dy=x2-x1,y2-y1; local len=math.sqrt(dx*dx+dy*dy); if len==0 then return end
+ local nx,ny=-dy/len*thick/2,dx/len*thick/2; local z1,z2=z-width/2,z+width/2
+ local p={{x1+nx,y1+ny},{x2+nx,y2+ny},{x2-nx,y2-ny},{x1-nx,y1-ny}}
+ local function v(k,zz) return {p[k][1],p[k][2],zz} end
+ quad(m,v(1,z1),v(2,z1),v(3,z1),v(4,z1),c); quad(m,v(1,z2),v(2,z2),v(3,z2),v(4,z2),c)
+ for k=1,4 do local n=k%4+1; quad(m,v(k,z1),v(n,z1),v(n,z2),v(k,z2),c) end
+end
+-- Coat, mane and jockey silks. Silks match sim.horses[i].color so the UI and track agree.
+M.coats={{colors.pink,colors.black},{colors.black,colors.gray},{colors.lightGray,colors.gray}}
+M.silks={colors.orange,colors.lightGray,colors.purple}
 function M.horse(i,phase)
- local m={}; local body=({colors.orange,colors.lightGray,colors.purple})[i]
- M.box(m,-1.1,1, -.42,2.1,.85,.84,body)
- M.box(m,.55,1.6,-.3,.55,1.1,.6,body)
- M.box(m,.7,2.3,-.31,1,.5,.62,body)
- M.box(m,.8,2.72,-.25,.17,.28,.14,body); M.box(m,.8,2.72,.12,.17,.28,.14,body)
- M.box(m,-1.65,1.4,-.12,.6,.2,.24,colors.black)
- for j=1,4 do
-  local x=j<3 and -.75 or .65; local z=j%2==0 and .27 or -.38
-  local swing=math.sin(phase+((j==1 or j==4) and 0 or pi))*.3
-  M.box(m,x+swing,.12,z,.24,1.05,.23,body)
-  M.box(m,x+swing,.05,z,.3,.2,.25,colors.black)
+ local m={}; local coat,mane=M.coats[i][1],M.coats[i][2]; local silk=M.silks[i]
+ -- Barrel, chest and rump, then a sloping neck and a head angled toward the ground.
+ M.box(m,-.95,1.22,-.36,1.95,.78,.72,coat)
+ M.limb(m,.7,1.5,1.3,2.5,.62,0,.52,coat)
+ M.limb(m,1.2,2.58,1.95,2.06,.36,0,.4,coat)
+ M.box(m,1.08,2.72,-.16,.12,.24,.1,coat); M.box(m,1.08,2.72,.06,.12,.24,.1,coat)
+ M.limb(m,.5,1.9,1.08,2.76,.14,0,.2,mane)
+ local sway=math.sin(phase)*.12
+ M.limb(m,-.92,1.92,-1.5,1.2+sway,.22,0,.2,mane)
+ -- Rotary gallop: each leg is a thigh plus a cannon that folds back as the leg swings forward.
+ for _,leg in ipairs({{-.68,-.2,0},{-.68,.2,.7},{.68,-.2,pi},{.68,.2,pi+.7}}) do
+  local hx,hz,off=leg[1],leg[2],leg[3]
+  local swing=math.sin(phase+off)*.5; local fold=math.max(0,math.cos(phase+off))*.9
+  local kx,ky=hx+math.sin(swing)*.62,1.4-math.cos(swing)*.62
+  local lower=swing-fold
+  local fx,fy=kx+math.sin(lower)*.56,ky-math.cos(lower)*.56
+  local tx,ty=kx+math.sin(lower)*.72,ky-math.cos(lower)*.72
+  M.limb(m,hx,1.45,kx,ky,.24,hz,.2,coat)
+  M.limb(m,kx,ky,fx,fy,.16,hz,.17,coat)
+  M.limb(m,fx,fy,tx,ty,.2,hz,.2,colors.black)
  end
- -- White saddlecloth with a large black numeral on both sides.
- M.box(m,-.5,1.2,-.46,.9,.65,.92,colors.white)
- local patterns={ {'010','110','010','010','111'}, {'111','001','111','100','111'}, {'111','001','111','001','111'} }
- for row,line in ipairs(patterns[i]) do for col=1,3 do if line:sub(col,col)=='1' then
-  for _,z in ipairs({-.478,.466}) do M.box(m,-.42+(col-1)*.22,1.82-row*.105,z,.18,.09,.012,colors.black) end
- end end end
+ -- Saddlecloth and a crouched jockey in the horse's racing colours.
+ M.box(m,-.5,1.5,-.39,.85,.55,.78,silk)
+ M.limb(m,-.25,2.12,.3,1.98,.2,0,.66,colors.white)
+ M.limb(m,-.2,2.15,.42,2.55,.4,0,.42,silk)
+ M.limb(m,.32,2.45,.8,2.2,.12,0,.56,silk)
+ M.box(m,.36,2.56,-.16,.32,.28,.32,silk)
  return m
 end
 return M
@@ -5664,17 +5702,17 @@ local state = {
     -- Resources
     blocks = 0,           -- Main currency
     diamonds = 0,         -- Premium currency (earned through gameplay)
-    
+
     -- Workers
     steves = 0,           -- Basic miners
     alexes = 0,           -- Better miners
     golems = 0,           -- Iron golems (super miners)
-    
+
     -- Buildings
     mines = 0,            -- Passive block gen
     villages = 0,         -- Generate steves
     forges = 0,           -- Boost multiplier
-    
+
     -- Mods installed (upgrades)
     mods = {
         efficiency = 0,   -- Click multiplier
@@ -5683,13 +5721,13 @@ local state = {
         mending = 0,      -- Auto-repair (passive gen)
         unbreaking = 0,   -- Cost reduction
     },
-    
+
     -- Stats
     totalBlocks = 0,
     totalClicks = 0,
     prestigeCount = 0,
     prestigeBonus = 1,    -- Multiplier from prestige
-    
+
     -- Time tracking
     lastTick = 0,
 }
@@ -5791,26 +5829,26 @@ end
 
 local function getBlocksPerSecond()
     local bps = 0
-    
+
     -- Workers
     local hasteBonus = 1 + (state.mods.haste * 0.2)
     bps = bps + (state.steves * 1 * hasteBonus)
     bps = bps + (state.alexes * 5 * hasteBonus)
     bps = bps + (state.golems * 25 * hasteBonus)
-    
+
     -- Buildings
     bps = bps + (state.mines * 2)
-    
+
     -- Mending mod (passive)
     bps = bps + (state.mods.mending * 0.5)
-    
+
     -- Forge bonus
     local forgeBonus = 1 + (state.forges * 0.25)
     bps = bps * forgeBonus
-    
+
     -- Prestige bonus
     bps = bps * state.prestigeBonus
-    
+
     return bps
 end
 
@@ -5829,7 +5867,7 @@ end
 
 local function doClick()
     local power = getClickPower()
-    
+
     -- Fortune chance for bonus
     if state.mods.fortune > 0 then
         local chance = state.mods.fortune * 0.1
@@ -5837,16 +5875,16 @@ local function doClick()
             power = power * 2
         end
     end
-    
+
     state.blocks = state.blocks + power
     state.totalBlocks = state.totalBlocks + power
     state.totalClicks = state.totalClicks + 1
-    
+
     -- Small chance for diamond on click
     if math.random() < 0.01 then
         state.diamonds = state.diamonds + 1
     end
-    
+
     audio.play("click")
     return power
 end
@@ -5856,7 +5894,7 @@ local function doTick(dt)
     local earned = bps * dt
     state.blocks = state.blocks + earned
     state.totalBlocks = state.totalBlocks + earned
-    
+
     -- Villages generate steves slowly
     if state.villages > 0 then
         local steveChance = state.villages * 0.01 * dt
@@ -5864,7 +5902,7 @@ local function doTick(dt)
             state.steves = state.steves + 1
         end
     end
-    
+
     -- Rare diamond from mining
     if bps > 0 and math.random() < 0.001 * dt * (1 + state.mods.fortune * 0.5) then
         state.diamonds = state.diamonds + 1
@@ -5882,11 +5920,11 @@ end
 
 local function doPrestige()
     if not canPrestige() then return false end
-    
+
     local bonus = getPrestigeBonus()
     state.prestigeCount = state.prestigeCount + 1
     state.prestigeBonus = state.prestigeBonus + bonus
-    
+
     -- Reset progress but keep diamonds and prestige
     state.blocks = 0
     state.steves = 0
@@ -5897,12 +5935,12 @@ local function doPrestige()
     state.forges = 0
     state.totalBlocks = 0
     state.totalClicks = 0
-    
+
     -- Keep mods at reduced level
     for mod, level in pairs(state.mods) do
         state.mods[mod] = math.floor(level / 2)
     end
-    
+
     audio.play("win")
     return true
 end
@@ -5922,12 +5960,12 @@ local function drawResourceBar()
         rightText = rightText .. " (+" .. formatNumber(bps) .. "/s)"
     end
     drawTitleBar("IDLECRAFT", rightText)
-    
+
     -- Diamond display
     if state.diamonds > 0 then
         writeAt(2, 2, "\4 " .. state.diamonds, colors.cyan, colors.black)
     end
-    
+
     -- Prestige display
     if state.prestigeBonus > 1 then
         local pText = "x" .. state.prestigeBonus .. " prestige"
@@ -5940,15 +5978,15 @@ local function drawMainMenu()
     term.setBackgroundColor(colors.black)
     term.clear()
     drawResourceBar()
-    
+
     local startY = 4
-    
+
     -- Mine button (big and centered)
     local mineText = "[ MINE! ]"
     local clickPower = getClickPower()
     writeAt(cx - #mineText/2, startY, mineText, colors.lime, colors.black)
     writeAt(cx - 4, startY + 1, "+" .. clickPower .. " blocks", colors.gray, colors.black)
-    
+
     -- Worker counts
     local y = startY + 3
     writeAt(2, y, "Workers:", colors.yellow, colors.black)
@@ -5965,7 +6003,7 @@ local function drawMainMenu()
         writeAt(2, y, "  Golem x" .. state.golems, colors.lightGray, colors.black)
         y = y + 1
     end
-    
+
     -- Building counts
     y = y + 1
     writeAt(2, y, "Buildings:", colors.yellow, colors.black)
@@ -5982,7 +6020,7 @@ local function drawMainMenu()
         writeAt(2, y, "  Forge x" .. state.forges, colors.red, colors.black)
         y = y + 1
     end
-    
+
     -- Installed mods
     local modLine = ""
     for mod, level in pairs(state.mods) do
@@ -5993,7 +6031,7 @@ local function drawMainMenu()
     if #modLine > 0 then
         writeAt(2, h - 2, "Mods: " .. modLine, colors.magenta, colors.black)
     end
-    
+
     drawButtonBar("Shop", "MINE!", "Mods")
 end
 
@@ -6020,7 +6058,7 @@ end
 local function buyItem(key)
     local owned = getOwned(key)
     local cost = getCost(COSTS[key], owned)
-    
+
     if state.blocks >= cost then
         state.blocks = state.blocks - cost
         if key == "steve" then state.steves = state.steves + 1
@@ -6041,20 +6079,20 @@ local function drawShopMenu()
     term.setBackgroundColor(colors.black)
     term.clear()
     drawResourceBar()
-    
+
     writeAt(2, 3, "=== SHOP ===", colors.yellow, colors.black)
-    
+
     local startY = 5
     for i, item in ipairs(shopItems) do
         local y = startY + i - 1
         local owned = getOwned(item.key)
         local cost = getCost(COSTS[item.key], owned)
         local canAfford = state.blocks >= cost
-        
+
         local line = item.name
         local costStr = formatNumber(cost) .. " blk"
         local ownedStr = "(" .. owned .. ")"
-        
+
         if i == menuSelection then
             writeAt(2, y, "> ", colors.lime, colors.black)
             writeAt(4, y, line, canAfford and colors.white or colors.gray, colors.black)
@@ -6062,11 +6100,11 @@ local function drawShopMenu()
             writeAt(2, y, "  ", colors.white, colors.black)
             writeAt(4, y, line, canAfford and colors.white or colors.gray, colors.black)
         end
-        
+
         writeAt(20, y, costStr, canAfford and colors.lime or colors.red, colors.black)
         writeAt(w - #ownedStr - 1, y, ownedStr, colors.lightGray, colors.black)
     end
-    
+
     -- Description of selected item
     local sel = shopItems[menuSelection]
     local desc = ""
@@ -6078,7 +6116,7 @@ local function drawShopMenu()
     elseif sel.key == "forge" then desc = "Boosts all production 25%"
     end
     writeAt(2, h - 2, desc, colors.gray, colors.black)
-    
+
     drawButtonBar("Back", "Buy", "Next")
 end
 
@@ -6089,19 +6127,19 @@ local function drawModMenu()
     term.setBackgroundColor(colors.black)
     term.clear()
     drawResourceBar()
-    
+
     writeAt(2, 3, "=== MODS ===", colors.magenta, colors.black)
-    
+
     local startY = 5
     for i, modKey in ipairs(modItems) do
         local y = startY + i - 1
         local level = state.mods[modKey] or 0
         local cost = getModCost(modKey)
         local canAfford = state.blocks >= cost
-        
+
         local name = MOD_NAMES[modKey] .. " " .. (level > 0 and tostring(level) or "")
         local costStr = formatNumber(cost) .. " blk"
-        
+
         if i == menuSelection then
             writeAt(2, y, "> ", colors.lime, colors.black)
             writeAt(4, y, name, canAfford and colors.white or colors.gray, colors.black)
@@ -6109,10 +6147,10 @@ local function drawModMenu()
             writeAt(2, y, "  ", colors.white, colors.black)
             writeAt(4, y, name, canAfford and colors.white or colors.gray, colors.black)
         end
-        
+
         writeAt(24, y, costStr, canAfford and colors.lime or colors.red, colors.black)
     end
-    
+
     -- Prestige option
     local prestigeY = startY + #modItems + 1
     if canPrestige() then
@@ -6120,7 +6158,7 @@ local function drawModMenu()
         writeAt(2, prestigeY, "[ PRESTIGE ]", colors.purple, colors.black)
         writeAt(2, prestigeY + 1, "Reset for +" .. pBonus .. "x bonus!", colors.magenta, colors.black)
     end
-    
+
     -- Description of selected mod
     local desc = ""
     if menuSelection <= #modItems then
@@ -6133,7 +6171,7 @@ local function drawModMenu()
         end
     end
     writeAt(2, h - 2, desc, colors.gray, colors.black)
-    
+
     drawButtonBar("Back", "Install", "Next")
 end
 
@@ -6156,15 +6194,15 @@ local function drawDemo()
     refreshSize()
     term.setBackgroundColor(colors.black)
     term.clear()
-    
+
     -- Title
     local title = "IDLECRAFT"
     writeAt(cx - #title/2, 3, title, colors.lime, colors.black)
-    
+
     -- Subtitle
     local sub = "Minecraft Incremental"
     writeAt(cx - #sub/2, 4, sub, colors.green, colors.black)
-    
+
     -- Animation: falling blocks
     local blocks = { "\127", "#", "O", "@", "*" }
     for i = 1, 8 do
@@ -6173,32 +6211,32 @@ local function drawDemo()
         local bc = { colors.brown, colors.gray, colors.lightGray, colors.cyan }
         writeAt(bx, by, blocks[math.random(#blocks)], bc[math.random(#bc)], colors.black)
     end
-    
+
     -- Features
     local y = 8
     writeAt(4, y, "\7 Hire Steves & Alexes", colors.white, colors.black)
     writeAt(4, y + 1, "\7 Build Mines & Forges", colors.white, colors.black)
     writeAt(4, y + 2, "\7 Install Enchantment Mods", colors.white, colors.black)
     writeAt(4, y + 3, "\7 Prestige for Bonuses", colors.white, colors.black)
-    
+
     -- Free to play
     writeAt(cx - 7, h - 3, "FREE TO PLAY!", colors.yellow, colors.black)
-    
+
     drawButtonBar("", "Play", "")
 end
 
 local function runDemo()
     local demoTimer = os.startTimer(5)
-    
+
     while true do
         drawDemo()
-        
+
         local e, p1 = os.pullEvent()
-        
+
         if e == "timer" and p1 == demoTimer then
             return false  -- Demo ended, go back to menu
         end
-        
+
         local button = input.getButton(e, p1)
         if button then
             return true  -- Player wants to play
@@ -6212,16 +6250,16 @@ end
 
 local function waitInput(timeout)
     local timer = timeout and os.startTimer(timeout) or nil
-    
+
     while true do
         local e, p1 = os.pullEvent()
-        
+
         if e == "timer" then
             if p1 == timer then
                 return nil, "tick"
             end
         end
-        
+
         local button = input.getButton(e, p1)
         if button then
             if e == "redstone" then sleep(0.1) end
@@ -6233,19 +6271,19 @@ end
 local function gameLoop()
     loadGame()
     state.lastTick = os.clock()
-    
+
     local saveTimer = 0
     local running = true
-    
+
     while running do
         -- Calculate time delta
         local now = os.clock()
         local dt = now - state.lastTick
         state.lastTick = now
-        
+
         -- Game tick
         doTick(dt)
-        
+
         -- Draw current menu
         if currentMenu == "main" then
             drawMainMenu()
@@ -6254,17 +6292,17 @@ local function gameLoop()
         elseif currentMenu == "mods" then
             drawModMenu()
         end
-        
+
         -- Autosave every ~30 seconds of game time
         saveTimer = saveTimer + dt
         if saveTimer >= 30 then
             saveGame()
             saveTimer = 0
         end
-        
+
         -- Wait for input with timeout for ticks
         local button, reason = waitInput(0.5)
-        
+
         if button then
             if currentMenu == "main" then
                 if button == "LEFT" then
@@ -6276,7 +6314,7 @@ local function gameLoop()
                     currentMenu = "mods"
                     menuSelection = 1
                 end
-                
+
             elseif currentMenu == "shop" then
                 if button == "LEFT" then
                     currentMenu = "main"
@@ -6289,7 +6327,7 @@ local function gameLoop()
                         menuSelection = 1
                     end
                 end
-                
+
             elseif currentMenu == "mods" then
                 if button == "LEFT" then
                     currentMenu = "main"
@@ -6306,7 +6344,7 @@ local function gameLoop()
             end
         end
     end
-    
+
     saveGame()
 end
 
@@ -6330,7 +6368,7 @@ local function main()
             return  -- Exit back to menu
         end
     end
-    
+
     -- Run main game
     gameLoop()
 end
@@ -6402,7 +6440,7 @@ local function getButton(event, p1)
         if config.LEFT.type == "key" and p1 == config.LEFT.value then return "LEFT" end
         if config.CENTER.type == "key" and p1 == config.CENTER.value then return "CENTER" end
         if config.RIGHT.type == "key" and p1 == config.RIGHT.value then return "RIGHT" end
-        
+
         -- Check default keys (fallback/keyboard support)
         if isKey(p1, DEFAULT_KEYS.LEFT) then return "LEFT" end
         if isKey(p1, DEFAULT_KEYS.CENTER) then return "CENTER" end
@@ -6414,7 +6452,7 @@ local function getButton(event, p1)
         if c == "1" then return "LEFT" end
         if c == "2" then return "CENTER" end
         if c == "3" then return "RIGHT" end
-        
+
     elseif event == "redstone" then
         -- Prefer configured redstone using rising-edge detection.
         local states = {
@@ -6442,7 +6480,7 @@ local function getButton(event, p1)
             -- Ambiguous press (multiple lines rose at once). Ignore.
             return nil
         end
-        
+
         -- Default redstone fallback (Legacy support)
         -- Only check if NOT configured as redstone to avoid double counting if config matches default
         if config.LEFT.type ~= "redstone" and redstone.getInput("left") then return "LEFT" end
@@ -6501,21 +6539,21 @@ local rainbowColors = {colors.red, colors.orange, colors.yellow, colors.lime, co
 
 local function drawRainbowBorder()
     animFrame = animFrame + 1
-    
+
     -- Top border
     term.setCursorPos(1, 1)
     for x = 1, w do
         term.setBackgroundColor(rainbowColors[((x + animFrame) % #rainbowColors) + 1])
         term.write(" ")
     end
-    
+
     -- Bottom border
     term.setCursorPos(1, h)
     for x = 1, w do
         term.setBackgroundColor(rainbowColors[((x + animFrame + 4) % #rainbowColors) + 1])
         term.write(" ")
     end
-    
+
     -- Side borders
     for y = 2, h - 1 do
         term.setBackgroundColor(rainbowColors[((y + animFrame) % #rainbowColors) + 1])
@@ -6538,25 +6576,25 @@ end
 
 local function drawHeader()
     term.setBackgroundColor(colors.black)
-    
+
     -- Animated title
     local title = " ARCADE "
     local titleX = math.floor((w - #title) / 2)
-    
+
     term.setCursorPos(titleX, 2)
     for i = 1, #title do
         local colorIdx = ((i + animFrame) % #rainbowColors) + 1
         term.setTextColor(rainbowColors[colorIdx])
         term.write(title:sub(i, i))
     end
-    
+
     -- Subtitle with pulse effect
     local sub = "[ INSERT CARD TO PLAY ]"
     local name = credits.getName()
     if name then
         sub = "[ " .. name:upper() .. " - " .. credits.get() .. " CREDITS ]"
     end
-    
+
     local subX = math.floor((w - #sub) / 2)
     term.setCursorPos(subX, 3)
     local pulseColor = (animFrame % 10 < 5) and colors.yellow or colors.white
@@ -6571,38 +6609,38 @@ local function drawMenu()
     for _, g in ipairs(games) do table.insert(menuItems, g) end
     table.insert(menuItems, { name = "---", cmd = "", icon = "-", separator = true })
     for _, u in ipairs(utilities) do table.insert(menuItems, u) end
-    
+
     -- Clear inner area
     term.setBackgroundColor(colors.black)
     for y = 2, h - 1 do
         term.setCursorPos(2, y)
         term.write(string.rep(" ", w - 2))
     end
-    
+
     drawRainbowBorder()
     drawHeader()
-    
+
     -- Random sparkles
     if math.random() > 0.7 then
         drawSparkle(math.random(3, w - 2), math.random(5, h - 2))
     end
-    
+
     -- Menu items
     local startY = 5
     local maxVisible = h - 7
     local offset = 0
-    
+
     -- Scroll if needed
     if selected > maxVisible then
         offset = selected - maxVisible
     end
-    
+
     for i, item in ipairs(menuItems) do
         local displayIdx = i - offset
         if displayIdx >= 1 and displayIdx <= maxVisible then
             local y = startY + displayIdx - 1
             term.setCursorPos(3, y)
-            
+
             if item.separator then
                 term.setTextColor(colors.gray)
                 term.write(string.rep("-", w - 5))
@@ -6619,7 +6657,7 @@ local function drawMenu()
             end
         end
     end
-    
+
     -- Footer
     term.setBackgroundColor(colors.gray)
     term.setTextColor(colors.black)
@@ -6628,7 +6666,7 @@ local function drawMenu()
     local footer = "[<] PREV  [O] SELECT  [>] NEXT"
     term.setCursorPos(math.floor((w - #footer) / 2), h - 1)
     term.write(footer)
-    
+
     return menuItems
 end
 
@@ -6636,7 +6674,7 @@ local function drawWelcomePopup(name, amount)
     local popupW, popupH = 30, 11
     local px = math.floor((w - popupW) / 2)
     local py = math.floor((h - popupH) / 2)
-    
+
     -- Draw animated border box
     for row = py, py + popupH do
         term.setCursorPos(px, row)
@@ -6648,7 +6686,7 @@ local function drawWelcomePopup(name, amount)
         term.setBackgroundColor(borderColor)
         term.write(" ")
     end
-    
+
     -- Stars around welcome
     local stars = {"*", "+", ".", "*", "+"}
     term.setBackgroundColor(colors.blue)
@@ -6658,19 +6696,19 @@ local function drawWelcomePopup(name, amount)
         term.setTextColor(rainbowColors[((i + animFrame) % #rainbowColors) + 1])
         term.write(s .. " ")
     end
-    
+
     term.setTextColor(colors.yellow)
     term.setCursorPos(px + 4, py + 3)
     term.write("*** WELCOME BACK! ***")
-    
+
     term.setTextColor(colors.white)
     term.setCursorPos(px + 4, py + 5)
     term.write("Player: " .. name)
-    
+
     term.setTextColor(colors.lime)
     term.setCursorPos(px + 4, py + 7)
     term.write("Credits: " .. amount)
-    
+
     term.setTextColor(colors.cyan)
     term.setCursorPos(px + 4, py + 9)
     local msg = (animFrame % 6 < 3) and ">> SELECT A GAME! <<" or "<< SELECT A GAME! >>"
@@ -6707,7 +6745,7 @@ local function launchGame(item)
     term.setBackgroundColor(colors.black)
     term.clear()
     term.setCursorPos(1, 1)
-    
+
     if item.cmd == "reboot" then
         os.reboot()
     elseif item.cmd == "shutdown" then
@@ -6731,17 +6769,17 @@ local function main()
     local cardInserted = credits.getName() ~= nil
     local showWelcome = false
     local welcomeTimer = 0
-    
+
     -- Start the jazz!
     startJazz()
-    
+
     -- Animation timer
     local animTimer = os.startTimer(0.15)
-    
+
     while true do
         -- Get fresh menu each frame
         local menuItems = drawMenu()
-        
+
         -- Show welcome popup if needed
         if showWelcome and welcomeTimer > 0 then
             local name = credits.getName()
@@ -6754,12 +6792,12 @@ local function main()
                 showWelcome = false
             end
         end
-        
+
         -- Tick jazz
         tickJazz()
-        
+
         local event, p1 = os.pullEvent()
-        
+
         -- Handle keyboard navigation separately from physical buttons
         if event == "key" then
             local keyName = keys.getName(p1)
@@ -6800,10 +6838,10 @@ local function main()
                 audio.playClick()
             end
         end
-        
+
         -- Handle physical arcade buttons (redstone/char)
         local button = input.getButton(event, p1)
-        
+
         if event == "redstone" or event == "char" then
             if button == "LEFT" then
                 selected = selected - 1
@@ -6813,7 +6851,7 @@ local function main()
                 if selected < 1 then selected = #menuItems end
                 audio.playClick()
                 if event == "redstone" then sleep(0.15) end
-                
+
             elseif button == "RIGHT" then
                 selected = selected + 1
                 while menuItems[selected] and menuItems[selected].separator do
@@ -6822,7 +6860,7 @@ local function main()
                 if selected > #menuItems then selected = 1 end
                 audio.playClick()
                 if event == "redstone" then sleep(0.15) end
-                
+
             elseif button == "CENTER" then
                 if menuItems[selected] and not menuItems[selected].separator then
                     audio.playConfirm()
@@ -6833,7 +6871,7 @@ local function main()
                 if event == "redstone" then sleep(0.15) end
             end
         end
-        
+
         if event == "disk" then
             local name = credits.getName()
             if name and not cardInserted then
@@ -6842,11 +6880,11 @@ local function main()
                 showWelcome = true
                 welcomeTimer = 25
             end
-            
+
         elseif event == "disk_eject" then
             cardInserted = false
             showWelcome = false
-            
+
         elseif event == "timer" and p1 == animTimer then
             animTimer = os.startTimer(0.15)
         end
@@ -6914,7 +6952,7 @@ local function drawHeader()
     term.clearLine()
     term.setCursorPos(2, 1)
     term.write("ARCADE OS")
-    
+
     local c = credits.get()
     local name = credits.getName()
 
@@ -6931,10 +6969,10 @@ local function drawMenu()
     term.setBackgroundColor(colors.black)
     term.clear()
     drawHeader()
-    
+
     local startY = 3
     local maxVisible = h - 4
-    
+
     for i, item in ipairs(menuItems) do
         local y = startY + i - 1
         if y >= startY and y < startY + maxVisible then
@@ -6948,7 +6986,7 @@ local function drawMenu()
             end
         end
     end
-    
+
     -- Footer
     term.setBackgroundColor(colors.gray)
     term.setTextColor(colors.black)
@@ -6961,25 +6999,25 @@ local function drawWelcomePopup(name, amount)
     local popupW, popupH = 28, 9
     local px = math.floor((w - popupW) / 2)
     local py = math.floor((h - popupH) / 2)
-    
+
     -- Draw box
     term.setBackgroundColor(colors.blue)
     for row = py, py + popupH do
         term.setCursorPos(px, row)
         term.write(string.rep(" ", popupW))
     end
-    
+
     term.setTextColor(colors.yellow)
     term.setCursorPos(px + 2, py + 1)
     term.write("*** WELCOME BACK! ***")
-    
+
     term.setTextColor(colors.white)
     term.setCursorPos(px + 2, py + 3)
     term.write("Player: " .. name)
-    
+
     term.setCursorPos(px + 2, py + 5)
     term.write("Credits: " .. amount)
-    
+
     term.setTextColor(colors.lime)
     term.setCursorPos(px + 2, py + 7)
     term.write("Select your game!")
@@ -6997,27 +7035,27 @@ local function runAttractMode()
             table.insert(demoGames, g)
         end
     end
-    
+
     if #demoGames == 0 then
         -- Fallback: just show the menu with a screensaver effect
         term.setBackgroundColor(colors.black)
         term.clear()
-        
+
         local cx, cy = math.floor(w/2), math.floor(h/2)
         local titles = {"ARCADE", "INSERT CARD", "PLAY NOW"}
         local colorCycle = {colors.red, colors.yellow, colors.lime, colors.cyan, colors.purple}
-        
+
         for i = 1, 30 do
             term.setBackgroundColor(colors.black)
             term.clear()
-            
+
             local title = titles[(i % #titles) + 1]
             local color = colorCycle[(i % #colorCycle) + 1]
-            
+
             term.setTextColor(color)
             term.setCursorPos(cx - math.floor(#title / 2), cy)
             term.write(title)
-            
+
             local event, p1 = os.pullEvent()
             if event == "disk" then
                 return "disk", p1
@@ -7032,10 +7070,10 @@ local function runAttractMode()
         end
         return "timeout"
     end
-    
+
     -- Pick random game and show its name
     local game = demoGames[math.random(#demoGames)]
-    
+
     term.setBackgroundColor(colors.black)
     term.clear()
     term.setTextColor(colors.yellow)
@@ -7043,11 +7081,11 @@ local function runAttractMode()
     term.setCursorPos(math.floor((w - #title) / 2), 2)
     term.write(title)
     sleep(1)
-    
+
     -- Run the game - it will show its attract mode
     -- Games should exit their attract mode on disk insert
     shell.run(game.cmd)
-    
+
     return "game_exit"
 end
 
@@ -7059,7 +7097,7 @@ local function launchGame(item)
     term.setBackgroundColor(colors.black)
     term.clear()
     term.setCursorPos(1, 1)
-    
+
     if item.cmd == "reboot" then
         os.reboot()
     elseif item.cmd == "shutdown" then
@@ -7078,31 +7116,31 @@ local function main()
     local attractTimer = os.startTimer(15)  -- Start attract mode after 15s idle
     local jazzCoroutine = nil
     local cardInserted = credits.getName() ~= nil
-    
+
     while true do
         drawMenu()
-        
+
         local event, p1 = os.pullEvent()
-        
+
         -- Reset attract timer on any input
         if event ~= "timer" then
             attractTimer = os.startTimer(15)
         end
-        
+
         local button = input.getButton(event, p1)
-        
+
         if button == "LEFT" then
             selected = selected - 1
             if selected < 1 then selected = #menuItems end
             audio.playClick()
             if event == "redstone" then sleep(0.2) end
-            
+
         elseif button == "RIGHT" then
             selected = selected + 1
             if selected > #menuItems then selected = 1 end
             audio.playClick()
             if event == "redstone" then sleep(0.2) end
-            
+
         elseif button == "CENTER" then
             audio.playConfirm()
             audio.stopJazz()
@@ -7111,24 +7149,24 @@ local function main()
             cardInserted = credits.getName() ~= nil
             attractTimer = os.startTimer(15)
             if event == "redstone" then sleep(0.2) end
-            
+
         elseif event == "disk" then
             -- Card inserted! Play jazz and show welcome
             local name = credits.getName()
             local amount = credits.get()
-            
+
             if name and not cardInserted then
                 cardInserted = true
                 audio.playConfirm()
-                
+
                 -- Start jazz in parallel
                 jazzCoroutine = coroutine.create(function()
                     audio.playJazz()
                 end)
-                
+
                 -- Show welcome popup
                 drawWelcomePopup(name, amount)
-                
+
                 -- Wait a moment, playing jazz
                 for _ = 1, 20 do
                     if jazzCoroutine and coroutine.status(jazzCoroutine) ~= "dead" then
@@ -7138,18 +7176,18 @@ local function main()
                 end
             end
             attractTimer = os.startTimer(15)
-            
+
         elseif event == "disk_eject" then
             cardInserted = false
             audio.stopJazz()
             attractTimer = os.startTimer(15)
-            
+
         elseif event == "timer" and p1 == attractTimer then
             -- No card and idle - run attract mode
             if not cardInserted then
                 audio.stopJazz()
                 local result = runAttractMode()
-                
+
                 if result == "disk" then
                     -- Card was inserted during attract
                     cardInserted = true
@@ -7171,7 +7209,7 @@ local function main()
                 end
             end
             attractTimer = os.startTimer(15)
-            
+
         elseif event == "key" then
             local name = keys.getName(p1)
             if name == "up" then
@@ -7190,7 +7228,7 @@ local function main()
                 attractTimer = os.startTimer(15)
             end
         end
-        
+
         -- Keep jazz playing if active
         if jazzCoroutine and coroutine.status(jazzCoroutine) ~= "dead" then
             coroutine.resume(jazzCoroutine)
@@ -7271,7 +7309,7 @@ local function generateEnemy()
     }
     local idx = math.min(#types, math.floor((floor-1)/3) + 1)
     if floor > 10 then idx = 4 end
-    
+
     local base = types[idx]
     enemy = {
         name = base.name,
@@ -7283,7 +7321,7 @@ end
 
 local function resolveRound(pMove, eMove)
     addLog("You: " .. pMove .. " vs " .. eMove)
-    
+
     if pMove == eMove then
         addLog("Draw!")
     elseif BEATS[pMove] == eMove then
@@ -7314,21 +7352,21 @@ end
 
 local function drawFooter(c1, c2, c3)
     local colW = math.floor(w / 3)
-    
+
     -- Left Button
     term.setCursorPos(1, h)
     term.setBackgroundColor(colors.red)
     term.setTextColor(colors.white)
     term.write(string.rep(" ", colW))
     drawText(math.floor(colW/2 - #c1/2)+1, h, c1, colors.white, colors.red)
-    
+
     -- Center Button
     term.setCursorPos(colW + 1, h)
     term.setBackgroundColor(colors.yellow)
     term.setTextColor(colors.black)
     term.write(string.rep(" ", colW))
     drawText(colW + math.floor(colW/2 - #c2/2)+1, h, c2, colors.black, colors.yellow)
-    
+
     -- Right Button
     term.setCursorPos(colW * 2 + 1, h)
     term.setBackgroundColor(colors.blue)
@@ -7341,7 +7379,7 @@ local function drawBar(label, val, max, y, color)
     term.setCursorPos(2, y)
     term.setTextColor(color)
     term.write(label .. ": " .. val .. "/" .. max)
-    
+
     local barW = 10
     local fill = math.ceil((val/max) * barW)
     term.setCursorPos(2, y+1)
@@ -7355,25 +7393,25 @@ end
 local function drawUI()
     term.setBackgroundColor(colors.black)
     term.clear()
-    
+
     -- Header
     term.setCursorPos(1, 1)
     term.setBackgroundColor(colors.red)
     term.setTextColor(colors.white)
     term.clearLine()
     term.write(" FLOOR " .. floor .. " - " .. enemy.name)
-    
+
     -- Stats
     drawBar("PLAYER", player.hp, player.maxHp, 3, colors.lime)
     drawBar("ENEMY", enemy.hp, enemy.maxHp, 3, colors.red)
-    
+
     -- Enemy is on the right
     term.setCursorPos(w - 15, 3)
     term.setTextColor(colors.red)
     term.write(enemy.name)
     term.setCursorPos(w - 15, 4)
     term.write("HP: " .. enemy.hp .. "/" .. enemy.maxHp)
-    
+
     -- Log
     term.setCursorPos(2, 8)
     term.setTextColor(colors.white)
@@ -7383,7 +7421,7 @@ local function drawUI()
         term.setTextColor(colors.lightGray)
         term.write(msg)
     end
-    
+
     -- Controls
     term.setCursorPos(1, h)
     drawFooter("Rock", "Paper", "Scissors")
@@ -7397,7 +7435,7 @@ local function drawUpgradeMenu()
     term.setTextColor(colors.yellow)
     term.clearLine()
     term.write(" LEVEL UP! Choose Upgrade:")
-    
+
     term.setCursorPos(1, h)
     drawFooter("Heal Full", "+5 Max HP", "+1 Damage")
 end
@@ -7452,7 +7490,7 @@ local function main()
     if not round then error("HOUSE: " .. tostring(reserveError), 0) end
 
     generateEnemy()
-    
+
     while true do
         if player.hp <= 0 then
             creditsAPI.settleRound(round, 0)
@@ -7467,7 +7505,7 @@ local function main()
             sleep(3)
             break
         end
-        
+
         if enemy.hp <= 0 then
             -- Victory
             floor = floor + 1
@@ -7476,7 +7514,7 @@ local function main()
             round, reserveError = creditsAPI.beginRound("rps_rogue", 0, 5, path)
             if not round then error("HOUSE: next floor paused: " .. tostring(reserveError), 0) end
             audio.playWin()
-            
+
             -- Upgrade
             drawUpgradeMenu()
             local key = waitKey()
@@ -7489,7 +7527,7 @@ local function main()
                 player.dmg = player.dmg + 1
             end
             audio.playConfirm()
-            
+
             generateEnemy()
             log = {}
             addLog("Floor " .. floor .. " start!")
@@ -7500,14 +7538,14 @@ local function main()
             if key == "LEFT" then pMove = "Rock"
             elseif key == "CENTER" then pMove = "Paper"
             elseif key == "RIGHT" then pMove = "Scissors" end
-            
+
             if pMove then
                 local eMove = MOVES[math.random(1, 3)]
                 resolveRound(pMove, eMove)
             end
         end
     end
-    
+
     if not arcadeos and fs.exists("menu.lua") then shell.run("menu.lua") end
 end
 
@@ -7529,24 +7567,24 @@ local colorsList = {colors.red, colors.orange, colors.yellow, colors.green, colo
 while true do
     term.setBackgroundColor(colors.black)
     term.clear()
-    
+
     term.setCursorPos(x, y)
     term.setTextColor(color)
     term.write("O")
-    
+
     x = x + dx
     y = y + dy
-    
+
     if x <= 1 or x >= width then
         dx = -dx
         color = colorsList[math.random(#colorsList)]
     end
-    
+
     if y <= 1 or y >= height then
         dy = -dy
         color = colorsList[math.random(#colorsList)]
     end
-    
+
     -- Check for input to exit
     local timer = os.startTimer(0.1)
     local event, p1 = os.pullEvent()
@@ -7600,51 +7638,51 @@ end
 local function drawView(offsetIndex)
     term.setBackgroundColor(colors.black)
     term.clear()
-    
+
     local centerY = math.floor(h/2)
     local itemWidth = 5
     local visibleItems = math.ceil(w / itemWidth) + 2
     local centerScreen = math.floor(w/2)
-    
+
     -- Draw Pointer
     term.setTextColor(colors.yellow)
     term.setCursorPos(centerScreen, centerY - 2)
     term.write("v")
     term.setCursorPos(centerScreen, centerY + 2)
     term.write("^")
-    
+
     -- Draw Wheel Strip
     -- offsetIndex is the index of the number currently at center
     -- We need to draw neighbors to the left and right
-    
+
     for i = -math.floor(visibleItems/2), math.floor(visibleItems/2) do
         -- Calculate index in WHEEL (1-based wrapping)
         local idx = ((offsetIndex + i - 1) % #WHEEL) + 1
         local num = WHEEL[idx]
         local bg = getNumberColor(num)
-        
+
         -- Screen X position
         -- If i=0 (center item), x should be centerScreen - (itemWidth/2) approximately
         local x = math.floor(centerScreen + (i * itemWidth) - (itemWidth/2))
-        
+
         -- Draw block
         if x + itemWidth > 1 and x <= w then
              term.setBackgroundColor(bg)
              term.setTextColor(colors.white)
-             
+
              -- Draw box
              for dy = -1, 1 do
                  if x < 1 then 
                      -- Partial draw left
                  else
                      term.setCursorPos(x, centerY + dy)
-                     
+
                      local text = tostring(num)
                      local pad = math.floor((itemWidth - #text)/2)
                      local str = string.rep(" ", pad) .. text .. string.rep(" ", itemWidth - #text - pad)
-                     
+
                      if dy ~= 0 then str = string.rep(" ", itemWidth) end -- Only text on middle line
-                     
+
                      -- Handle clipping
                      if x + #str - 1 > w then
                          str = string.sub(str, 1, w - x + 1)
@@ -7653,13 +7691,13 @@ local function drawView(offsetIndex)
                           str = string.sub(str, 2 - x)
                           term.setCursorPos(1, centerY + dy)
                      end
-                     
+
                      term.write(str)
                  end
              end
         end
     end
-    
+
     -- Decor: Spinning ASCII Wheel (Visual only)
     -- Just a rotating character or something above
     term.setBackgroundColor(colors.black)
@@ -7674,34 +7712,34 @@ while true do
     local friction = 1.05 -- Multiplier to speed (slow down)
     local currentIndex = math.random(1, #WHEEL)
     local totalSpins = math.random(30, 60) -- Number of ticks to spin
-    
+
     -- Accelerate / Constant
     local runTicks = 0
     while runTicks < totalSpins do
         currentIndex = (currentIndex % #WHEEL) + 1
-        
+
         drawView(currentIndex)
-        
+
         if not wait(0.05) then return end -- Fixed fast speed
-        
+
         runTicks = runTicks + 1
     end
-    
+
     -- Decelerate
     while speed < 0.8 do
         currentIndex = (currentIndex % #WHEEL) + 1
-        
+
         drawView(currentIndex)
-        
+
         if not wait(speed) then return end
-        
+
         speed = speed * friction
     end
-    
+
     -- Stop & Highlight
     local winner = WHEEL[currentIndex]
     local wColor = getNumberColor(winner)
-    
+
     -- Blink effect
     for i=1, 6 do
         term.setCursorPos(math.floor(w/2)-2, math.floor(h/2)-1)
@@ -7713,10 +7751,10 @@ while true do
             term.setTextColor(wColor)
         end
         term.write(string.format(" %2d  ", winner))
-        
+
         if not wait(0.3) then return end
     end
-    
+
     -- Hold
     if not wait(3) then return end
 end
@@ -7759,9 +7797,9 @@ local function drawMenu()
     term.setBackgroundColor(colors.black)
     term.clear()
     drawHeader()
-    
+
     local centerY = math.floor(h / 2)
-    
+
     term.setCursorPos(2, 3)
     term.setTextColor(colors.gray)
     term.write("Select Game to Install:")
@@ -7779,7 +7817,7 @@ local function drawMenu()
             end
         end
     end
-    
+
     -- Footer
     term.setBackgroundColor(colors.gray)
     term.setTextColor(colors.black)
@@ -7813,7 +7851,7 @@ local function installGame()
         file.write(game.cmd)
         file.close()
     end
-    
+
     print("Configuration saved.")
     print("Rebooting in 2 seconds...")
     sleep(2)
@@ -7823,10 +7861,10 @@ end
 local function main()
     while true do
         drawMenu()
-        
+
         local event, p1 = os.pullEvent()
         local button = input.getButton(event, p1)
-        
+
         if button == "LEFT" then
             selected = selected - 1
             if selected < 1 then selected = #games end
@@ -7998,21 +8036,21 @@ end
 
 local function drawFooter(c1, c2, c3)
     local colW = math.floor(w / 3)
-    
+
     -- Left Button
     term.setCursorPos(1, h)
     term.setBackgroundColor(colors.red)
     term.setTextColor(colors.white)
     term.write(string.rep(" ", colW))
     drawText(math.floor(colW/2 - #c1/2)+1, h, c1, colors.white, colors.red)
-    
+
     -- Center Button
     term.setCursorPos(colW + 1, h)
     term.setBackgroundColor(colors.yellow)
     term.setTextColor(colors.black)
     term.write(string.rep(" ", colW))
     drawText(colW + math.floor(colW/2 - #c2/2)+1, h, c2, colors.black, colors.yellow)
-    
+
     -- Right Button
     term.setCursorPos(colW * 2 + 1, h)
     term.setBackgroundColor(colors.blue)
@@ -8151,10 +8189,10 @@ local function spin(player)
     if creditsAPI.get(player.mountPath) < player.bet then
         return "Not enough credits!"
     end
-    
+
     local round, err = creditsAPI.beginRound("slots", player.bet, 500 * math.min(player.bet, 3), player.mountPath)
     if not round then return err end
-    
+
     -- Animation
     for i=1,20 do
         for r=1,3 do reelPos[r] = (reelPos[r] % #REELS[r]) + 1 end
@@ -8162,7 +8200,7 @@ local function spin(player)
         audio.playShuffle()
         sleep(0.05)
     end
-    
+
     -- Stop one by one
     for r=1,3 do
         for i=1,10 do
@@ -8173,28 +8211,28 @@ local function spin(player)
         end
         audio.playSlotStop()
     end
-    
+
     -- Check Win
     local win = 0
     local function getSym(r, offset)
         return REELS[r][(reelPos[r] + offset - 1) % #REELS[r] + 1]
     end
-    
+
     local function checkLine(offset)
         local s1, s2, s3 = getSym(1, offset), getSym(2, offset), getSym(3, offset)
         if s1 == s2 and s2 == s3 then return PAYOUTS[s1] end
         if s1 == "Cherry" and s2 == "Cherry" then return 5 end
         return 0
     end
-    
+
     if player.bet >= 1 then win = win + checkLine(1) end -- Center (offset 1)
     if player.bet >= 2 then win = win + checkLine(0) end -- Top (offset 0)
     if player.bet >= 3 then win = win + checkLine(2) end -- Bottom (offset 2)
-    
+
     creditsAPI.settleRound(round, win)
     if win > 0 then
         audio.playWin()
-        
+
         -- Flash Effect
         for i=1,3 do
             drawMachine(player.bet, "WINNER! " .. win, player.name, creditsAPI.get(player.mountPath))
@@ -8355,7 +8393,7 @@ local function main()
             drawCenter(h/2, "Insert Cards (Max 3)", colors.white, colors.black)
             drawCenter(h/2 + 2, "[C] Start   [R] Exit", colors.gray, colors.black)
         end
-        
+
         -- Lobby Loop
         local detectedCards = {}
         local attractDelay = 8
@@ -8441,7 +8479,7 @@ local function main()
                 end
                 drawCenter(h/2 + 4, msg, colors.yellow, colors.black)
             end
-            
+
             -- Initial scan
              if #detectedCards == 0 then
                  detectedCards = creditsAPI.findCards()
@@ -8457,7 +8495,7 @@ local function main()
                 end
             end
         end
-        
+
         local players = {}
         for i, card in ipairs(detectedCards) do
             if i > 3 then break end
@@ -8468,17 +8506,17 @@ local function main()
                 mountPath=card.path 
             })
         end
-        
+
         -- Game Loop
         local msg = "Welcome!"
         while true do
             local allQuit = false
-            
+
             for i, p in ipairs(players) do
                 while true do
                     drawMachine(p.bet, p.name .. ": " .. msg, p.name, creditsAPI.get(p.mountPath))
                     local action = waitKey()
-                    
+
                     if action == "LEFT" then
                         p.bet = (p.bet % 3) + 1
                         audio.playChip()
@@ -8494,10 +8532,10 @@ local function main()
                 end
                 if allQuit then break end
             end
-            
+
             if allQuit then break end
         end
-        
+
         -- Unlock cards
         for _, p in ipairs(players) do
             creditsAPI.unlock(p.mountPath)
@@ -8516,10 +8554,10 @@ writeFile('startup.lua', [[
 local monitor = peripheral.find("monitor")
 if monitor then
     term.redirect(monitor)
-    
+
     -- Dynamic Scaling: Find largest text scale that fits the UI
     local min_w, min_h = 39, 19 -- Minimum resolution for Arcade apps
-    
+
     for scale = 5, 0.5, -0.5 do
         monitor.setTextScale(scale)
         local w, h = monitor.getSize()
@@ -8577,7 +8615,7 @@ local function runRemoteUpdate()
     print("ARCADE OS UPDATER")
     print("=================")
     term.setTextColor(colors.white)
-    
+
     -- Read update URL from .update_url or use default
     local DEFAULT_URL = "https://raw.githubusercontent.com/Arcadesys/cc-arcade/main/install.lua"
     local url = DEFAULT_URL
@@ -8589,7 +8627,7 @@ local function runRemoteUpdate()
             if custom ~= "" then url = custom end
         end
     end
-    
+
     if not http then
         term.setTextColor(colors.red)
         print("")
@@ -8600,14 +8638,14 @@ local function runRemoteUpdate()
         os.pullEvent("key")
         return false
     end
-    
+
     print("")
     print("Downloading from:")
     term.setTextColor(colors.gray)
     print(url:sub(1, 45) .. (url:len() > 45 and "..." or ""))
     term.setTextColor(colors.white)
     print("")
-    
+
     local response, err = http.get(url)
     if not response then
         term.setTextColor(colors.red)
@@ -8617,10 +8655,10 @@ local function runRemoteUpdate()
         os.pullEvent("key")
         return false
     end
-    
+
     local content = response.readAll()
     response.close()
-    
+
     if not content or #content < 100 then
         term.setTextColor(colors.red)
         print("Invalid response (too short)")
@@ -8629,22 +8667,22 @@ local function runRemoteUpdate()
         os.pullEvent("key")
         return false
     end
-    
+
     -- Backup and write
     if fs.exists("install.lua") then
         if fs.exists("install.lua.bak") then fs.delete("install.lua.bak") end
         fs.copy("install.lua", "install.lua.bak")
     end
-    
+
     local f = fs.open("install.lua", "w")
     f.write(content)
     f.close()
-    
+
     term.setTextColor(colors.lime)
     print("Download complete!")
     print("Running installer...")
     sleep(1)
-    
+
     shell.run("install.lua")
     return true
 end
@@ -8827,11 +8865,11 @@ local function drawHeader(credits)
     term.setTextColor(colors.white)
     term.setCursorPos(1, 1)
     term.clearLine()
-    
+
     local title = " TRACK & FIELD "
     term.setCursorPos(math.floor((w - #title) / 2) + 1, 1)
     term.write(title)
-    
+
     if credits then
         local cStr = "Credits: " .. tostring(credits)
         term.setCursorPos(w - #cStr, 1)
@@ -8842,13 +8880,13 @@ end
 -- Draw timing bar for a player
 local function drawTimingBar(player, x, y)
     local barWidth = BAR_WIDTH
-    
+
     -- Calculate zone positions (centered green zone)
     local greenStart = math.floor((barWidth - GREEN_SIZE) / 2) + 1
     local greenEnd = greenStart + GREEN_SIZE - 1
     local yellowStart = greenStart - YELLOW_SIZE
     local yellowEnd = greenEnd + YELLOW_SIZE
-    
+
     -- Draw the bar background with zones
     term.setCursorPos(x, y)
     for i = 1, barWidth do
@@ -8865,7 +8903,7 @@ local function drawTimingBar(player, x, y)
         term.setBackgroundColor(bg)
         term.write(" ")
     end
-    
+
     -- Draw the moving indicator
     local indicatorPos = math.floor(player.barPos)
     if indicatorPos >= 1 and indicatorPos <= barWidth then
@@ -8874,7 +8912,7 @@ local function drawTimingBar(player, x, y)
         term.setTextColor(colors.black)
         term.write("|")
     end
-    
+
     -- Draw player label
     term.setCursorPos(x - 4, y)
     term.setBackgroundColor(colors.black)
@@ -8889,9 +8927,9 @@ local function getZone(pos)
     local greenEnd = greenStart + GREEN_SIZE - 1
     local yellowStart = greenStart - YELLOW_SIZE
     local yellowEnd = greenEnd + YELLOW_SIZE
-    
+
     local intPos = math.floor(pos)
-    
+
     if intPos <= RED_SIZE or intPos > barWidth - RED_SIZE then
         return "RED"
     elseif intPos >= greenStart and intPos <= greenEnd then
@@ -8907,27 +8945,27 @@ end
 local function drawTrack(startY)
     local trackX = 6
     local trackWidth = #players * 6 + 4
-    
+
     -- Draw finish line
     term.setCursorPos(trackX, startY)
     term.setBackgroundColor(colors.black)
     term.setTextColor(colors.yellow)
     term.write(string.rep("=", trackWidth) .. " FINISH!")
-    
+
     -- Draw track lanes
     for row = 1, TRACK_LENGTH do
         local y = startY + row
         term.setCursorPos(trackX, y)
         term.setBackgroundColor(colors.black)
         term.setTextColor(colors.gray)
-        
+
         -- Lane dividers and runners
         for i, p in ipairs(players) do
             local laneX = trackX + (i - 1) * 6 + 2
-            
+
             -- Is runner at this position? (invert: pos 1 = bottom, TRACK_LENGTH = top)
             local runnerRow = TRACK_LENGTH - p.pos + 1
-            
+
             if row == runnerRow then
                 -- Draw runner
                 term.setCursorPos(laneX, y)
@@ -8947,13 +8985,13 @@ local function drawTrack(startY)
             end
         end
     end
-    
+
     -- Draw start label
     term.setCursorPos(trackX, startY + TRACK_LENGTH + 1)
     term.setBackgroundColor(colors.black)
     term.setTextColor(colors.white)
     term.write(" START " .. string.rep("-", trackWidth - 7))
-    
+
     -- Draw lane labels
     for i, p in ipairs(players) do
         local laneX = trackX + (i - 1) * 6 + 2
@@ -8986,7 +9024,7 @@ end
 local function updateBars(dt)
     for i, p in ipairs(players) do
         p.barPos = p.barPos + p.barDir * p.barSpeed * dt * 60
-        
+
         -- Bounce off edges
         if p.barPos >= BAR_WIDTH then
             p.barPos = BAR_WIDTH
@@ -9004,7 +9042,7 @@ end
 local function handlePress(playerIdx)
     local p = players[playerIdx]
     local zone = getZone(p.barPos)
-    
+
     if zone == "GREEN" then
         -- Perfect! Move forward 2
         p.pos = clamp(p.pos + 2, 1, TRACK_LENGTH)
@@ -9044,13 +9082,13 @@ local function showResult(playerIdx, result, delta)
     elseif delta < 0 then
         msg = msg .. " (" .. delta .. ")"
     end
-    
+
     local color = colors.white
     if result == "PERFECT" then color = colors.lime
     elseif result == "GOOD" then color = colors.yellow
     elseif result == "OUCH" then color = colors.red
     else color = colors.gray end
-    
+
     drawCenter(h - 1, msg .. string.rep(" ", 20), color, colors.black)
 end
 
@@ -9060,48 +9098,48 @@ end
 
 local function runRace(cards)
     resetPlayers()
-    
+
     local barY = 3
     local trackStartY = barY + #players + 2
-    
+
     -- Calculate dynamic track length
     TRACK_LENGTH = math.max(8, h - trackStartY - 4)
-    
+
     local lastTime = os.clock()
     local winner = nil
-    
+
     while not winner do
         local currentTime = os.clock()
         local dt = currentTime - lastTime
         lastTime = currentTime
-        
+
         -- Update timing bars
         updateBars(dt)
-        
+
         -- Draw everything
         clear(colors.black)
         drawHeader(cards and cards[1] and creditsAPI.get(cards[1].path))
-        
+
         -- Draw timing bars
         for i, p in ipairs(players) do
             drawTimingBar(p, 8, barY + i - 1)
         end
-        
+
         -- Draw track
         drawTrack(trackStartY)
-        
+
         -- Draw instructions
         drawInstructions(h - 3)
-        
+
         -- Check for input
         local timerId = os.startTimer(0.05)
         local event, p1 = os.pullEvent()
-        
+
         if event == "timer" and p1 == timerId then
             -- Just continue animation
         else
             local button = input.getButton(event, p1)
-            
+
             if button == "LEFT" then
                 local result, delta = handlePress(1)
                 showResult(1, result, delta)
@@ -9115,7 +9153,7 @@ local function runRace(cards)
                 showResult(3, result, delta)
                 sleep(0.15)
             end
-            
+
             -- Check for exit
             if event == "key" then
                 local name = keys.getName(p1)
@@ -9126,43 +9164,43 @@ local function runRace(cards)
                 return nil
             end
         end
-        
+
         winner = checkWinner()
     end
-    
+
     return winner
 end
 
 local function showWinScreen(winnerIdx, cards)
     local p = players[winnerIdx]
-    
+
     clear(colors.black)
     drawHeader(cards and cards[1] and creditsAPI.get(cards[1].path))
-    
+
     -- Victory animation
     for flash = 1, 6 do
         local bg = (flash % 2 == 0) and colors.black or p.color
         term.setBackgroundColor(bg)
         term.clear()
         drawHeader(cards and cards[1] and creditsAPI.get(cards[1].path))
-        
+
         local cy = math.floor(h / 2)
         drawCenter(cy - 2, "================", colors.yellow, bg)
         drawCenter(cy - 1, "    WINNER!     ", colors.white, bg)
         drawCenter(cy, "    " .. p.name .. " WINS!    ", p.color, bg)
         drawCenter(cy + 1, "================", colors.yellow, bg)
-        
+
         -- ASCII trophy
         drawCenter(cy + 3, "   ___   ", colors.yellow, bg)
         drawCenter(cy + 4, "  |   |  ", colors.yellow, bg)
         drawCenter(cy + 5, "   \\_/   ", colors.yellow, bg)
         drawCenter(cy + 6, "    |    ", colors.yellow, bg)
         drawCenter(cy + 7, "   ===   ", colors.yellow, bg)
-        
+
         audio.play("win")
         sleep(0.2)
     end
-    
+
     term.setBackgroundColor(colors.black)
     drawCenter(h - 2, "Press any button to continue...", colors.gray, colors.black)
     waitButtonOrExit()
@@ -9174,58 +9212,58 @@ end
 
 local function runAttractMode()
     resetPlayers()
-    
+
     local barY = 4
     local trackStartY = barY + #players + 2
     TRACK_LENGTH = math.max(8, h - trackStartY - 4)
-    
+
     local lastTime = os.clock()
     local autoTimer = 0
-    
+
     while true do
         local currentTime = os.clock()
         local dt = currentTime - lastTime
         lastTime = currentTime
         autoTimer = autoTimer + dt
-        
+
         -- Update timing bars
         updateBars(dt)
-        
+
         -- Auto-play: random button presses
         if autoTimer > 0.3 + math.random() * 0.5 then
             autoTimer = 0
             local idx = math.random(1, 3)
             handlePress(idx)
-            
+
             -- Check for winner in attract mode, reset if someone wins
             if checkWinner() then
                 resetPlayers()
             end
         end
-        
+
         -- Draw everything
         clear(colors.black)
-        
+
         term.setBackgroundColor(colors.purple)
         term.setTextColor(colors.white)
         term.setCursorPos(1, 1)
         term.clearLine()
         drawCenter(1, " TRACK & FIELD ", colors.yellow, colors.purple)
-        
+
         drawCenter(2, "INSERT DISK TO PLAY", colors.white, colors.black)
-        
+
         -- Draw timing bars
         for i, p in ipairs(players) do
             drawTimingBar(p, 8, barY + i - 1)
         end
-        
+
         -- Draw track
         drawTrack(trackStartY)
-        
+
         -- Draw attract text
         drawCenter(h - 2, "Time your press in the GREEN zone!", colors.lime, colors.black)
         drawCenter(h - 1, string.format("Cost: %d credits  |  Prize: %d credits", BET_COST, WIN_PRIZE), colors.gray, colors.black)
-        
+
         -- Check for break event
         local brk = waitForBreakEvent(0.05)
         if brk then
@@ -9246,29 +9284,29 @@ local function main()
     while true do
         -- Attract mode until card inserted
         local brk = runAttractMode()
-        
+
         if brk and brk.type == "exit" then
             clear()
             return
         end
-        
+
         if brk and brk.type == "disk" then
             -- Card inserted - start game
             local cards = creditsAPI.findCards()
-            
+
             if #cards > 0 then
                 local card = cards[1]
                 local currentCredits = creditsAPI.get(card.path)
-                
+
                 if currentCredits >= BET_COST then
                     -- Deduct bet
                     local round, err = creditsAPI.beginRound("track", BET_COST, WIN_PRIZE, card.path)
                     if not round then error("HOUSE: " .. tostring(err), 0) end
                     audio.play("bet")
-                    
+
                     -- Run the race
                     local winner = runRace(cards)
-                    
+
                     creditsAPI.settleRound(round, winner and WIN_PRIZE or 0)
                     creditsAPI.unlock(card.path)
                     if winner then
@@ -9349,16 +9387,16 @@ local function promptForUrl()
     term.setBackgroundColor(colors.black)
     term.clear()
     drawHeader()
-    
+
     centerText(4, "No update URL configured.", colors.yellow, colors.black)
     centerText(6, "Enter the URL to your install.lua:", colors.white, colors.black)
     centerText(7, "(GitHub raw, Pastebin raw, or custom)", colors.gray, colors.black)
-    
+
     term.setCursorPos(2, 9)
     term.setTextColor(colors.lime)
     term.write("> ")
     term.setTextColor(colors.white)
-    
+
     local url = read()
     if url and url:match("^https?://") then
         saveUpdateUrl(url)
@@ -9371,10 +9409,10 @@ local function downloadInstaller(url)
     term.setBackgroundColor(colors.black)
     term.clear()
     drawHeader()
-    
+
     centerText(5, "Downloading update...", colors.yellow, colors.black)
     centerText(7, url:sub(1, w - 4), colors.gray, colors.black)
-    
+
     -- Check if HTTP is enabled
     if not http then
         centerText(10, "ERROR: HTTP is disabled!", colors.red, colors.black)
@@ -9383,7 +9421,7 @@ local function downloadInstaller(url)
         sleep(3)
         return nil
     end
-    
+
     local response, err = http.get(url)
     if not response then
         centerText(10, "ERROR: Download failed!", colors.red, colors.black)
@@ -9391,16 +9429,16 @@ local function downloadInstaller(url)
         sleep(3)
         return nil
     end
-    
+
     local content = response.readAll()
     response.close()
-    
+
     if not content or #content < 100 then
         centerText(10, "ERROR: Invalid response!", colors.red, colors.black)
         sleep(3)
         return nil
     end
-    
+
     return content
 end
 
@@ -9408,9 +9446,9 @@ local function installUpdate(content)
     term.setBackgroundColor(colors.black)
     term.clear()
     drawHeader()
-    
+
     centerText(5, "Installing update...", colors.yellow, colors.black)
-    
+
     -- Backup current install.lua
     if fs.exists("install.lua") then
         if fs.exists("install.lua.bak") then
@@ -9418,7 +9456,7 @@ local function installUpdate(content)
         end
         fs.copy("install.lua", "install.lua.bak")
     end
-    
+
     -- Write new installer
     local f = fs.open("install.lua", "w")
     if not f then
@@ -9428,10 +9466,10 @@ local function installUpdate(content)
     end
     f.write(content)
     f.close()
-    
+
     centerText(7, "Running installer...", colors.lime, colors.black)
     sleep(1)
-    
+
     -- Run the installer
     shell.run("install.lua")
     return true
@@ -9439,13 +9477,13 @@ end
 
 local function showMenu()
     local url = readUpdateUrl()
-    
+
     term.setBackgroundColor(colors.black)
     term.clear()
     drawHeader()
-    
+
     centerText(4, "ARCADE OS UPDATE UTILITY", colors.lime, colors.black)
-    
+
     if url then
         centerText(6, "Update URL:", colors.white, colors.black)
         local displayUrl = #url > w - 6 and url:sub(1, w - 9) .. "..." or url
@@ -9453,14 +9491,14 @@ local function showMenu()
     else
         centerText(6, "No update URL configured", colors.yellow, colors.black)
     end
-    
+
     centerText(10, "[1] Check for Updates", colors.white, colors.black)
     centerText(11, "[2] Configure Update URL", colors.white, colors.black)
     centerText(12, "[3] Re-run Local Installer", colors.white, colors.black)
     centerText(13, "[4] Exit", colors.white, colors.black)
-    
+
     centerText(h - 1, "Press a key...", colors.gray, colors.black)
-    
+
     while true do
         local _, key = os.pullEvent("char")
         if key == "1" then
