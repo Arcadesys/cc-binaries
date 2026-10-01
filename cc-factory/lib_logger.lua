@@ -266,6 +266,10 @@ local function logInternal(state, level, message, metadata)
     return true, entry
 end
 
+-- Instances built by logger.new use method syntax (logger:info(msg));
+-- loggers supplied by harnesses use plain functions (logger.info(msg)).
+local instances = setmetatable({}, { __mode = "k" })
+
 function logger.new(opts)
     local state = {
         capture = opts and opts.capture or false,
@@ -284,6 +288,7 @@ function logger.new(opts)
 
     local instance = {}
     state.instance = instance
+    instances[instance] = true
 
     if not (opts and opts.silent) then
         addWriter(state, defaultWriterFactory(state))
@@ -439,13 +444,22 @@ function logger.log(ctx, level, message)
     end
     local logger = ctx.logger
     if type(logger) == "table" then
+        local isMethod = instances[logger]
         local fn = logger[level]
         if type(fn) == "function" then
-            fn(message)
+            if isMethod then
+                fn(logger, message)
+            else
+                fn(message)
+            end
             return
         end
         if type(logger.log) == "function" then
-            logger.log(level, message)
+            if isMethod then
+                logger:log(level, message)
+            else
+                logger.log(level, message)
+            end
             return
         end
     end

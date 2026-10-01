@@ -223,22 +223,31 @@ schema.json (or schema.txt)
 
 Uploading dozens of files to a turtle is painful, so use the bundler to produce a single `factory.lua` that contains every state and library:
 
-Create a `dist` directory first (the script does not create it automatically).
-
-1. From your development machine, run:
+1. From this folder, run:
 
     ```bash
     node bundle.js
     ```
 
 2. Copy the generated `dist/factory.lua` file onto the turtle (via `pastebin`, `wget`, disk, etc.).
-3. Launch the agent with `factory build <schema>` or `factory mine --length 80 --branch-interval 4`.
+3. Run `factory` once: it unpacks every module next to itself (replacing `factory.lua` with the real entry point).
+4. Launch the agent with `factory build <schema>` or `factory mine --length 80 --branch-interval 4`, or `turtle_os` for the menu.
 
 The source files remain modular for development, but the turtle only needs the bundled artifact.
 
+## **9. Testing without Minecraft**
+
+[`../turtlesim`](../turtlesim/README.md) runs these sources against a simulated turtle in CraftOS-PC:
+
+```bash
+../turtlesim/turtle mine --length 64 --branch-interval 3   # one branch mine, with an ore report
+../turtlesim/turtle mine --seeds 1-8 --length 64           # compare 8 ore layouts in parallel
+../turtlesim/turtle harness                                # every harness_*.lua, headless
+```
+
 ---
 
-## **9. Future Extensions**
+## **10. Future Extensions**
 
 * Multi-turtle cooperative building
 * Dynamic path optimization

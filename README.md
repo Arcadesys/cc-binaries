@@ -14,6 +14,16 @@ wget run https://raw.githubusercontent.com/Arcadesys/cc-binaries/main/arcadeos/i
 
 See the [ArcadeOS README](./arcadeos/README.md) for usage and for writing apps.
 
+## Testing turtle scripts without Minecraft
+
+[`turtlesim/`](./turtlesim/README.md) runs any turtle script against a simulated turtle and world in CraftOS-PC, with a report of fuel, ores and failed actions:
+
+```
+turtlesim/turtle path/to/script.lua
+turtlesim/turtle mine --seeds 1-8 --length 64   # cc-factory branch miner across 8 ore layouts
+turtlesim/turtle harness                        # all cc-factory harnesses, headless
+```
+
 ## Programs
 
 | Folder | Source repo |

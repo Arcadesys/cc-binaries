@@ -25,10 +25,34 @@ mining.FILL_BLACKLIST = {
     ["minecraft:bedrock"] = true,
 }
 
---- Check if a block is considered "ore" (valuable)
-function mining.isOre(name)
-    if not name then return false end
-    return not mining.TRASH_BLOCKS[name]
+local ORE_TAGS = {
+    ["c:ores"] = true,
+    ["forge:ores"] = true,
+    ["minecraft:coal_ores"] = true,
+    ["minecraft:iron_ores"] = true,
+    ["minecraft:copper_ores"] = true,
+    ["minecraft:gold_ores"] = true,
+    ["minecraft:redstone_ores"] = true,
+    ["minecraft:lapis_ores"] = true,
+    ["minecraft:diamond_ores"] = true,
+    ["minecraft:emerald_ores"] = true,
+}
+
+--- Check if a block is considered "ore" (valuable). Only ore-like blocks
+-- count, so tunnels never chew through chests, torches or other placed blocks.
+-- @param name block id
+-- @param tags optional tag table from turtle.inspect
+function mining.isOre(name, tags)
+    if not name or mining.TRASH_BLOCKS[name] then return false end
+    if name:find("_ore$") or name:find(":ore_") or name == "minecraft:ancient_debris" then
+        return true
+    end
+    if type(tags) == "table" then
+        for tag in pairs(tags) do
+            if ORE_TAGS[tag] then return true end
+        end
+    end
+    return false
 end
 
 --- Find a suitable trash block in inventory to use for filling
@@ -65,7 +89,7 @@ function mining.mineAndFill(ctx, dir)
     end
 
     local hasBlock, data = inspect()
-    if hasBlock and mining.isOre(data.name) then
+    if hasBlock and mining.isOre(data.name, data.tags) then
         logger.log(ctx, "info", "Mining valuable: " .. data.name)
         if dig() then
             -- Attempt to fill the hole

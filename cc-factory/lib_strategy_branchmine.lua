@@ -102,13 +102,8 @@ function strategy.generate(length, branchInterval, branchLength, torchInterval)
             y = y - 1
             pushStep(steps, x, y, z, facing, "move")
 
-            -- Face down the spine again
-            facing = turnRight(facing)
-            pushStep(steps, x, y, z, facing, "turn", "right")
-
-            -- Right branch (mirror of left)
-            facing = turnRight(facing)
-            pushStep(steps, x, y, z, facing, "turn", "right")
+            -- Right branch (mirror of left). Coming back from the left branch
+            -- the turtle already faces right, so it heads straight out.
             for _ = 1, branchLength do
                 x, z = forward(x, z, facing)
                 pushStep(steps, x, y, z, facing, "move")
@@ -134,8 +129,9 @@ function strategy.generate(length, branchInterval, branchLength, torchInterval)
             y = y - 1
             pushStep(steps, x, y, z, facing, "move")
 
-            facing = turnLeft(facing)
-            pushStep(steps, x, y, z, facing, "turn", "left")
+            -- Back from the right branch facing left; face down the spine.
+            facing = turnRight(facing)
+            pushStep(steps, x, y, z, facing, "turn", "right")
         end
 
         if i % 5 == 0 then

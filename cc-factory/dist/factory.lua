@@ -183,6 +183,7 @@ Graphical Schema Designer (Paint-style)
 local ui = require("lib_ui")
 local json = require("lib_json")
 local items = require("lib_items")
+local schema_utils = require("lib_schema")
 
 local designer = {}
 
@@ -224,48 +225,55 @@ local TOOLS = {
 
 -- --- State ---
 
-local state = {
-    running = true,
-    w = 14, h = 14, d = 5, -- Canvas dimensions
-    data = {}, -- [x][y][z] = material_index (0 or nil for air)
-    palette = {}, -- Initialized from DEFAULT_MATERIALS
-    paletteEditMode = false,
-    
-    view = {
+local state = {}
+
+local function resetState()
+    state.running = true
+    state.w = 14
+    state.h = 14
+    state.d = 5
+    state.data = {} -- [x][y][z] = material_index (0 or nil for air)
+    state.meta = {} -- [x][y][z] = meta table
+    state.palette = {}
+    state.paletteEditMode = false
+    state.offset = { x = 0, y = 0, z = 0 }
+
+    state.view = {
         layer = 0, -- Current Y level
         offsetX = 4, -- Screen X offset of canvas
         offsetY = 3, -- Screen Y offset of canvas
         scrollX = 0,
         scrollY = 0,
-    },
-    
-    menuOpen = false,
-    inventoryOpen = false,
-    searchOpen = false,
-    searchQuery = "",
-    searchResults = {},
-    searchScroll = 0,
-    dragItem = nil, -- { id, sym, color }
-    
-    tool = TOOLS.PENCIL,
-    primaryColor = 1, -- Index in palette
-    secondaryColor = 0, -- 0 = Air/Eraser
-    
-    mouse = {
+    }
+
+    state.menuOpen = false
+    state.inventoryOpen = false
+    state.searchOpen = false
+    state.searchQuery = ""
+    state.searchResults = {}
+    state.searchScroll = 0
+    state.dragItem = nil -- { id, sym, color }
+
+    state.tool = TOOLS.PENCIL
+    state.primaryColor = 1 -- Index in palette
+    state.secondaryColor = 0 -- 0 = Air/Eraser
+
+    state.mouse = {
         down = false,
         drag = false,
         startX = 0, startY = 0, -- Canvas coords
         currX = 0, currY = 0,   -- Canvas coords
         btn = 1
-    },
-    
-    status = "Ready"
-}
+    }
 
--- Initialize palette
-for i, m in ipairs(DEFAULT_MATERIALS) do
-    state.palette[i] = { id = m.id, color = m.color, sym = m.sym }
+    state.status = "Ready"
+
+    for i, m in ipairs(DEFAULT_MATERIALS) do
+        state.palette[i] = { id = m.id, color = m.color, sym = m.sym }
+    end
 end
+
+resetState()
 
 -- --- Helpers ---
 
@@ -280,17 +288,177 @@ local function getBlock(x, y, z)
     return state.data[x][y][z] or 0
 end
 
-local function setBlock(x, y, z, matIdx)
+local function setBlock(x, y, z, matIdx, meta)
     if x < 0 or x >= state.w or z < 0 or z >= state.h or y < 0 or y >= state.d then return end
-    
+
     if not state.data[x] then state.data[x] = {} end
     if not state.data[x][y] then state.data[x][y] = {} end
-    
+    if not state.meta[x] then state.meta[x] = {} end
+    if not state.meta[x][y] then state.meta[x][y] = {} end
+
     if matIdx == 0 then
         state.data[x][y][z] = nil
+        if state.meta[x] and state.meta[x][y] then
+            state.meta[x][y][z] = nil
+        end
     else
         state.data[x][y][z] = matIdx
+        state.meta[x][y][z] = meta or {}
     end
+end
+
+local function getBlockMeta(x, y, z)
+    if not state.meta[x] or not state.meta[x][y] then return {} end
+    return schema_utils.cloneMeta(state.meta[x][y][z])
+end
+
+local function findItemDef(id)
+    for _, item in ipairs(items) do
+        if item.id == id then
+            return item
+        end
+    end
+    return nil
+end
+
+local function ensurePaletteMaterial(material)
+    for idx, mat in ipairs(state.palette) do
+        if mat.id == material then
+            return idx
+        end
+    end
+
+    local fallback = findItemDef(material)
+    local entry = {
+        id = material,
+        color = fallback and fallback.color or colors.white,
+        sym = fallback and fallback.sym or "?",
+    }
+
+    table.insert(state.palette, entry)
+    return #state.palette
+end
+
+local function clearCanvas()
+    state.data = {}
+    state.meta = {}
+end
+
+local function loadCanonical(schema, metadata)
+    if type(schema) ~= "table" then
+        return false, "invalid_schema"
+    end
+
+    clearCanvas()
+
+    local bounds = schema_utils.newBounds()
+    local blockCount = 0
+
+    for xKey, xColumn in pairs(schema) do
+        if type(xColumn) == "table" then
+            local x = tonumber(xKey) or xKey
+            if type(x) ~= "number" then return false, "invalid_coordinate" end
+            for yKey, yColumn in pairs(xColumn) do
+                if type(yColumn) == "table" then
+                    local y = tonumber(yKey) or yKey
+                    if type(y) ~= "number" then return false, "invalid_coordinate" end
+                    for zKey, block in pairs(yColumn) do
+                        if type(block) == "table" and block.material then
+                            local z = tonumber(zKey) or zKey
+                            if type(z) ~= "number" then return false, "invalid_coordinate" end
+                            schema_utils.updateBounds(bounds, x, y, z)
+                            blockCount = blockCount + 1
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    if blockCount == 0 then
+        state.status = "Loaded empty schema"
+        return true
+    end
+
+    state.offset = {
+        x = bounds.min.x,
+        y = bounds.min.y,
+        z = bounds.min.z,
+    }
+
+    state.w = math.max(1, (bounds.max.x - bounds.min.x) + 1)
+    state.d = math.max(1, (bounds.max.y - bounds.min.y) + 1)
+    state.h = math.max(1, (bounds.max.z - bounds.min.z) + 1)
+
+    for xKey, xColumn in pairs(schema) do
+        if type(xColumn) == "table" then
+            local x = tonumber(xKey) or xKey
+            if type(x) ~= "number" then return false, "invalid_coordinate" end
+            for yKey, yColumn in pairs(xColumn) do
+                if type(yColumn) == "table" then
+                    local y = tonumber(yKey) or yKey
+                    if type(y) ~= "number" then return false, "invalid_coordinate" end
+                    for zKey, block in pairs(yColumn) do
+                        if type(block) == "table" and block.material then
+                            local z = tonumber(zKey) or zKey
+                            if type(z) ~= "number" then return false, "invalid_coordinate" end
+                            local matIdx = ensurePaletteMaterial(block.material)
+                            local localX = x - state.offset.x
+                            local localY = y - state.offset.y
+                            local localZ = z - state.offset.z
+                            setBlock(localX, localY, localZ, matIdx, schema_utils.cloneMeta(block.meta))
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    state.status = string.format("Loaded %d blocks", blockCount)
+    if metadata and metadata.path then
+        state.status = state.status .. " from " .. metadata.path
+    end
+
+    return true
+end
+
+local function exportCanonical()
+    local schema = {}
+    local bounds = schema_utils.newBounds()
+    local total = 0
+
+    for x, xColumn in pairs(state.data) do
+        for y, yColumn in pairs(xColumn) do
+            for z, matIdx in pairs(yColumn) do
+                local mat = getMaterial(matIdx)
+                if mat then
+                    local worldX = x + state.offset.x
+                    local worldY = y + state.offset.y
+                    local worldZ = z + state.offset.z
+                    schema[worldX] = schema[worldX] or {}
+                    schema[worldX][worldY] = schema[worldX][worldY] or {}
+                    schema[worldX][worldY][worldZ] = {
+                        material = mat.id,
+                        meta = getBlockMeta(x, y, z),
+                    }
+                    schema_utils.updateBounds(bounds, worldX, worldY, worldZ)
+                    total = total + 1
+                end
+            end
+        end
+    end
+
+    local info = { totalBlocks = total }
+    if total > 0 then
+        info.bounds = bounds
+    end
+
+    return schema, info
+end
+
+local function exportVoxelDefinition()
+    local canonical, info = exportCanonical()
+    return schema_utils.canonicalToVoxelDefinition(canonical), info
 end
 
 -- --- Algorithms ---
@@ -440,7 +608,7 @@ local function drawInventory()
     for row = 0, 3 do
         for col = 0, 3 do
             local slot = row * 4 + col + 1
-            local item = turtle.getItemDetail(slot)
+            local item = turtle and turtle.getItemDetail(slot)
             
             term.setCursorPos(ix + 1 + (col * 4), iy + 1 + row)
             
@@ -689,24 +857,12 @@ local function saveSchema()
     local name = read()
     if name == "" then return end
     if not name:find("%.json$") then name = name .. ".json" end
-    
-    -- Convert to sparse format for saving
-    local export = {}
-    for x, yRow in pairs(state.data) do
-        for y, zRow in pairs(yRow) do
-            for z, matIdx in pairs(zRow) do
-                local mat = getMaterial(matIdx)
-                if mat then
-                    if not export[tostring(x)] then export[tostring(x)] = {} end
-                    if not export[tostring(x)][tostring(y)] then export[tostring(x)][tostring(y)] = {} end
-                    export[tostring(x)][tostring(y)][tostring(z)] = { material = mat.id }
-                end
-            end
-        end
-    end
-    
+    if arcadeos and name:sub(1, 1) ~= "/" then name = "/home/" .. name end
+
+    local exportDef = exportVoxelDefinition()
+
     local f = fs.open(name, "w")
-    f.write(json.encode(export))
+    f.write(json.encode(exportDef))
     f.close()
     state.status = "Saved to " .. name
 end
@@ -802,9 +958,19 @@ end
 
 -- --- Main ---
 
-function designer.run()
+function designer.run(opts)
+    opts = opts or {}
+    resetState()
+
+    if opts.schema then
+        local ok, err = loadCanonical(opts.schema, opts.metadata)
+        if not ok then
+            return false, err
+        end
+    end
+
     state.running = true
-    
+
     while state.running do
         drawUI()
         drawCanvas()
@@ -812,29 +978,29 @@ function designer.run()
         drawInventory()
         drawSearch()
         drawDragItem()
-        
+
         local event, p1, p2, p3 = os.pullEvent()
-        
+
         if event == "char" and state.searchOpen then
             state.searchQuery = state.searchQuery .. p1
             updateSearchResults()
-            
+
         elseif event == "mouse_scroll" and state.searchOpen then
             local dir = p1
             state.searchScroll = math.max(0, state.searchScroll + dir)
-            
+
         elseif event == "mouse_click" then
             local btn, mx, my = p1, p2, p3
             state.mouse.screenX = mx
             state.mouse.screenY = my
             local handled = false
-            
+
             -- 0. Check Search (Topmost)
             if state.searchOpen then
                 local w, h = term.getSize()
                 local sw, sh = 24, 14
                 local sx, sy = math.floor((w - sw)/2), math.floor((h - sh)/2)
-                
+
                 if mx >= sx and mx < sx + sw and my >= sy and my < sy + sh then
                     -- Inside Search Window
                     if my >= sy + 3 then
@@ -851,7 +1017,7 @@ function designer.run()
                     handled = true
                 end
             end
-            
+
             -- 1. Check Menu (Topmost)
             if not handled and state.menuOpen then
                 local w, h = term.getSize()
@@ -864,7 +1030,7 @@ function designer.run()
                         elseif options[idx] == "Inventory" then state.inventoryOpen = not state.inventoryOpen
                         elseif options[idx] == "Resize" then resizeCanvas()
                         elseif options[idx] == "Save" then saveSchema()
-                        elseif options[idx] == "Clear" then state.data = {}
+                        elseif options[idx] == "Clear" then clearCanvas()
                         -- Load logic...
                         end
                         if options[idx] ~= "Inventory" then state.menuOpen = false end
@@ -876,13 +1042,13 @@ function designer.run()
                     handled = true -- Consume click
                 end
             end
-            
+
             -- 2. Check Inventory (Topmost)
             if not handled and state.inventoryOpen then
                 local w, h = term.getSize()
                 local iw, ih = 18, 6
                 local ix, iy = math.floor((w - iw)/2), math.floor((h - ih)/2)
-                
+
                 if mx >= ix and mx < ix + iw and my >= iy and my < iy + ih then
                     -- Check slot click
                     local relX, relY = mx - ix - 1, my - iy - 1
@@ -891,7 +1057,7 @@ function designer.run()
                         local row = relY
                         if col >= 0 and col <= 3 and row >= 0 and row <= 3 then
                             local slot = row * 4 + col + 1
-                            local item = turtle.getItemDetail(slot)
+                            local item = turtle and turtle.getItemDetail(slot)
                             if item then
                                 state.dragItem = {
                                     id = item.name,
@@ -904,13 +1070,13 @@ function designer.run()
                     handled = true
                 end
             end
-            
+
             -- 3. Check [M] Button
             if not handled and mx >= 1 and mx <= 3 and my == 1 then
                 state.menuOpen = not state.menuOpen
                 handled = true
             end
-            
+
             -- 4. Check Palette (Drop Target & Selection)
             local palX = 2 + state.w + 2
             if not handled and mx >= palX and mx <= palX + 18 then -- Expanded for Search button
@@ -918,8 +1084,8 @@ function designer.run()
                     -- Check Edit vs Search
                     if mx >= palX + 14 and mx <= palX + 17 then
                         state.searchOpen = not state.searchOpen
-                        if state.searchOpen then 
-                            state.searchQuery = "" 
+                        if state.searchOpen then
+                            state.searchQuery = ""
                             updateSearchResults()
                         end
                     elseif mx <= palX + 13 then
@@ -937,7 +1103,7 @@ function designer.run()
                     handled = true
                 end
             end
-            
+
             -- 5. Check Tools
             if not handled and mx >= 1 and mx <= 3 and my >= 3 and my < 3 + 8 then
                 local idx = my - 2
@@ -945,12 +1111,12 @@ function designer.run()
                 if toolsList[idx] then state.tool = toolsList[idx] end
                 handled = true
             end
-            
+
             -- 6. Check Canvas
             if not handled then
                 local cx = mx - state.view.offsetX
                 local cy = my - state.view.offsetY
-                
+
                 if cx >= 0 and cx < state.w and cy >= 0 and cy < state.h then
                     state.mouse.down = true
                     state.mouse.btn = btn
@@ -958,37 +1124,37 @@ function designer.run()
                     state.mouse.startY = cy
                     state.mouse.currX = cx
                     state.mouse.currY = cy
-                    
+
                     if state.tool == TOOLS.PENCIL or state.tool == TOOLS.BUCKET or state.tool == TOOLS.PICKER then
                         applyTool(cx, cy, btn)
                     end
                 end
             end
-            
+
         elseif event == "mouse_drag" then
             local btn, mx, my = p1, p2, p3
             state.mouse.screenX = mx
             state.mouse.screenY = my
             local cx = mx - state.view.offsetX
             local cy = my - state.view.offsetY
-            
+
             if state.mouse.down then
                 -- Clamp to canvas
                 cx = math.max(0, math.min(state.w - 1, cx))
                 cy = math.max(0, math.min(state.h - 1, cy))
-                
+
                 state.mouse.currX = cx
                 state.mouse.currY = cy
                 state.mouse.drag = true
-                
+
                 if state.tool == TOOLS.PENCIL then
                     applyTool(cx, cy, state.mouse.btn)
                 end
             end
-            
+
         elseif event == "mouse_up" then
             local btn, mx, my = p1, p2, p3
-            
+
             -- Handle Drag Drop to Palette
             if state.dragItem then
                 local palX = 2 + state.w + 2
@@ -1009,10 +1175,10 @@ function designer.run()
             end
             state.mouse.down = false
             state.mouse.drag = false
-            
+
         elseif event == "key" then
             local key = p1
-            
+
             if state.searchOpen then
                 if key == keys.backspace then
                     state.searchQuery = state.searchQuery:sub(1, -2)
@@ -1039,13 +1205,21 @@ function designer.run()
                 end
                 if key == keys.s then saveSchema() end
                 if key == keys.r then resizeCanvas() end
-                if key == keys.c then state.data = {} end -- Clear all
+                if key == keys.c then clearCanvas() end -- Clear all
                 if key == keys.pageUp then state.view.layer = math.min(state.d - 1, state.view.layer + 1) end
                 if key == keys.pageDown then state.view.layer = math.max(0, state.view.layer - 1) end
             end
         end
     end
+
+    if opts.returnSchema then
+        return exportCanonical()
+    end
 end
+
+designer.loadCanonical = loadCanonical
+designer.exportCanonical = exportCanonical
+designer.exportVoxelDefinition = exportVoxelDefinition
 
 return designer
 
@@ -2737,6 +2911,7 @@ optional error messages.
 local inventory = {}
 local movement = require("lib_movement")
 local logger = require("lib_logger")
+local world = require("lib_world")
 
 local SIDE_ACTIONS = {
     forward = {
@@ -2805,7 +2980,6 @@ inventory.DEFAULT_TRASH = {
     ["minecraft:bedrock"] = true,
     ["minecraft:lava"] = true,
     ["minecraft:water"] = true,
-    ["minecraft:torch"] = true,
 }
 
 local function noop()
@@ -2913,34 +3087,9 @@ local function copySlots(slots)
     return result
 end
 
-local function hasContainerTag(tags)
-    if type(tags) ~= "table" then
-        return false
-    end
-    for key, value in pairs(tags) do
-        if value and type(key) == "string" then
-            local lower = key:lower()
-            for _, keyword in ipairs(CONTAINER_KEYWORDS) do
-                if lower:find(keyword, 1, true) then
-                    return true
-                end
-            end
-        end
-    end
-    return false
-end
-
+-- Container detection lives in lib_world (CONTAINER_KEYWORDS was never defined here).
 local function isContainerBlock(name, tags)
-    if type(name) ~= "string" then
-        return false
-    end
-    local lower = name:lower()
-    for _, keyword in ipairs(CONTAINER_KEYWORDS) do
-        if lower:find(keyword, 1, true) then
-            return true
-        end
-    end
-    return hasContainerTag(tags)
+    return world.isContainerBlock(name, tags)
 end
 
 local function inspectForwardForContainer()
@@ -4170,6 +4319,8 @@ function inventory.describeMaterials(io, info)
 end
 
 function inventory.runCheck(ctx, io, opts)
+    -- Required lazily: lib_initialize requires this module.
+    local initialize = require("lib_initialize")
     local ok, report = initialize.ensureMaterials(ctx, { manifest = ctx.schemaInfo and ctx.schemaInfo.materials }, opts)
     if io.print then
         if ok then
@@ -4552,6 +4703,10 @@ function json_utils.decodeJson(text)
     return nil, "json_decoder_unavailable"
 end
 
+function json_utils.encode(value)
+    return textutils.serializeJSON(value)
+end
+
 return json_utils
 
 ]===]
@@ -4824,6 +4979,10 @@ local function logInternal(state, level, message, metadata)
     return true, entry
 end
 
+-- Instances built by logger.new use method syntax (logger:info(msg));
+-- loggers supplied by harnesses use plain functions (logger.info(msg)).
+local instances = setmetatable({}, { __mode = "k" })
+
 function logger.new(opts)
     local state = {
         capture = opts and opts.capture or false,
@@ -4842,6 +5001,7 @@ function logger.new(opts)
 
     local instance = {}
     state.instance = instance
+    instances[instance] = true
 
     if not (opts and opts.silent) then
         addWriter(state, defaultWriterFactory(state))
@@ -4997,13 +5157,22 @@ function logger.log(ctx, level, message)
     end
     local logger = ctx.logger
     if type(logger) == "table" then
+        local isMethod = instances[logger]
         local fn = logger[level]
         if type(fn) == "function" then
-            fn(message)
+            if isMethod then
+                fn(logger, message)
+            else
+                fn(message)
+            end
             return
         end
         if type(logger.log) == "function" then
-            logger.log(level, message)
+            if isMethod then
+                logger:log(level, message)
+            else
+                logger.log(level, message)
+            end
             return
         end
     end
@@ -5043,10 +5212,34 @@ mining.FILL_BLACKLIST = {
     ["minecraft:bedrock"] = true,
 }
 
---- Check if a block is considered "ore" (valuable)
-function mining.isOre(name)
-    if not name then return false end
-    return not mining.TRASH_BLOCKS[name]
+local ORE_TAGS = {
+    ["c:ores"] = true,
+    ["forge:ores"] = true,
+    ["minecraft:coal_ores"] = true,
+    ["minecraft:iron_ores"] = true,
+    ["minecraft:copper_ores"] = true,
+    ["minecraft:gold_ores"] = true,
+    ["minecraft:redstone_ores"] = true,
+    ["minecraft:lapis_ores"] = true,
+    ["minecraft:diamond_ores"] = true,
+    ["minecraft:emerald_ores"] = true,
+}
+
+--- Check if a block is considered "ore" (valuable). Only ore-like blocks
+-- count, so tunnels never chew through chests, torches or other placed blocks.
+-- @param name block id
+-- @param tags optional tag table from turtle.inspect
+function mining.isOre(name, tags)
+    if not name or mining.TRASH_BLOCKS[name] then return false end
+    if name:find("_ore$") or name:find(":ore_") or name == "minecraft:ancient_debris" then
+        return true
+    end
+    if type(tags) == "table" then
+        for tag in pairs(tags) do
+            if ORE_TAGS[tag] then return true end
+        end
+    end
+    return false
 end
 
 --- Find a suitable trash block in inventory to use for filling
@@ -5083,7 +5276,7 @@ function mining.mineAndFill(ctx, dir)
     end
 
     local hasBlock, data = inspect()
-    if hasBlock and mining.isOre(data.name) then
+    if hasBlock and mining.isOre(data.name, data.tags) then
         logger.log(ctx, "info", "Mining valuable: " .. data.name)
         if dig() then
             -- Attempt to fill the hole
@@ -7481,11 +7674,11 @@ function reporter.describeMaterials(io, info)
 end
 
 function reporter.detectContainers(io)
-    world.detectContainers(io)
+    return world.detectContainers(io)
 end
 
 function reporter.runCheck(ctx, io, opts)
-    inventory.runCheck(ctx, io, opts)
+    return inventory.runCheck(ctx, io, opts)
 end
 
 function reporter.gatherSummary(io, report)
@@ -7549,18 +7742,19 @@ Provides helpers for working with build schemas.
 ---@diagnostic disable: undefined-global
 
 local schema_utils = {}
+local table_utils = require("lib_table")
+
+local function copyTable(tbl)
+    if type(tbl) ~= "table" then return {} end
+    return table_utils.shallowCopy(tbl)
+end
 
 function schema_utils.pushMaterialCount(counts, material)
     counts[material] = (counts[material] or 0) + 1
 end
 
-local table_utils = require("lib_table")
-
 function schema_utils.cloneMeta(meta)
-    if type(meta) ~= "table" then
-        return {}
-    end
-    return table_utils.shallowCopy(meta)
+    return copyTable(meta)
 end
 
 function schema_utils.newBounds()
@@ -7685,6 +7879,43 @@ function schema_utils.fetchSchemaEntry(schema, pos)
         return nil, "empty"
     end
     return block
+end
+
+function schema_utils.canonicalToGrid(schema, opts)
+    opts = opts or {}
+    local grid = {}
+    if type(schema) ~= "table" then
+        return grid
+    end
+    for x, xColumn in pairs(schema) do
+        if type(xColumn) == "table" then
+            for y, yColumn in pairs(xColumn) do
+                if type(yColumn) == "table" then
+                    for z, block in pairs(yColumn) do
+                        if block and type(block) == "table" then
+                            local material = block.material
+                            if material and material ~= "" then
+                                local gx = tostring(x)
+                                local gy = tostring(y)
+                                local gz = tostring(z)
+                                grid[gx] = grid[gx] or {}
+                                grid[gx][gy] = grid[gx][gy] or {}
+                                grid[gx][gy][gz] = {
+                                    material = material,
+                                    meta = copyTable(block.meta),
+                                }
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+    return grid
+end
+
+function schema_utils.canonicalToVoxelDefinition(schema, opts)
+    return { grid = schema_utils.canonicalToGrid(schema, opts) }
 end
 
 function schema_utils.printMaterials(io, info)
@@ -7909,13 +8140,8 @@ function strategy.generate(length, branchInterval, branchLength, torchInterval)
             y = y - 1
             pushStep(steps, x, y, z, facing, "move")
 
-            -- Face down the spine again
-            facing = turnRight(facing)
-            pushStep(steps, x, y, z, facing, "turn", "right")
-
-            -- Right branch (mirror of left)
-            facing = turnRight(facing)
-            pushStep(steps, x, y, z, facing, "turn", "right")
+            -- Right branch (mirror of left). Coming back from the left branch
+            -- the turtle already faces right, so it heads straight out.
             for _ = 1, branchLength do
                 x, z = forward(x, z, facing)
                 pushStep(steps, x, y, z, facing, "move")
@@ -7941,8 +8167,9 @@ function strategy.generate(length, branchInterval, branchLength, torchInterval)
             y = y - 1
             pushStep(steps, x, y, z, facing, "move")
 
-            facing = turnLeft(facing)
-            pushStep(steps, x, y, z, facing, "turn", "left")
+            -- Back from the right branch facing left; face down the spine.
+            facing = turnRight(facing)
+            pushStep(steps, x, y, z, facing, "turn", "right")
         end
 
         if i % 5 == 0 then
@@ -8922,6 +9149,26 @@ function ui.runForm(form)
     end
 end
 
+-- Form builder: ui.Form(title), form:addInput(id, label, value), form:run() -> "ok" | "cancel".
+-- Read values back from form.elements (el.id, el.value).
+function ui.Form(title)
+    local _, h = term.getSize()
+    local step = h >= 19 and 2 or 1
+    local form = { title = title, elements = {}, row = 2 }
+    function form:addInput(id, label, value)
+        self.elements[#self.elements + 1] = { type = "label", x = 2, y = self.row, text = label }
+        self.elements[#self.elements + 1] = { type = "input", id = id, x = 17, y = self.row, width = 10, value = value or "" }
+        self.row = self.row + step
+    end
+    function form:run()
+        local y = self.row + 1
+        self.elements[#self.elements + 1] = { type = "button", x = 2, y = y, text = "OK", callback = function() return "ok" end }
+        self.elements[#self.elements + 1] = { type = "button", x = 8, y = y, text = "Cancel", callback = function() return "cancel" end }
+        return ui.runForm(self)
+    end
+    return form
+end
+
 -- Simple Scrollable Menu
 -- items = { { text="Label", callback=function() end }, ... }
 function ui.runMenu(title, items)
@@ -9133,13 +9380,7 @@ function world.isContainerBlock(name, tags)
     if type(name) ~= "string" then
         return false
     end
-    local lower = name:lower()
-    for _, keyword in ipairs(CONTAINER_KEYWORDS) do
-        if lower:find(keyword, 1, true) then
-            return true
-        end
-    end
-    return world.hasContainerTag(tags)
+    return world.isContainer({ name = name, tags = tags })
 end
 
 function world.inspectForwardForContainer()
@@ -9303,41 +9544,35 @@ function world.copyPosition(pos)
     }
 end
 
+-- Returns { { side = "forward"|"down"|"up", name = ... }, ... } for adjacent
+-- containers, and prints them when given an io table.
 function world.detectContainers(io)
     local found = {}
-    local sides = { "forward", "down", "up" }
     local labels = {
         forward = "front",
         down = "below",
         up = "above",
     }
-    for _, side in ipairs(sides) do
-        local inspect
-        if side == "forward" then
-            inspect = turtle.inspect
-        elseif side == "up" then
-            inspect = turtle.inspectUp
-        else
-            inspect = turtle.inspectDown
-        end
+    for _, side in ipairs({ "forward", "down", "up" }) do
+        local inspect = world.getInspect(side)
         if type(inspect) == "function" then
             local ok, detail = inspect()
-            if ok then
-                local name = type(detail.name) == "string" and detail.name or "unknown"
-                found[#found + 1] = string.format(" %s: %s", labels[side] or side, name)
+            if ok and world.isContainer(detail) then
+                found[#found + 1] = { side = side, name = detail.name or "unknown", label = labels[side] }
             end
         end
     end
-    if io.print then
+    if type(io) == "table" and io.print then
         if #found == 0 then
             io.print("Detected containers: <none>")
         else
             io.print("Detected containers:")
-            for _, line in ipairs(found) do
-                io.print(" -" .. line)
+            for _, entry in ipairs(found) do
+                io.print(string.format(" - %s: %s", entry.label, entry.name))
             end
         end
     end
+    return found
 end
 
 return world
@@ -10043,10 +10278,13 @@ local function calculateRequirements(ctx, strategy)
         materials = {}
     }
 
-    -- Estimate fuel
-    -- A simple heuristic: 1 fuel per step.
+    -- Estimate fuel: one per movement step (turns, scans and torches are free).
     if strategy then
-        reqs.fuel = #strategy
+        for _, step in ipairs(strategy) do
+            if step.type == "move" or step.type == nil then
+                reqs.fuel = reqs.fuel + 1
+            end
+        end
     end
     
     -- Add a safety margin for fuel (e.g. 10% + 100)
@@ -10072,6 +10310,24 @@ local function calculateRequirements(ctx, strategy)
     end
 
     return reqs
+end
+
+-- Fuel the turtle can burn from its own inventory (REFUEL uses it on the go).
+local FUEL_VALUES = {
+    ["minecraft:coal"] = 80,
+    ["minecraft:charcoal"] = 80,
+    ["minecraft:coal_block"] = 800,
+    ["minecraft:charcoal_block"] = 800,
+    ["minecraft:blaze_rod"] = 120,
+    ["minecraft:lava_bucket"] = 1000,
+}
+
+local function onboardFuel(invCounts)
+    local total = 0
+    for name, count in pairs(invCounts) do
+        total = total + (FUEL_VALUES[name] or 0) * count
+    end
+    return total
 end
 
 local function getInventoryCounts(ctx)
@@ -10126,6 +10382,7 @@ local function CHECK_REQUIREMENTS(ctx)
     local invCounts = getInventoryCounts(ctx)
     local currentFuel = turtle.getFuelLevel()
     if currentFuel == "unlimited" then currentFuel = 999999 end
+    local carriedFuel = onboardFuel(invCounts)
 
     local missing = {
         fuel = 0,
@@ -10134,8 +10391,8 @@ local function CHECK_REQUIREMENTS(ctx)
     local hasMissing = false
 
     -- Check fuel
-    if currentFuel < reqs.fuel then
-        missing.fuel = reqs.fuel - currentFuel
+    if currentFuel + carriedFuel < reqs.fuel then
+        missing.fuel = reqs.fuel - currentFuel - carriedFuel
         hasMissing = true
     end
 
@@ -10156,7 +10413,7 @@ local function CHECK_REQUIREMENTS(ctx)
     -- Report missing
     print("\n=== MISSING REQUIREMENTS ===")
     if missing.fuel > 0 then
-        print(string.format("- Fuel: %d (Have %d, Need %d)", missing.fuel, currentFuel, reqs.fuel))
+        print(string.format("- Fuel: %d (Have %d + %d in fuel items, Need %d)", missing.fuel, currentFuel, carriedFuel, reqs.fuel))
     end
     for mat, count in pairs(missing.materials) do
         print(string.format("- %s: %d", mat, count))
@@ -10824,6 +11081,9 @@ Graphical launcher for the factory agent.
 local ui = require("lib_ui")
 local designer = require("lib_designer")
 local games = require("lib_games")
+local parser = require("lib_parser")
+local json = require("lib_json")
+local schema_utils = require("lib_schema")
 
 -- Hack to load factory without running it immediately
 _G.__FACTORY_EMBED__ = true
@@ -10965,6 +11225,60 @@ local function runBuild(schemaFile)
     return pauseAndReturn("stay")
 end
 
+local function runEditSchema(schemaFile)
+    ui.clear()
+    print("Validating Schema...")
+    print("Schema: " .. schemaFile)
+
+    local ctx = {}
+    local ok, schema, metadata = parser.parseFile(ctx, schemaFile)
+    if not ok then
+        print("Failed to parse schema: " .. tostring(schema))
+        return pauseAndReturn("stay")
+    end
+
+    local editedSchema, exportInfo = designer.run({
+        schema = schema,
+        metadata = metadata,
+        returnSchema = true,
+    })
+
+    if not editedSchema then
+        local errMsg = exportInfo or "Editor closed without returning a schema."
+        print(tostring(errMsg))
+        return pauseAndReturn("stay")
+    end
+
+    print(string.format("Editor returned %d blocks.", (exportInfo and exportInfo.totalBlocks) or 0))
+
+    local defaultName = schemaFile
+    local form = ui.Form("Save Edited Schema")
+    form:addInput("filename", "Filename", defaultName)
+    local result = form:run()
+    if result == "cancel" then return "stay" end
+
+    local filename = defaultName
+    for _, el in ipairs(form.elements) do
+        if el.id == "filename" then filename = el.value end
+    end
+    if filename == "" then filename = defaultName end
+    if not filename:match("%.json$") then filename = filename .. ".json" end
+
+    if fs.exists(filename) then
+        local backup = filename .. ".bak"
+        fs.copy(filename, backup)
+        print("Existing file backed up to " .. backup)
+    end
+
+    local definition = schema_utils.canonicalToVoxelDefinition(editedSchema)
+    local f = fs.open(filename, "w")
+    f.write(json.encode(definition))
+    f.close()
+
+    print("Saved edited schema to " .. filename)
+    return pauseAndReturn("stay")
+end
+
 local function runImportSchema()
     local url = ""
     local filename = "schema.json"
@@ -11055,6 +11369,25 @@ local function showBuildMenu()
     end
 end
 
+local function showEditMenu()
+    while true do
+        local schemas = getSchemaFiles()
+        local items = {}
+
+        for _, schema in ipairs(schemas) do
+            table.insert(items, {
+                text = "Edit " .. schema,
+                callback = function() return runEditSchema(schema) end
+            })
+        end
+
+        table.insert(items, { text = "Back", callback = function() return "back" end })
+
+        local res = ui.runMenu("Validate & Edit Schema", items)
+        if res == "back" then return end
+    end
+end
+
 local function showMiningWizard()
     local form = {
         title = "Mining Wizard",
@@ -11102,6 +11435,7 @@ local function showSystemMenu()
     while true do
         local res = ui.runMenu("System Tools", {
             { text = "Import Schema", callback = runImportSchema },
+            { text = "Validate & Edit Schema", callback = showEditMenu },
             { text = "Schema Designer", callback = runSchemaDesigner },
             { text = "Back", callback = function() return "back" end }
         })
