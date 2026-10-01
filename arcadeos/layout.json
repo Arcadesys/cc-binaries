@@ -22,7 +22,7 @@
       ]
     },
     "arcade": {
-      "description": "Arcade games: Blackjack, Slots, Can't Stop, Race, RPS Rogue, IdleCraft",
+      "description": "Arcade games: Blackjack, Slots, Pine Slots, Pine Jack, Pine Shut the Box, Can't Stop, Race, RPS Rogue, IdleCraft",
       "mounts": [
         {
           "src": "cc-arcade",
@@ -46,7 +46,16 @@
             "update.lua",
             "derby/tests/**",
             "derby/tools/**",
-            "derby/docs/**"
+            "derby/docs/**",
+            "pineslots/tests/**",
+            "pineslots/tools/**",
+            "pinejack/tests/**",
+            "pinejack/tools/**",
+            "pinebox/tests/**",
+            "pinebox/tools/**",
+            "casino/tests/**",
+            "casino/tools/**",
+            "get.lua"
           ]
         }
       ]

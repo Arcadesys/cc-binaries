@@ -20,11 +20,11 @@ function reporter.describeMaterials(io, info)
 end
 
 function reporter.detectContainers(io)
-    world.detectContainers(io)
+    return world.detectContainers(io)
 end
 
 function reporter.runCheck(ctx, io, opts)
-    inventory.runCheck(ctx, io, opts)
+    return inventory.runCheck(ctx, io, opts)
 end
 
 function reporter.gatherSummary(io, report)

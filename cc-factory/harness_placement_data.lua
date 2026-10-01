@@ -1,3 +1,5 @@
+local common = require("harness_common")
+
 local placement_data = {}
 
 placement_data.scenarios = {

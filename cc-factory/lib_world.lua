@@ -133,13 +133,7 @@ function world.isContainerBlock(name, tags)
     if type(name) ~= "string" then
         return false
     end
-    local lower = name:lower()
-    for _, keyword in ipairs(CONTAINER_KEYWORDS) do
-        if lower:find(keyword, 1, true) then
-            return true
-        end
-    end
-    return world.hasContainerTag(tags)
+    return world.isContainer({ name = name, tags = tags })
 end
 
 function world.inspectForwardForContainer()
@@ -303,41 +297,35 @@ function world.copyPosition(pos)
     }
 end
 
+-- Returns { { side = "forward"|"down"|"up", name = ... }, ... } for adjacent
+-- containers, and prints them when given an io table.
 function world.detectContainers(io)
     local found = {}
-    local sides = { "forward", "down", "up" }
     local labels = {
         forward = "front",
         down = "below",
         up = "above",
     }
-    for _, side in ipairs(sides) do
-        local inspect
-        if side == "forward" then
-            inspect = turtle.inspect
-        elseif side == "up" then
-            inspect = turtle.inspectUp
-        else
-            inspect = turtle.inspectDown
-        end
+    for _, side in ipairs({ "forward", "down", "up" }) do
+        local inspect = world.getInspect(side)
         if type(inspect) == "function" then
             local ok, detail = inspect()
-            if ok then
-                local name = type(detail.name) == "string" and detail.name or "unknown"
-                found[#found + 1] = string.format(" %s: %s", labels[side] or side, name)
+            if ok and world.isContainer(detail) then
+                found[#found + 1] = { side = side, name = detail.name or "unknown", label = labels[side] }
             end
         end
     end
-    if io.print then
+    if type(io) == "table" and io.print then
         if #found == 0 then
             io.print("Detected containers: <none>")
         else
             io.print("Detected containers:")
-            for _, line in ipairs(found) do
-                io.print(" -" .. line)
+            for _, entry in ipairs(found) do
+                io.print(string.format(" - %s: %s", entry.label, entry.name))
             end
         end
     end
+    return found
 end
 
 return world

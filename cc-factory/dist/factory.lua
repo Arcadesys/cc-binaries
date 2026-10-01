@@ -3677,6 +3677,7 @@ optional error messages.
 local inventory = {}
 local movement = require("lib_movement")
 local logger = require("lib_logger")
+local world = require("lib_world")
 
 local SIDE_ACTIONS = {
     forward = {
@@ -3745,7 +3746,6 @@ inventory.DEFAULT_TRASH = {
     ["minecraft:bedrock"] = true,
     ["minecraft:lava"] = true,
     ["minecraft:water"] = true,
-    ["minecraft:torch"] = true,
 }
 
 local function noop()
@@ -3853,34 +3853,9 @@ local function copySlots(slots)
     return result
 end
 
-local function hasContainerTag(tags)
-    if type(tags) ~= "table" then
-        return false
-    end
-    for key, value in pairs(tags) do
-        if value and type(key) == "string" then
-            local lower = key:lower()
-            for _, keyword in ipairs(CONTAINER_KEYWORDS) do
-                if lower:find(keyword, 1, true) then
-                    return true
-                end
-            end
-        end
-    end
-    return false
-end
-
+-- Container detection lives in lib_world (CONTAINER_KEYWORDS was never defined here).
 local function isContainerBlock(name, tags)
-    if type(name) ~= "string" then
-        return false
-    end
-    local lower = name:lower()
-    for _, keyword in ipairs(CONTAINER_KEYWORDS) do
-        if lower:find(keyword, 1, true) then
-            return true
-        end
-    end
-    return hasContainerTag(tags)
+    return world.isContainerBlock(name, tags)
 end
 
 local function inspectForwardForContainer()
@@ -5110,6 +5085,8 @@ function inventory.describeMaterials(io, info)
 end
 
 function inventory.runCheck(ctx, io, opts)
+    -- Required lazily: lib_initialize requires this module.
+    local initialize = require("lib_initialize")
     local ok, report = initialize.ensureMaterials(ctx, { manifest = ctx.schemaInfo and ctx.schemaInfo.materials }, opts)
     if io.print then
         if ok then
@@ -5768,6 +5745,10 @@ local function logInternal(state, level, message, metadata)
     return true, entry
 end
 
+-- Instances built by logger.new use method syntax (logger:info(msg));
+-- loggers supplied by harnesses use plain functions (logger.info(msg)).
+local instances = setmetatable({}, { __mode = "k" })
+
 function logger.new(opts)
     local state = {
         capture = opts and opts.capture or false,
@@ -5786,6 +5767,7 @@ function logger.new(opts)
 
     local instance = {}
     state.instance = instance
+    instances[instance] = true
 
     if not (opts and opts.silent) then
         addWriter(state, defaultWriterFactory(state))
@@ -5941,13 +5923,22 @@ function logger.log(ctx, level, message)
     end
     local logger = ctx.logger
     if type(logger) == "table" then
+        local isMethod = instances[logger]
         local fn = logger[level]
         if type(fn) == "function" then
-            fn(message)
+            if isMethod then
+                fn(logger, message)
+            else
+                fn(message)
+            end
             return
         end
         if type(logger.log) == "function" then
-            logger.log(level, message)
+            if isMethod then
+                logger:log(level, message)
+            else
+                logger.log(level, message)
+            end
             return
         end
     end
@@ -8675,7 +8666,9 @@ function placement.executeBuildState(ctx, opts)
                 pointer = world.copyPosition(pointer),
             }
         end
-        if err == "blocked" then
+        -- A block in the way that couldn't be cleared (e.g. obsidian with
+        -- digging off) is reported as mismatched_block; wait it out in BLOCKED.
+        if err == "blocked" or err == "mismatched_block" then
             state.resumeState = "BUILD"
             logger.log(ctx, "warn", "Placement blocked; invoking BLOCKED state")
             return "BLOCKED", {
@@ -8746,11 +8739,11 @@ function reporter.describeMaterials(io, info)
 end
 
 function reporter.detectContainers(io)
-    world.detectContainers(io)
+    return world.detectContainers(io)
 end
 
 function reporter.runCheck(ctx, io, opts)
-    inventory.runCheck(ctx, io, opts)
+    return inventory.runCheck(ctx, io, opts)
 end
 
 function reporter.gatherSummary(io, report)
@@ -10829,13 +10822,7 @@ function world.isContainerBlock(name, tags)
     if type(name) ~= "string" then
         return false
     end
-    local lower = name:lower()
-    for _, keyword in ipairs(CONTAINER_KEYWORDS) do
-        if lower:find(keyword, 1, true) then
-            return true
-        end
-    end
-    return world.hasContainerTag(tags)
+    return world.isContainer({ name = name, tags = tags })
 end
 
 function world.inspectForwardForContainer()
@@ -10999,41 +10986,35 @@ function world.copyPosition(pos)
     }
 end
 
+-- Returns { { side = "forward"|"down"|"up", name = ... }, ... } for adjacent
+-- containers, and prints them when given an io table.
 function world.detectContainers(io)
     local found = {}
-    local sides = { "forward", "down", "up" }
     local labels = {
         forward = "front",
         down = "below",
         up = "above",
     }
-    for _, side in ipairs(sides) do
-        local inspect
-        if side == "forward" then
-            inspect = turtle.inspect
-        elseif side == "up" then
-            inspect = turtle.inspectUp
-        else
-            inspect = turtle.inspectDown
-        end
+    for _, side in ipairs({ "forward", "down", "up" }) do
+        local inspect = world.getInspect(side)
         if type(inspect) == "function" then
             local ok, detail = inspect()
-            if ok then
-                local name = type(detail.name) == "string" and detail.name or "unknown"
-                found[#found + 1] = string.format(" %s: %s", labels[side] or side, name)
+            if ok and world.isContainer(detail) then
+                found[#found + 1] = { side = side, name = detail.name or "unknown", label = labels[side] }
             end
         end
     end
-    if io.print then
+    if type(io) == "table" and io.print then
         if #found == 0 then
             io.print("Detected containers: <none>")
         else
             io.print("Detected containers:")
-            for _, line in ipairs(found) do
-                io.print(" -" .. line)
+            for _, entry in ipairs(found) do
+                io.print(string.format(" - %s: %s", entry.label, entry.name))
             end
         end
     end
+    return found
 end
 
 return world
@@ -11743,10 +11724,13 @@ local function calculateRequirements(ctx, strategy)
         materials = {}
     }
 
-    -- Estimate fuel
-    -- A simple heuristic: 1 fuel per step.
+    -- Estimate fuel: one per movement step (turns, scans and torches are free).
     if strategy then
-        reqs.fuel = #strategy
+        for _, step in ipairs(strategy) do
+            if step.type == "move" or step.type == nil then
+                reqs.fuel = reqs.fuel + 1
+            end
+        end
     end
     
     -- Add a safety margin for fuel (e.g. 10% + 100)
@@ -11772,6 +11756,24 @@ local function calculateRequirements(ctx, strategy)
     end
 
     return reqs
+end
+
+-- Fuel the turtle can burn from its own inventory (REFUEL uses it on the go).
+local FUEL_VALUES = {
+    ["minecraft:coal"] = 80,
+    ["minecraft:charcoal"] = 80,
+    ["minecraft:coal_block"] = 800,
+    ["minecraft:charcoal_block"] = 800,
+    ["minecraft:blaze_rod"] = 120,
+    ["minecraft:lava_bucket"] = 1000,
+}
+
+local function onboardFuel(invCounts)
+    local total = 0
+    for name, count in pairs(invCounts) do
+        total = total + (FUEL_VALUES[name] or 0) * count
+    end
+    return total
 end
 
 local function getInventoryCounts(ctx)
@@ -11826,6 +11828,7 @@ local function CHECK_REQUIREMENTS(ctx)
     local invCounts = getInventoryCounts(ctx)
     local currentFuel = turtle.getFuelLevel()
     if currentFuel == "unlimited" then currentFuel = 999999 end
+    local carriedFuel = onboardFuel(invCounts)
 
     local missing = {
         fuel = 0,
@@ -11834,8 +11837,8 @@ local function CHECK_REQUIREMENTS(ctx)
     local hasMissing = false
 
     -- Check fuel
-    if currentFuel < reqs.fuel then
-        missing.fuel = reqs.fuel - currentFuel
+    if currentFuel + carriedFuel < reqs.fuel then
+        missing.fuel = reqs.fuel - currentFuel - carriedFuel
         hasMissing = true
     end
 
@@ -11856,7 +11859,7 @@ local function CHECK_REQUIREMENTS(ctx)
     -- Report missing
     print("\n=== MISSING REQUIREMENTS ===")
     if missing.fuel > 0 then
-        print(string.format("- Fuel: %d (Have %d, Need %d)", missing.fuel, currentFuel, reqs.fuel))
+        print(string.format("- Fuel: %d (Have %d + %d in fuel items, Need %d)", missing.fuel, currentFuel, carriedFuel, reqs.fuel))
     end
     for mat, count in pairs(missing.materials) do
         print(string.format("- %s: %d", mat, count))

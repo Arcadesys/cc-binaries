@@ -1,0 +1,436 @@
+#!/usr/bin/env python3
+"""turtlesim: run CC:Tweaked turtle scripts against a simulated turtle.
+
+  turtle SCRIPT.lua [ARGS...]       run any script (its folder becomes the turtle's disk)
+  turtle mine [FACTORY ARGS...]     run cc-factory's branch miner in the branchmine world
+  turtle harness [NAME...]          run cc-factory harness_* scripts (all, or e.g. movement fuel)
+  turtle worlds                     list bundled worlds
+
+Options (anywhere before SCRIPT; anywhere at all for `mine`):
+  --world FILE|NAME   world to load (a Lua file, or a name from turtlesim/worlds)
+  --seed N            world seed (changes the ore layout)
+  --root DIR          folder copied onto the turtle (default: the script's folder;
+                      for `mine`, cc-factory)
+  --fuel N|unlimited  starting fuel (overrides the world)
+  --give ITEM[:N]     add items to the inventory (repeatable), e.g. --give coal:16
+  --answer TEXT       answer for the next read() prompt (repeatable; default is Enter)
+  --key NAME          press a key (CC `keys` name, e.g. enter, q) once a second, in order;
+                      for programs that wait on key events (repeatable)
+  --idle SECONDS      stop if no turtle action or output for this long (default 10)
+  --trace             print every turtle action as it happens
+  --ui                open the CraftOS-PC window so you can watch and type
+  --real-time         don't fast-forward sleep()
+  --timeout SECONDS   kill the emulator after this long (default 300)
+  --keep              keep the temp emulator folder and print its path
+
+Scale options for `mine` (runs go in parallel, then print one table):
+  --seeds A-B         one run per seed, e.g. --seeds 1-8, to compare layouts or settings
+  --fleet N           N turtles side by side on the same seed
+  --spacing S         blocks between fleet turtles (default: 2 * branch length + 3)
+  -j N                parallel emulators (default: CPU count)
+
+Examples:
+  turtlesim/turtle mine --length 64 --branch-interval 3 --branch-length 12
+  turtlesim/turtle mine --seeds 1-8 --length 48
+  turtlesim/turtle mine --fleet 4 --length 64 --branch-length 12
+  turtlesim/turtle --world quarry --trace turtlesim/examples/stairs.lua 8
+
+Needs CraftOS-PC (https://www.craftos-pc.cc). Override its path with CRAFTOS_BIN.
+"""
+import json
+import os
+import shutil
+import subprocess
+import sys
+import tempfile
+import time
+from concurrent.futures import ThreadPoolExecutor
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+REPO = os.path.dirname(HERE)
+WORLDS = os.path.join(HERE, "worlds")
+FACTORY = os.path.join(REPO, "cc-factory")
+CRAFTOS = os.environ.get("CRAFTOS_BIN", "/Applications/CraftOS-PC.app/Contents/MacOS/craftos")
+SKIP = {".git", "__pycache__", "node_modules", ".DS_Store", "dist"}
+
+VALUE_OPTS = {"--world", "--root", "--fuel", "--give", "--answer", "--key", "--idle", "--timeout",
+              "--facing", "--seed", "--seeds", "--fleet", "--spacing", "-j"}
+FLAG_OPTS = {"--trace", "--ui", "--real-time", "--keep"}
+
+
+def die(msg):
+    print("turtle: " + msg, file=sys.stderr)
+    sys.exit(2)
+
+
+def parse(argv, passthrough=False):
+    """Split argv into turtlesim options and the rest.
+
+    Normally parsing stops at the first non-option (the script); everything
+    after belongs to the script. With passthrough, unknown options are kept
+    for the script too (used by `mine`, which forwards to factory.lua).
+    """
+    opts = {"give": [], "answers": [], "keys": [], "timeout": 300.0}
+    rest = []
+    i = 0
+    while i < len(argv):
+        a = argv[i]
+        if rest and not passthrough:
+            rest.append(a)
+        elif a in VALUE_OPTS:
+            if i + 1 >= len(argv):
+                die(a + " needs a value")
+            v = argv[i + 1]
+            i += 1
+            if a == "--give":
+                opts["give"].append(v)
+            elif a == "--answer":
+                opts["answers"].append(v)
+            elif a == "--key":
+                opts["keys"].append(v)
+            elif a == "--timeout":
+                opts["timeout"] = float(v)
+            else:
+                opts[a.lstrip("-")] = v
+        elif a in FLAG_OPTS:
+            opts[a[2:].replace("-", "_")] = True
+        elif a in ("-h", "--help"):
+            print(__doc__)
+            sys.exit(0)
+        elif a.startswith("--") and not passthrough:
+            die("unknown option " + a)
+        else:
+            rest.append(a)
+        i += 1
+    return opts, rest
+
+
+def resolve_world(name):
+    if not name:
+        return None
+    for cand in (name, os.path.join(WORLDS, name), os.path.join(WORLDS, name + ".lua")):
+        if os.path.isfile(cand):
+            return os.path.abspath(cand)
+    die("no world named %r (try: turtle worlds)" % name)
+
+
+def copy_root(src, dest):
+    for dirpath, dirnames, filenames in os.walk(src):
+        dirnames[:] = [d for d in dirnames if d not in SKIP]
+        rel = os.path.relpath(dirpath, src)
+        target = os.path.join(dest, rel) if rel != "." else dest
+        os.makedirs(target, exist_ok=True)
+        for f in filenames:
+            if f not in SKIP:
+                shutil.copy2(os.path.join(dirpath, f), os.path.join(target, f))
+
+
+def run_one(script, args, opts, quiet=False):
+    """Run one script in a fresh emulator. Returns (ok, output_text, summary)."""
+    if not os.path.exists(CRAFTOS):
+        die("CraftOS-PC not found at %s (install it or set CRAFTOS_BIN)" % CRAFTOS)
+    script = os.path.abspath(script)
+    if not os.path.isfile(script):
+        die("no such script: " + script)
+    root = os.path.abspath(opts.get("root") or os.path.dirname(script))
+    rel = os.path.relpath(script, root)
+    if rel.startswith(".."):
+        die("script %s is outside --root %s" % (script, root))
+
+    tmp = tempfile.mkdtemp(prefix="turtlesim.")
+    data = os.path.join(tmp, "emulator")
+    results = os.path.join(tmp, "results")
+    os.makedirs(results)
+    copy_root(root, os.path.join(data, "computer", "0"))
+
+    world = resolve_world(opts.get("world"))
+    if world:
+        shutil.copy(world, os.path.join(results, "world.lua"))
+    cfg = {
+        "script": "/" + rel.replace(os.sep, "/"),
+        "args": args,
+        "world": bool(world),
+        "seed": opts.get("seed"),
+        "offsetX": opts.get("offset_x", 0),
+        "fuel": opts.get("fuel"),
+        "facing": opts.get("facing"),
+        "give": opts["give"],
+        "answers": opts["answers"],
+        "keys": opts["keys"],
+        "idle": opts.get("idle"),
+        "trace": bool(opts.get("trace")),
+        "interactive": bool(opts.get("ui")),
+        "realTime": bool(opts.get("real_time")),
+    }
+    with open(os.path.join(results, "config.json"), "w") as f:
+        json.dump(cfg, f)
+
+    cmd = [CRAFTOS, "--directory", data,
+           "--mount-ro", "/.turtlesim=" + HERE,
+           "--mount-rw", "/results=" + results,
+           "--exec", 'shell.run("/.turtlesim/boot.lua")']
+    if not opts.get("ui"):
+        cmd.insert(1, "--headless")
+
+    out_path = os.path.join(results, "output.txt")
+    timed_out = False
+    with open(os.path.join(tmp, "emulator.log"), "w") as emu_log:
+        proc = subprocess.Popen(cmd, stdout=emu_log, stderr=subprocess.STDOUT)
+        shown = 0
+        deadline = None if opts.get("ui") else time.time() + opts["timeout"]
+        while True:
+            done = proc.poll() is not None
+            if not quiet and os.path.exists(out_path):
+                with open(out_path, "rb") as f:
+                    f.seek(shown)
+                    chunk = f.read()
+                if chunk:
+                    shown += len(chunk)
+                    sys.stdout.write(chunk.decode(errors="replace"))
+                    sys.stdout.flush()
+            if done:
+                break
+            if deadline and time.time() > deadline:
+                proc.kill()
+                proc.wait()
+                timed_out = True
+                break
+            time.sleep(0.1)
+
+    def load(name, default):
+        path = os.path.join(results, name)
+        if not os.path.exists(path):
+            return default
+        with open(path, errors="replace") as f:
+            return json.load(f) if name.endswith(".json") else f.read()
+
+    output = load("output.txt", "")
+    status = load("status.json", {})
+    summary = load("summary.json", {})
+
+    ok = bool(status.get("ok"))
+    note = None
+    if timed_out:
+        note = "timed out after %gs (raise with --timeout, or the script is stuck)" % opts["timeout"]
+        ok = False
+    elif not status:
+        note = "emulator exited without finishing; see " + os.path.join(tmp, "emulator.log")
+        opts["keep"] = True
+        ok = False
+    elif status.get("error"):
+        note = status["error"]
+    if note:
+        summary["note"] = note
+        if not quiet:
+            print("\nturtle: " + note)
+
+    if opts.get("keep"):
+        print("turtle: emulator files kept in " + tmp)
+    else:
+        shutil.rmtree(tmp, ignore_errors=True)
+    return ok, output, summary
+
+
+def cmd_run(argv):
+    opts, rest = parse(argv)
+    if not rest:
+        die("usage: turtle [OPTIONS] SCRIPT.lua [ARGS...]")
+    ok, _, _ = run_one(rest[0], rest[1:], opts)
+    return 0 if ok else 1
+
+
+def harness_names():
+    names = []
+    for f in sorted(os.listdir(FACTORY)):
+        if f.startswith("harness_") and f.endswith(".lua"):
+            name = f[len("harness_"):-len(".lua")]
+            # Shared helpers and data tables, not runnable harnesses.
+            if name != "common" and not name.endswith(("_data", "_steps")):
+                names.append(name)
+    return names
+
+
+def cmd_harness(argv):
+    opts, names = parse(argv)
+    available = harness_names()
+    names = names or available
+    for n in names:
+        if n not in available:
+            die("no harness %r (have: %s)" % (n, ", ".join(available)))
+    opts["root"] = FACTORY
+    results = []
+    for n in names:
+        print("\n######## harness_%s ########" % n)
+        o = dict(opts)
+        if not o.get("world"):
+            w = os.path.join(WORLDS, "harness_%s.lua" % n)
+            o["world"] = w if os.path.isfile(w) else os.path.join(WORLDS, "workshop.lua")
+        ok, output, _ = run_one(os.path.join(FACTORY, "harness_%s.lua" % n), [], o)
+        results.append((n, ok and "Result: FAIL" not in output, output))
+    print("\n######## summary ########")
+    for n, ok, output in results:
+        done = [l for l in output.splitlines() if l.startswith("Completed ")]
+        print("%s  harness_%-12s %s" % ("PASS" if ok else "FAIL", n, done[-1] if done else ""))
+    return 0 if all(ok for _, ok, _ in results) else 1
+
+
+def parse_range(text):
+    if "-" in text:
+        a, b = text.split("-", 1)
+        return list(range(int(a), int(b) + 1))
+    return [int(x) for x in text.split(",")]
+
+
+def factory_arg(args, name, default):
+    if name in args:
+        i = args.index(name)
+        if i + 1 < len(args):
+            return int(args[i + 1])
+    return default
+
+
+def as_dict(value):
+    # textutils.serializeJSON writes an empty table as [].
+    return value if isinstance(value, dict) else {}
+
+
+# Home of the turtle in worlds/branchmine.lua.
+BRANCHMINE_HOME = (0, 11, 0)
+
+
+def branchmine_defaults(args, offset_x=0):
+    length = factory_arg(args, "--length", 60)
+    branch = factory_arg(args, "--branch-length", 16)
+    x, y, z = BRANCHMINE_HOME
+    x += offset_x
+    defaults = [
+        ("--job", ["sim"]),
+        ("--dimension", ["minecraft:overworld"]),
+        ("--home", [str(x), str(y), str(z)]),
+        ("--heading", ["north"]),
+        # Both route levels plus neighbour scans and lighting niches.
+        ("--bounds-min", [str(x - branch - 2), str(y - 1), str(z - length - 2)]),
+        ("--bounds-max", [str(x + branch + 2), str(y + 2), str(z)]),
+        ("--output-side", ["down"]),
+        ("--supply-side", ["up"]),
+    ]
+    out = list(args)
+    for flag, values in defaults:
+        if flag not in out:
+            out += [flag] + values
+    return out
+
+
+def shift_x(args, dx):
+    out = list(args)
+    for flag in ("--home", "--bounds-min", "--bounds-max"):
+        if flag in out:
+            i = out.index(flag) + 1
+            out[i] = str(int(out[i]) + dx)
+    return out
+
+
+def cmd_mine(argv):
+    opts, args = parse(argv, passthrough=True)
+    if not args or args[0] != "mine":
+        args = ["mine"] + args
+    opts["root"] = os.path.abspath(opts.get("root") or FACTORY)
+    factory = os.path.join(opts["root"], "factory.lua")
+    if not opts.get("world"):
+        # The miner insists on an explicit job, home and bounds; fill them in
+        # for the bundled world unless given. Press ENTER to start the job.
+        opts["world"] = "branchmine"
+        args = branchmine_defaults(args)
+        if not opts["keys"]:
+            opts["keys"] = ["enter"]
+
+    runs = []  # (label, opts)
+    if opts.get("seeds"):
+        for seed in parse_range(opts["seeds"]):
+            o = dict(opts, seed=str(seed))
+            runs.append(("seed %d" % seed, o))
+    elif opts.get("fleet"):
+        n = int(opts["fleet"])
+        branch = factory_arg(args, "--branch-length", 16)
+        spacing = int(opts.get("spacing") or 2 * branch + 3)
+        for k in range(n):
+            runs.append(("turtle %d @x=%d" % (k + 1, k * spacing), dict(opts, offset_x=k * spacing)))
+    else:
+        ok, _, _ = run_one(factory, args, opts)
+        return 0 if ok else 1
+
+    jobs = int(opts.get("j") or os.cpu_count() or 4)
+    print("turtle: %d branch-mine runs (%d at a time): factory.lua %s" % (len(runs), jobs, " ".join(args)))
+
+    def go(run):
+        label, o = run
+        start = time.time()
+        run_args = args
+        if o.get("offset_x") and o.get("world") == "branchmine":
+            # Shift --home/--bounds by this turtle's offset.
+            run_args = shift_x(args, o["offset_x"])
+        ok, output, summary = run_one(factory, run_args, o, quiet=True)
+        print("  finished %-16s %5.1fs %s" % (label, time.time() - start, "ok" if ok else "FAILED"))
+        return label, ok, output, summary
+
+    with ThreadPoolExecutor(max_workers=jobs) as pool:
+        results = list(pool.map(go, runs))
+
+    print()
+    print("%-18s %6s %6s %6s %7s %8s  %s" % ("run", "result", "ores", "missed", "fuel", "ore/100f", "top ores"))
+    tot_ores = tot_missed = tot_fuel = 0
+    totals = {}
+    for label, ok, output, s in results:
+        mined, missed = as_dict(s.get("mined")), as_dict(s.get("missed"))
+        ores, miss, fuel = sum(mined.values()), sum(missed.values()), s.get("fuelUsed", 0)
+        tot_ores += ores
+        tot_missed += miss
+        tot_fuel += fuel
+        for k, v in mined.items():
+            totals[k] = totals.get(k, 0) + v
+        top = ", ".join("%s %d" % (k.split(":")[-1], v) for k, v in sorted(mined.items(), key=lambda kv: -kv[1])[:3])
+        rate = ores * 100.0 / fuel if fuel else 0
+        print("%-18s %6s %6d %6d %7d %8.1f  %s" % (label, "ok" if ok else "FAIL", ores, miss, fuel, rate, top))
+        if s.get("note"):
+            print("%-18s   %s" % ("", s["note"]))
+        fails = as_dict(s.get("failures"))
+        if fails:
+            print("%-18s   failed actions: %s" % ("", ", ".join("%s x%d" % kv for kv in sorted(fails.items()))))
+    rate = tot_ores * 100.0 / tot_fuel if tot_fuel else 0
+    print("%-18s %6s %6d %6d %7d %8.1f" % ("TOTAL", "", tot_ores, tot_missed, tot_fuel, rate))
+    if totals:
+        print("ores: " + ", ".join("%s %d" % (k.split(":")[-1], v) for k, v in sorted(totals.items(), key=lambda kv: -kv[1])))
+
+    if opts.get("fleet"):
+        cells = {}
+        for label, _, _, s in results:
+            for c in s.get("visited") or []:
+                cells[c] = cells.get(c, 0) + 1
+        overlap = sum(1 for v in cells.values() if v > 1)
+        print("fleet: %d tunnel blocks, %d shared by more than one turtle%s" % (
+            len(cells), overlap, " (lower --spacing wastes fuel re-digging)" if overlap else ""))
+    return 0 if all(ok for _, ok, _, _ in results) else 1
+
+
+def cmd_worlds(_argv):
+    for f in sorted(os.listdir(WORLDS)):
+        if f.endswith(".lua"):
+            with open(os.path.join(WORLDS, f)) as h:
+                first = h.readline().strip().lstrip("-").strip()
+            print("%-24s %s" % (f[:-4], first))
+    return 0
+
+
+def main():
+    argv = sys.argv[1:]
+    if not argv or argv[0] in ("-h", "--help", "help"):
+        print(__doc__)
+        return 0
+    cmds = {"run": cmd_run, "mine": cmd_mine, "harness": cmd_harness, "worlds": cmd_worlds}
+    if argv[0] in cmds:
+        return cmds[argv[0]](argv[1:])
+    return cmd_run(argv)  # `turtle foo.lua` is shorthand for `turtle run foo.lua`
+
+
+if __name__ == "__main__":
+    sys.exit(main())

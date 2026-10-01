@@ -16,10 +16,13 @@ local function calculateRequirements(ctx, strategy)
         materials = {}
     }
 
-    -- Estimate fuel
-    -- A simple heuristic: 1 fuel per step.
+    -- Estimate fuel: one per movement step (turns, scans and torches are free).
     if strategy then
-        reqs.fuel = #strategy
+        for _, step in ipairs(strategy) do
+            if step.type == "move" or step.type == nil then
+                reqs.fuel = reqs.fuel + 1
+            end
+        end
     end
     
     -- Add a safety margin for fuel (e.g. 10% + 100)
@@ -45,6 +48,24 @@ local function calculateRequirements(ctx, strategy)
     end
 
     return reqs
+end
+
+-- Fuel the turtle can burn from its own inventory (REFUEL uses it on the go).
+local FUEL_VALUES = {
+    ["minecraft:coal"] = 80,
+    ["minecraft:charcoal"] = 80,
+    ["minecraft:coal_block"] = 800,
+    ["minecraft:charcoal_block"] = 800,
+    ["minecraft:blaze_rod"] = 120,
+    ["minecraft:lava_bucket"] = 1000,
+}
+
+local function onboardFuel(invCounts)
+    local total = 0
+    for name, count in pairs(invCounts) do
+        total = total + (FUEL_VALUES[name] or 0) * count
+    end
+    return total
 end
 
 local function getInventoryCounts(ctx)
@@ -99,6 +120,7 @@ local function CHECK_REQUIREMENTS(ctx)
     local invCounts = getInventoryCounts(ctx)
     local currentFuel = turtle.getFuelLevel()
     if currentFuel == "unlimited" then currentFuel = 999999 end
+    local carriedFuel = onboardFuel(invCounts)
 
     local missing = {
         fuel = 0,
@@ -107,8 +129,8 @@ local function CHECK_REQUIREMENTS(ctx)
     local hasMissing = false
 
     -- Check fuel
-    if currentFuel < reqs.fuel then
-        missing.fuel = reqs.fuel - currentFuel
+    if currentFuel + carriedFuel < reqs.fuel then
+        missing.fuel = reqs.fuel - currentFuel - carriedFuel
         hasMissing = true
     end
 
@@ -129,7 +151,7 @@ local function CHECK_REQUIREMENTS(ctx)
     -- Report missing
     print("\n=== MISSING REQUIREMENTS ===")
     if missing.fuel > 0 then
-        print(string.format("- Fuel: %d (Have %d, Need %d)", missing.fuel, currentFuel, reqs.fuel))
+        print(string.format("- Fuel: %d (Have %d + %d in fuel items, Need %d)", missing.fuel, currentFuel, carriedFuel, reqs.fuel))
     end
     for mat, count in pairs(missing.materials) do
         print(string.format("- %s: %d", mat, count))

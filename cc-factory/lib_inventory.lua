@@ -11,6 +11,7 @@ optional error messages.
 local inventory = {}
 local movement = require("lib_movement")
 local logger = require("lib_logger")
+local world = require("lib_world")
 
 local SIDE_ACTIONS = {
     forward = {
@@ -79,7 +80,6 @@ inventory.DEFAULT_TRASH = {
     ["minecraft:bedrock"] = true,
     ["minecraft:lava"] = true,
     ["minecraft:water"] = true,
-    ["minecraft:torch"] = true,
 }
 
 local function noop()
@@ -187,34 +187,9 @@ local function copySlots(slots)
     return result
 end
 
-local function hasContainerTag(tags)
-    if type(tags) ~= "table" then
-        return false
-    end
-    for key, value in pairs(tags) do
-        if value and type(key) == "string" then
-            local lower = key:lower()
-            for _, keyword in ipairs(CONTAINER_KEYWORDS) do
-                if lower:find(keyword, 1, true) then
-                    return true
-                end
-            end
-        end
-    end
-    return false
-end
-
+-- Container detection lives in lib_world (CONTAINER_KEYWORDS was never defined here).
 local function isContainerBlock(name, tags)
-    if type(name) ~= "string" then
-        return false
-    end
-    local lower = name:lower()
-    for _, keyword in ipairs(CONTAINER_KEYWORDS) do
-        if lower:find(keyword, 1, true) then
-            return true
-        end
-    end
-    return hasContainerTag(tags)
+    return world.isContainerBlock(name, tags)
 end
 
 local function inspectForwardForContainer()
@@ -1444,6 +1419,8 @@ function inventory.describeMaterials(io, info)
 end
 
 function inventory.runCheck(ctx, io, opts)
+    -- Required lazily: lib_initialize requires this module.
+    local initialize = require("lib_initialize")
     local ok, report = initialize.ensureMaterials(ctx, { manifest = ctx.schemaInfo and ctx.schemaInfo.materials }, opts)
     if io.print then
         if ok then

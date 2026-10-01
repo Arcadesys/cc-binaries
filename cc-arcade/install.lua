@@ -1654,6 +1654,244 @@ writeFile('cashier.lua', [[
 require('derby.app').run({'cashier'})
 ]])
 
+writeFile('casino/app.lua', [[
+-- Shared launcher for the Pine3D casino games: display choice, palette restore and
+-- live-or-exhibition wallet. Args: --terminal | --monitor NAME | --demo
+local M={}
+function M.target(args)
+ for i,a in ipairs(args) do
+  if a=='--terminal' then return term.current() end
+  if a=='--monitor' then local m=assert(peripheral.wrap(args[i+1] or ''),'No monitor named '..tostring(args[i+1])); m.setTextScale(1); return m end
+ end
+ return require('derby.ui').target()
+end
+-- Live play needs this computer configured as a house station (house setup station ...).
+function M.wallet(args,game,name)
+ local w=require('casino.wallet')
+ for _,a in ipairs(args) do if a=='--demo' or a=='demo' then return w.exhibition(name) end end
+ local c=require('derby.config').read()
+ if c and (c.role=='station' or c.role=='cashier') then return w.live(game,name) end
+ return w.exhibition(name)
+end
+-- start(target, wallet) runs the game; the terminal and palette are restored afterwards.
+function M.run(args,game,name,start)
+ local t=M.target(args)
+ local restore=require('derby.palette').save(t)
+ local old=term.current()
+ local ok,err=xpcall(function() start(t,M.wallet(args,game,name)) end,debug.traceback)
+ term.redirect(old); restore()
+ t.setBackgroundColor(colors.black); t.setTextColor(colors.white); t.clear(); t.setCursorPos(1,1)
+ if not ok then error(err,0) end
+end
+return M
+]])
+
+writeFile('casino/font.lua', [[
+-- A 3x5 pixel font for ranks and numbers, built from merged runs of cells so each row
+-- costs few triangles. '1' is one column wide so "10" fits.
+local mesh=require('casino.mesh')
+local M={}
+M.glyphs={
+ A={'.#.','#.#','###','#.#','#.#'},['2']={'##.','..#','.#.','#..','###'},['3']={'##.','..#','.#.','..#','##.'},
+ ['4']={'#.#','#.#','###','..#','..#'},['5']={'###','#..','##.','..#','##.'},['6']={'.##','#..','###','#.#','###'},
+ ['7']={'###','..#','.#.','.#.','.#.'},['8']={'###','#.#','###','#.#','###'},['9']={'###','#.#','###','..#','##.'},
+ ['1']={'#','#','#','#','#'},['0']={'###','#.#','#.#','#.#','###'},J={'..#','..#','..#','#.#','.#.'},
+ Q={'.#.','#.#','#.#','#.#','.##'},K={'#.#','#.#','##.','#.#','#.#'},
+}
+-- Width of text in cells.
+function M.width(text)
+ local n=0; for ch in text:gmatch('.') do n=n+#M.glyphs[ch][1]+.6 end; return n-.6
+end
+-- Lay text out with point(u,v) mapping text-plane coordinates (u right, v up) to 3D.
+-- (u0, v0) is the top-left corner; facing is the outward normal.
+function M.draw(m,text,u0,v0,cell,color,point,facing)
+ local u=u0
+ for ch in text:gmatch('.') do
+  local g=M.glyphs[ch]
+  for row,line in ipairs(g) do
+   local v=v0-(row-1)*cell; local c=1
+   while c<=#line do
+    if line:sub(c,c)=='#' then
+     local e=c; while e<#line and line:sub(e+1,e+1)=='#' do e=e+1 end
+     local a,b=u+(c-1)*cell,u+e*cell
+     mesh.quad(m,point(a,v),point(b,v),point(b,v-cell),point(a,v-cell),color,facing)
+     c=e+1
+    else c=c+1 end
+   end
+  end
+  u=u+(#g[1]+.6)*cell
+ end
+end
+-- Text lying flat on the plane y, u along z and v along x.
+function M.flat(m,y,text,u0,v0,cell,color)
+ M.draw(m,text,u0,v0,cell,color,function(u,v) return {v,y,u} end,{0,1,0})
+end
+return M
+]])
+
+writeFile('casino/mesh.lua', [[
+-- Triangle helpers shared by the Pine3D casino scenes.
+local M={}
+-- Pine3D culls a triangle unless its screen winding matches; facing (outward normal)
+-- orients each triangle so only its front side draws. nil facing draws both sides.
+M.wind=1
+local function sub(a,b) return {a[1]-b[1],a[2]-b[2],a[3]-b[3]} end
+local function cross(a,b) return {a[2]*b[3]-a[3]*b[2],a[3]*b[1]-a[1]*b[3],a[1]*b[2]-a[2]*b[1]} end
+local function dot(a,b) return a[1]*b[1]+a[2]*b[2]+a[3]*b[3] end
+function M.tri(m,a,b,c,color,facing)
+ if facing and dot(cross(sub(b,a),sub(c,a)),facing)*M.wind<0 then b,c=c,b end
+ m[#m+1]={x1=a[1],y1=a[2],z1=a[3],x2=b[1],y2=b[2],z2=b[3],x3=c[1],y3=c[2],z3=c[3],c=color,forceRender=not facing}
+end
+function M.quad(m,a,b,c,d,color,facing) M.tri(m,a,b,c,color,facing); M.tri(m,a,c,d,color,facing) end
+-- Axis-aligned box from (x,y,z) to (x+sx,y+sy,z+sz), faces pointing outward.
+function M.box(m,x,y,z,sx,sy,sz,c)
+ local x2,y2,z2=x+sx,y+sy,z+sz
+ local q=M.quad
+ q(m,{x,y,z},{x,y2,z},{x,y2,z2},{x,y,z2},c,{-1,0,0})
+ q(m,{x2,y,z},{x2,y2,z},{x2,y2,z2},{x2,y,z2},c,{1,0,0})
+ q(m,{x,y,z},{x2,y,z},{x2,y,z2},{x,y,z2},c,{0,-1,0})
+ q(m,{x,y2,z},{x2,y2,z},{x2,y2,z2},{x,y2,z2},c,{0,1,0})
+ q(m,{x,y,z},{x2,y,z},{x2,y2,z},{x,y2,z},c,{0,0,-1})
+ q(m,{x,y,z2},{x2,y,z2},{x2,y2,z2},{x,y2,z2},c,{0,0,1})
+end
+-- Point camera at (x,y,z) toward (tx,ty,tz).
+function M.look(frame,x,y,z,tx,ty,tz)
+ local dx,dz=tx-x,tz-z
+ frame:setCamera({x=x,y=y,z=z,rotX=-90,rotY=math.deg(math.atan2(dz,dx)),rotZ=math.deg(math.atan2(ty-y,math.sqrt(dx*dx+dz*dz)))})
+end
+return M
+]])
+
+writeFile('casino/palette.lua', [[
+-- Casino palette. Saved and restored by the app like the derby palette.
+local M={values={
+ 0xf4eedf, -- white: reel faces
+ 0xe8862a, -- orange
+ 0x8a1c25, -- magenta: shaded die sides
+ 0x86dcf2, -- lightBlue: diamond crown
+ 0xf6c933, -- yellow: gold trim, bells
+ 0x6cc24a, -- lime: stems and leaves
+ 0xf29bb0, -- pink
+ 0x45404c, -- gray
+ 0xbdb8b0, -- lightGray: chrome
+ 0x2aa0c4, -- cyan: diamond pavilion
+ 0x7b3fa0, -- purple: plums
+ 0x1f3a7a, -- blue
+ 0x6b3a1f, -- brown
+ 0x2e6b3a, -- green: felt
+ 0xcf2630, -- red
+ 0x121016, -- black
+}}
+function M.apply(t)
+ for i,hex in ipairs(M.values) do t.setPaletteColor(2^(i-1),hex) end
+end
+return M
+]])
+
+writeFile('casino/sound.lua', [[
+-- Speaker notes scheduled ahead of time and played from the frame loop, so sound never
+-- sleeps (sleeping would swallow button and redstone events).
+return function()
+ local speaker=peripheral.find and peripheral.find('speaker')
+ local queue={}; local api={}
+ function api:play(at,instrument,volume,pitch) queue[#queue+1]={at=at,i=instrument,v=volume,p=pitch} end
+ function api:tick(now)
+  for n=#queue,1,-1 do
+   local q=queue[n]
+   if q.at<=now then table.remove(queue,n); if speaker then pcall(speaker.playNote,q.i,q.v,q.p) end end
+  end
+ end
+ return api
+end
+]])
+
+writeFile('casino/wallet.lua', [[
+-- Where credits come from, shared by the Pine3D casino games. Live play uses the house:
+-- the card in the drive names an account, each round reserves its stake and largest
+-- possible return, then settles.
+-- Exhibition play uses a local practice meter and never touches the house.
+local M={}
+local STARTING=100
+function M.exhibition(name)
+ local w={mode='exhibition',title=(name or 'PINE CASINO')..' | EXHIBITION - NO MONEY'}
+ local s={name='PRACTICE',balance=STARTING}
+ function w:refresh() return false end
+ function w:session() return s end
+ function w:begin(stake)
+  if s.balance<stake then return nil,'Not enough credits' end
+  s.balance=s.balance-stake; return {stake=stake}
+ end
+ function w:increase(round,stake)
+  if s.balance<stake then return false,'Not enough credits' end
+  s.balance=s.balance-stake; round.stake=round.stake+stake; return true
+ end
+ function w:settle(_,amount) s.balance=s.balance+amount; return true,s.balance end
+ function w:retry() return true end
+ function w:cashout() local had=s.balance; s.balance=STARTING; return had end
+ return w
+end
+-- game: ledger game id; name: title; credits: the arcade credits module;
+-- card: returns the inserted disk, if any.
+function M.live(game,name,credits,card)
+ credits=credits or require('credits')
+ card=card or require('derby.ui').card
+ local w={mode='live',title=name or 'PINE CASINO'}
+ local current,ejecting
+ local function same(a,b) return a and b and a.path==b.path and a.account==b.account end
+ -- Re-reads the drive. Returns true when the inserted card changed.
+ function w:refresh()
+  local c=card()
+  if ejecting then if c and c.drive==ejecting then c=nil else ejecting=nil end end
+  if same(c,current) or (not c and not current) then return false end
+  if current then credits.unlock(current.path) end
+  current=nil; w.problem=nil
+  if c and c.account then
+   local ok,err=pcall(function()
+    credits.lock(c.path); c.name=credits.getName(c.path) or 'PLAYER'; c.balance=credits.get(c.path)
+   end)
+   if ok then current=c else credits.unlock(c.path); w.problem=tostring(err):gsub('^HOUSE: ','') end
+  elseif c then w.problem='Not a house card. Visit the cashier.' end
+  return true
+ end
+ function w:session() return current end
+ function w:begin(stake,maximum)
+  if not current then return nil,'Insert your house card' end
+  local round,err=credits.beginRound(game,stake,maximum,current.path)
+  if not round then return nil,err end
+  current.balance=current.balance-stake
+  return round
+ end
+ -- Raise the stake mid-round (double down, split); maximum covers the new best case.
+ function w:increase(round,stake,maximum)
+  local ok,err=credits.increaseRound(round,stake,maximum)
+  if not ok then return false,err end
+  if current and current.account==round.account then current.balance=current.balance-stake end
+  return true
+ end
+ -- Settles even if the card was pulled mid-spin: the round names its own account.
+ function w:settle(round,amount)
+  local ok,balance=pcall(credits.settleRound,round,amount)
+  if not ok then return false,tostring(balance) end
+  if current and current.account==round.account then current.balance=balance end
+  return true,balance
+ end
+ function w:retry()
+  local ok,r=credits.retry()
+  if ok and current and r and r.balance then current.balance=r.balance end
+  return ok,r
+ end
+ -- Hands the card back. The balance stays on the account for the cashier or another game.
+ function w:cashout()
+  local c=current; if not c then return nil end
+  credits.unlock(c.path); current=nil; ejecting=c.drive
+  if c.drive then pcall(disk.eject,c.drive) end
+  return c.balance
+ end
+ return w
+end
+return M
+]])
+
 writeFile('config.lua', [[
 -- config.lua
 -- Button Configuration Wizard
@@ -1828,6 +2066,18 @@ function M.refundRound(round)
  if round.demo then return true end
  checked(network():mutate({op='refund',round=round.round,account=round.account}))
  local s=network():localState(); s.rounds[round.account]=nil; network():saveLocal(s); return true
+end
+-- Resend the last unacknowledged request (for example a settlement lost while the house
+-- was offline). Returns ok and the house result.
+function M.retry()
+ if demo() then return true,{ok=true} end
+ local cli=network(); local r=cli:retry()
+ if not r.ok then return false,r.error end
+ local s=cli:localState(); local q=s.last and s.last.request
+ if q and (q.op=='settle' or q.op=='refund') and s.rounds[q.account] and s.rounds[q.account].round==q.round then
+  s.rounds[q.account]=nil; cli:saveLocal(s)
+ end
+ return true,r
 end
 -- Unchecked edits must fail loudly if a forgotten consumer tries the old API.
 function M.set() error('HOUSE: local balance editing is retired',0) end
@@ -6510,6 +6760,9 @@ local function getGames()
         { name = "Blackjack", cmd = "blackjack", icon = "\4" },
         { name = "Baccarat", cmd = "baccarat", icon = "\5" },
         { name = "Super Slots", cmd = "slots", icon = "$" },
+        { name = "Pine Slots", cmd = "pineslots", icon = "7" },
+        { name = "Pine Jack", cmd = "pinejack", icon = "\6" },
+        { name = "Pine Shut the Box", cmd = "pinebox", icon = "#" },
         { name = "Horse Race", cmd = "race", icon = ">" },
         { name = "Can't Stop", cmd = "cant_stop", icon = "!" },
         { name = "RPS Rogue", cmd = "rps_rogue", icon = "*" },
@@ -6916,6 +7169,9 @@ local games = {
     { name = "Blackjack", cmd = "blackjack", hasDemo = true },
     { name = "Baccarat", cmd = "baccarat", hasDemo = false },
     { name = "Super Slots", cmd = "slots", hasDemo = true },
+    { name = "Pine Slots", cmd = "pineslots", hasDemo = false },
+    { name = "Pine Jack", cmd = "pinejack", hasDemo = false },
+    { name = "Pine Shut the Box", cmd = "pinebox", hasDemo = false },
     { name = "Horse Race", cmd = "race", hasDemo = true },
     { name = "Can't Stop (Free)", cmd = "cant_stop", hasDemo = true },
     { name = "RPS Rogue", cmd = "rps_rogue", hasDemo = true },
@@ -7237,6 +7493,1760 @@ local function main()
 end
 
 main()
+]])
+
+writeFile('pinebox/app.lua', [[
+-- Entry: pinebox [--demo] [--terminal | --monitor NAME]
+local M={}
+function M.run(args)
+ require('casino.app').run(args or {},'pinebox','PINE SHUT THE BOX',function(t,wallet)
+  require('pinebox.game').run({target=t,wallet=wallet})
+ end)
+end
+return M
+]])
+
+writeFile('pinebox/dice.lua', [=[
+-- Dice that are thrown, not faked. Two cubes are simulated as rigid bodies (gravity,
+-- corner contacts with the tray floor and walls, restitution, friction, die-to-die
+-- bumps) until they come to rest, and the trajectory is recorded for playback.
+-- The values are drawn first, uniformly. Whichever face physics leaves on top is
+-- relabelled by a rotation of the cube so it shows the drawn value: the tumble is real
+-- and the odds stay exact.
+local M={}
+M.half=.62
+M.tray={xmin=-6.2,xmax=4.6,zmin=-3.7,zmax=3.7}
+M.step=1/240
+M.frameTime=1/30
+M.maxTime=6
+local G=26
+local function v(x,y,z) return {x,y,z} end
+local function add(a,b,s) s=s or 1; return {a[1]+b[1]*s,a[2]+b[2]*s,a[3]+b[3]*s} end
+local function dot(a,b) return a[1]*b[1]+a[2]*b[2]+a[3]*b[3] end
+local function cross(a,b) return {a[2]*b[3]-a[3]*b[2],a[3]*b[1]-a[1]*b[3],a[1]*b[2]-a[2]*b[1]} end
+local function len(a) return math.sqrt(dot(a,a)) end
+local function add4(a,b,s) return {a[1]+b[1]*s,a[2]+b[2]*s,a[3]+b[3]*s,a[4]+b[4]*s} end
+local function scale(a,s) return {a[1]*s,a[2]*s,a[3]*s} end
+-- Quaternions {w,x,y,z}.
+local function qmul(a,b)
+ return {a[1]*b[1]-a[2]*b[2]-a[3]*b[3]-a[4]*b[4],a[1]*b[2]+a[2]*b[1]+a[3]*b[4]-a[4]*b[3],
+  a[1]*b[3]-a[2]*b[4]+a[3]*b[1]+a[4]*b[2],a[1]*b[4]+a[2]*b[3]-a[3]*b[2]+a[4]*b[1]}
+end
+local function qnorm(q) local n=math.sqrt(q[1]^2+q[2]^2+q[3]^2+q[4]^2); return {q[1]/n,q[2]/n,q[3]/n,q[4]/n} end
+local function qaxis(axis,angle) local s=math.sin(angle/2); local n=len(axis); if n<1e-9 then return {1,0,0,0} end
+ return {math.cos(angle/2),axis[1]/n*s,axis[2]/n*s,axis[3]/n*s} end
+function M.matrix(q)
+ local w,x,y,z=q[1],q[2],q[3],q[4]
+ return {{1-2*(y*y+z*z),2*(x*y-w*z),2*(x*z+w*y)},{2*(x*y+w*z),1-2*(x*x+z*z),2*(y*z-w*x)},{2*(x*z-w*y),2*(y*z+w*x),1-2*(x*x+y*y)}}
+end
+local function apply(m,p) return {m[1][1]*p[1]+m[1][2]*p[2]+m[1][3]*p[3],m[2][1]*p[1]+m[2][2]*p[2]+m[2][3]*p[3],m[3][1]*p[1]+m[3][2]*p[2]+m[3][3]*p[3]} end
+M.apply=apply
+local function slerp(a,b,u)
+ local d=a[1]*b[1]+a[2]*b[2]+a[3]*b[3]+a[4]*b[4]
+ if d<0 then b={-b[1],-b[2],-b[3],-b[4]}; d=-d end
+ if d>.9995 then return qnorm({a[1]+(b[1]-a[1])*u,a[2]+(b[2]-a[2])*u,a[3]+(b[3]-a[3])*u,a[4]+(b[4]-a[4])*u}) end
+ local th=math.acos(d); local s=math.sin(th)
+ local p,r=math.sin((1-u)*th)/s,math.sin(u*th)/s
+ return {a[1]*p+b[1]*r,a[2]*p+b[2]*r,a[3]*p+b[3]*r,a[4]*p+b[4]*r}
+end
+M.slerp=slerp
+-- Face normals in die space: opposite faces add to seven.
+M.faces={[1]=v(0,1,0),[6]=v(0,-1,0),[2]=v(1,0,0),[5]=v(-1,0,0),[3]=v(0,0,1),[4]=v(0,0,-1)}
+-- The 24 rotations of a cube, as signed permutation matrices with determinant +1.
+local rotations={}
+do
+ local perms={{1,2,3},{1,3,2},{2,1,3},{2,3,1},{3,1,2},{3,2,1}}
+ for _,p in ipairs(perms) do for sx=-1,1,2 do for sy=-1,1,2 do for sz=-1,1,2 do
+  local m={{0,0,0},{0,0,0},{0,0,0}}; local s={sx,sy,sz}
+  for r=1,3 do m[r][p[r]]=s[r] end
+  local det=m[1][1]*(m[2][2]*m[3][3]-m[2][3]*m[3][2])-m[1][2]*(m[2][1]*m[3][3]-m[2][3]*m[3][1])+m[1][3]*(m[2][1]*m[3][2]-m[2][2]*m[3][1])
+  if det>0 then rotations[#rotations+1]=m end
+ end end end end
+end
+M.rotations=rotations
+-- The face (value) whose normal ends up pointing most nearly up.
+function M.upFace(q)
+ local m=M.matrix(q); local top,value=-2,nil
+ for n,normal in pairs(M.faces) do local up=apply(m,normal)[2]; if up>top then top,value=up,n end end
+ return value,top
+end
+-- A cube rotation taking the face showing `want` to where face `landed` sits.
+function M.relabel(landed,want)
+ local target=M.faces[landed]
+ for _,r in ipairs(rotations) do
+  local p=apply(r,M.faces[want])
+  if p[1]==target[1] and p[2]==target[2] and p[3]==target[3] then return r end
+ end
+end
+local function newDie(rng,z)
+ local h=M.half
+ return {pos=v(-5.4,2.0+rng()*.6,z),vel=v(5.5+rng()*3.5,1.5+rng()*2,(rng()-.5)*2.5),
+  q=qnorm({rng()-.5,rng()-.5,rng()-.5,rng()-.5}),w=v(0,0,0),
+  spin=12+rng()*14,still=0,h=h}
+end
+-- Simulate a throw. rng() returns [0,1); values are the two drawn results.
+function M.throw(rng,values)
+ local h=M.half
+ local dice={newDie(rng,-1.1),newDie(rng,1.1)}
+ for _,d in ipairs(dice) do
+  local a=qnorm({0,rng()-.5,rng()-.5,rng()-.5}); d.w=scale({a[2],a[3],a[4]},d.spin)
+ end
+ local mass,iinv=1,6/(4*h*h)
+ local corners={}
+ for x=-1,1,2 do for y=-1,1,2 do for z=-1,1,2 do corners[#corners+1]=v(x*h,y*h,z*h) end end end
+ local T=M.tray
+ local planes={{n=v(0,1,0),d=0,e=.38},{n=v(1,0,0),d=T.xmin,e=.5},{n=v(-1,0,0),d=-T.xmax,e=.55},{n=v(0,0,1),d=T.zmin,e=.5},{n=v(0,0,-1),d=-T.zmax,e=.5}}
+ local frames={}; local t,nextFrame=0,0
+ local function record() frames[#frames+1]={{pos=dice[1].pos,q=dice[1].q},{pos=dice[2].pos,q=dice[2].q},bumps=dice.bumps} ; dice.bumps=nil end
+ local resting=false
+ while t<M.maxTime and not resting do
+  if t>=nextFrame then record(); nextFrame=nextFrame+M.frameTime end
+  for _,d in ipairs(dice) do
+   d.vel=add(d.vel,v(0,-G*M.step,0))
+   d.pos=add(d.pos,d.vel,M.step)
+   d.q=qnorm(add4(d.q,qmul({0,d.w[1],d.w[2],d.w[3]},d.q),.5*M.step))
+   local m=M.matrix(d.q); local touching=false
+   for _=1,2 do
+    for _,c in ipairs(corners) do
+     local r=apply(m,c); local p=add(d.pos,r)
+     for _,pl in ipairs(planes) do
+      local depth=pl.d-dot(pl.n,p)
+      if depth>0 then
+       touching=touching or pl.n[2]>0
+       local vel=add(d.vel,cross(d.w,r)); local vn=dot(vel,pl.n)
+       if vn<0 then
+        local rn=cross(r,pl.n)
+        local k=1/mass+iinv*dot(cross(rn,r),pl.n)
+        local j=-(1+(vn<-1.2 and pl.e or 0))*vn/k
+        d.vel=add(d.vel,pl.n,j/mass); d.w=add(d.w,rn,iinv*j)
+        if math.abs(vn)>2.5 then dice.bumps=(dice.bumps or 0)+math.abs(vn) end
+        -- Coulomb friction against the sliding direction.
+        vel=add(d.vel,cross(d.w,r)); local vt=add(vel,pl.n,-dot(vel,pl.n)); local speed=len(vt)
+        if speed>1e-6 then
+         local tdir=scale(vt,-1/speed); local rt=cross(r,tdir)
+         local kt=1/mass+iinv*dot(cross(rt,r),tdir)
+         local jt=math.min(speed/kt,.45*j)
+         d.vel=add(d.vel,tdir,jt/mass); d.w=add(d.w,rt,iinv*jt)
+        end
+       end
+       d.pos=add(d.pos,pl.n,depth*.6)
+      end
+     end
+    end
+   end
+   if touching then d.w=scale(d.w,.996); d.vel={d.vel[1]*.998,d.vel[2],d.vel[3]*.998} end
+   if touching and len(d.vel)<.2 and len(d.w)<.5 then d.still=d.still+M.step else d.still=0 end
+  end
+  -- Dice knock into each other as spheres a little smaller than their corners.
+  local a,b=dice[1],dice[2]; local delta=add(b.pos,a.pos,-1); local dist=len(delta); local minD=h*1.75
+  if dist<minD and dist>1e-6 then
+   local n=scale(delta,1/dist); local rel=dot(add(b.vel,a.vel,-1),n)
+   if rel<0 then local j=-(1.5)*rel/2; a.vel=add(a.vel,n,-j); b.vel=add(b.vel,n,j); dice.bumps=(dice.bumps or 0)+math.abs(rel) end
+   a.pos=add(a.pos,n,-(minD-dist)/2); b.pos=add(b.pos,n,(minD-dist)/2)
+  end
+  t=t+M.step
+  resting=dice[1].still>.15 and dice[2].still>.15
+ end
+ record()
+ -- Settle exactly flat over a few frames, then pick the relabelling for each die.
+ local result={frames=frames,relabel={},landed={}}
+ local finals={}
+ for i,d in ipairs(dice) do
+  local landed=M.upFace(d.q)
+  local up=apply(M.matrix(d.q),M.faces[landed])
+  local axis=cross(up,v(0,1,0)); local angle=math.acos(math.max(-1,math.min(1,up[2])))
+  finals[i]={pos=v(d.pos[1],h,d.pos[3]),q=qnorm(qmul(qaxis(axis,angle),d.q))}
+  result.landed[i]=landed; result.relabel[i]=M.relabel(landed,values[i])
+ end
+ for k=1,6 do
+  local u=k/6
+  frames[#frames+1]={}
+  for i,d in ipairs(dice) do frames[#frames][i]={pos=add(d.pos,add(finals[i].pos,d.pos,-1),u),q=slerp(d.q,finals[i].q,u)} end
+ end
+ result.duration=(#frames-1)*M.frameTime
+ return result
+end
+-- Pose of die i at time t: position and rotation matrix (relabel applied first).
+function M.pose(throw,i,t)
+ local f=throw.frames; local x=math.max(0,t/M.frameTime); local k=math.floor(x)+1
+ if k>=#f then local last=f[#f][i]; return last.pos,M.compose(M.matrix(last.q),throw.relabel[i]) end
+ local u=x-(k-1); local a,b=f[k][i],f[k+1][i]
+ local pos=add(a.pos,add(b.pos,a.pos,-1),u)
+ return pos,M.compose(M.matrix(slerp(a.q,b.q,u)),throw.relabel[i])
+end
+function M.compose(a,b)
+ local m={{0,0,0},{0,0,0},{0,0,0}}
+ for r=1,3 do for c=1,3 do for k=1,3 do m[r][c]=m[r][c]+a[r][k]*b[k][c] end end end
+ return m
+end
+-- Bumps (impact strength) recorded between two times, for clack sounds.
+function M.bumps(throw,t0,t1)
+ local n=0
+ for k=math.floor(t0/M.frameTime)+2,math.floor(t1/M.frameTime)+1 do local f=throw.frames[k]; if f and f.bumps then n=n+f.bumps end end
+ return n
+end
+return M
+]=])
+
+writeFile('pinebox/game.lua', [[
+-- Pine Shut the Box: the grand prize round. Stake a bet, then roll two dice and knock
+-- down tiles that add up to each roll. Clear all nine for 13x; a roll no tiles can make
+-- ends the round. The house reserves the grand prize up front and settles once.
+local rules=require('pinebox.rules')
+local dice=require('pinebox.dice')
+local renderer=require('pinebox.render')
+local sounds=require('casino.sound')
+local M={}
+M.back=1.6 -- seconds the camera holds on the settled dice
+local KEYS={[keys.one]=1,[keys.two]=2,[keys.three]=3,[keys.left]=1,[keys.up]=2,[keys.right]=3,[keys.space]=2,[keys.enter]=2}
+local HOTKEYS={[keys.r]='roll',[keys.t]='take',[keys.b]='bet',[keys.c]='cash'}
+-- opts: target, wallet, clock(), random(lo,hi), button(event,p1), sound
+function M.run(opts)
+ local t=opts.target
+ local wallet=opts.wallet
+ local clock=opts.clock or function() return os.epoch('utc')/1000 end
+ local random=opts.random or math.random
+ local button=opts.button or function(e,p) if e=='redstone' then return require('input').getButton(e,p) end end
+ local sound=opts.sound or sounds()
+ local view=renderer.new(t)
+ local betIndex=1
+ local board=rules.full
+ local tiles={}; for n=1,9 do tiles[n]={from=0,to=0,t0=0} end
+ local selection=0
+ local throw,thrownAt,lastBump
+ local message,highlight='',false
+ local info=''
+ local request
+ local celebrate=0
+ local function say(text,hi) message=text; highlight=hi or false end
+ local function bet() return rules.bets[betIndex] end
+ local function balance() local s=wallet:session(); return s and s.balance end
+ local function wait(s) coroutine.yield({wait=clock()+s}) end
+ local function ask(options,card) return coroutine.yield({ask=options,card=card}) end
+ local function boardText()
+  local out={}; for n=1,9 do out[n]=rules.has(board,n) and tostring(n) or '.' end
+  return table.concat(out,' ')
+ end
+ local function fall(n,down) local now=clock(); tiles[n].from=tiles[n].to; tiles[n].to=down and 1 or 0; tiles[n].t0=now end
+ local function resetBoard()
+  board=rules.full; selection=0
+  for n=1,9 do if tiles[n].to>0 then fall(n,false) end end
+ end
+ local function roll()
+  local values={random(1,6),random(1,6)}
+  local function rng() return random(0,1048575)/1048576 end
+  throw=dice.throw(rng,values); thrownAt=clock(); lastBump=0
+  sound:play(thrownAt,'hat',.6,6)
+  -- Hold for the snap zoom on the result, then the camera eases back to the board.
+  wait(throw.duration+M.back)
+  return values
+ end
+ local function settle(r,amount)
+  local ok=wallet:settle(r,amount)
+  while not ok do
+   say('HOUSE OFFLINE: PAYOUT PENDING')
+   if ask({{name='retry',label='RETRY'},{name='retry',label='RETRY'},{name='retry',label='RETRY'}})=='retry' then ok=wallet:retry() end
+  end
+ end
+ local function round()
+  local stake=bet(); local prize=stake*rules.prize
+  local r,err=wallet:begin(stake,prize)
+  if not r then say(tostring(err):upper()); return end
+  resetBoard(); wait(.4)
+  while true do
+   info=('BOARD %s   CHANCE TO CLEAR %.1f%%'):format(boardText(),rules.chance(board)*100)
+   say('ROLL THE DICE')
+   ask({{name='',label=''},{name='roll',label='ROLL'},{name='',label=''}})
+   local values=roll()
+   local total=values[1]+values[2]
+   local moves=rules.moves(board,total)
+   info=('ROLLED %d + %d = %d   BOARD %s'):format(values[1],values[2],total,boardText())
+   if #moves==0 then
+    say(('NO WAY TO MAKE %d. ROUND OVER'):format(total))
+    sound:play(clock(),'didgeridoo',1,4); sound:play(clock()+.35,'didgeridoo',1,1)
+    settle(r,0); wait(1.8); return
+   end
+   -- Start on the best play; LEFT/RIGHT step through the others.
+   local best=rules.best(board,total); local pick=1
+   for i,m in ipairs(moves) do if m==best then pick=i end end
+   while true do
+    selection=moves[pick]
+    local names={}; for _,n in ipairs(rules.tiles(selection)) do names[#names+1]=tostring(n) end
+    say(('TAKE %s?%s'):format(table.concat(names,' + '),selection==best and ' (BEST)' or ''),selection==best)
+    local many=#moves>1
+    local a=ask({many and {name='prev',label='< OTHER'} or {name='',label=''},{name='take',label='TAKE'},many and {name='next',label='OTHER >'} or {name='',label=''}})
+    if a=='prev' then pick=(pick-2)%#moves+1; sound:play(clock(),'hat',.5,16)
+    elseif a=='next' then pick=pick%#moves+1; sound:play(clock(),'hat',.5,18)
+    elseif a=='take' then break end
+   end
+   local now=clock()
+   for i,n in ipairs(rules.tiles(selection)) do fall(n,true); tiles[n].t0=now+(i-1)*.15; sound:play(now+(i-1)*.15+.3,'basedrum',1,8) end
+   board=bit32.band(board,bit32.bnot(selection)); selection=0
+   wait(.6)
+   if board==0 then
+    info='BOARD CLEARED!'
+    say(('GRAND PRIZE! YOU WIN %d CREDITS'):format(prize),true)
+    celebrate=clock()+4
+    local tune={12,16,19,24,19,24,28,31,24,28,31,36}
+    for i,p in ipairs(tune) do sound:play(clock()+i*.12,'bell',1,math.min(24,p)) ; sound:play(clock()+i*.12,'pling',.6,math.min(24,p-12)) end
+    settle(r,prize); wait(3); return
+   end
+  end
+ end
+ local function script()
+  while true do
+   local s=wallet:session()
+   local options={}
+   if s then
+    options={{name='bet',label='BET '..bet()},{name='play',label='PLAY'},{name='cash',label=wallet.mode=='live' and 'CASH OUT' or 'RESET'}}
+    say(('CLEAR ALL NINE TO WIN %dx: BET %d WINS %d'):format(rules.prize,bet(),bet()*rules.prize))
+    info=('BOARD %s   BEST-PLAY CHANCE %.1f%%'):format(boardText(),rules.chance(rules.full)*100)
+   else say(wallet.problem and wallet.problem:upper() or 'INSERT YOUR HOUSE CARD TO PLAY') end
+   local a=ask(options,true)
+   if a=='bet' then betIndex=betIndex%#rules.bets+1; sound:play(clock(),'pling',.6,6+betIndex*3)
+   elseif a=='cash' then
+    if wallet.mode=='live' then
+     local had=wallet:cashout()
+     if had then say(('CARD RETURNED: %d CREDITS ON YOUR ACCOUNT'):format(had),true) end
+    else wallet:cashout(); say('PRACTICE METER RESET TO 100') end
+    wait(1.5)
+   elseif a=='play' then
+    if (balance() or 0)<bet() then say('NOT ENOUGH CREDITS: LOWER THE BET'); wait(1)
+    else round(); resetBoard() end
+   end
+  end
+ end
+ local co=coroutine.create(script)
+ local function resume(...)
+  local ok,r=coroutine.resume(co,...)
+  if not ok then error(r,0) end
+  request=r
+ end
+ local function choose(i,name)
+  if not request or not request.ask then return end
+  local opts=request.ask
+  if name then for _,o in ipairs(opts) do if o.name==name then return resume(name) end end; return end
+  if opts[i] and opts[i].name~='' then resume(opts[i].name) end
+ end
+ local nextCard=0
+ local function update(now)
+  if request and request.wait and now>=request.wait then resume() end
+  if now>=nextCard then
+   nextCard=now+1
+   if wallet:refresh() and request and request.card then resume('card') end
+  end
+  -- Clack on every impact, louder for harder hits.
+  if throw then
+   local tt=now-thrownAt
+   if tt<=throw.duration+.1 then
+    local b=dice.bumps(throw,lastBump,tt); lastBump=tt
+    if b>0 then sound:play(now,b>12 and 'snare' or 'hat',math.min(1,.3+b/20),10+random(0,8)) end
+   end
+  end
+  sound:tick(now)
+ end
+ local function draw(now)
+  local view_tiles={}
+  for n=1,9 do
+   local s=tiles[n]; local u=math.max(0,math.min(1,(now-s.t0)/.45))
+   local down=s.from+(s.to-s.from)*(u*u)
+   if s.to>s.from and u>=1 then down=1+.08*math.sin(math.min(1,(now-s.t0-.45)/.2)*math.pi) end
+   local lit=bit32.btest(selection,2^(n-1))
+   view_tiles[n]={down=math.min(1.08,down),lit=lit,lift=lit and .25 or 0}
+  end
+  local d,camera
+  if throw then
+   d={}
+   local tt=now-thrownAt
+   for i=1,2 do local pos,m=dice.pose(throw,i,tt); d[i]={pos=pos,matrix=m} end
+   if tt<throw.duration+M.back then camera=renderer.follow({d[1].pos,d[2].pos},tt,throw.duration,M.back) end
+  end
+  local party=now<celebrate
+  local phase=math.floor(now*(party and 12 or 4))
+  view:draw({tiles=view_tiles,dice=d,camera=camera,credits=balance(),bet=bet(),title=wallet.title,info=info,
+   message=message,highlight=highlight or (party and phase%2==0),options=request and request.ask,
+   lamps=function(i) if party then return (i+phase)%2==0 end return (i+phase)%4==0 end})
+ end
+ wallet:refresh()
+ resume()
+ local timer=os.startTimer(0)
+ while true do
+  local e,a,b,c=os.pullEvent()
+  if e=='timer' and a==timer then
+   local now=clock(); update(now); draw(now); timer=os.startTimer(.05)
+  elseif e=='key' then
+   if a==keys.q or a==keys.backspace then
+    if request and request.ask and request.card then return end
+   elseif HOTKEYS[a] then choose(nil,HOTKEYS[a])
+   elseif KEYS[a] then choose(KEYS[a]) end
+  elseif e=='monitor_touch' or e=='mouse_click' then
+   local w,h=t.getSize()
+   if c==h then for i,s in ipairs(renderer.slots(w)) do if b>=s.x1 and b<=s.x2 then choose(i) end end end
+  elseif e=='disk' or e=='disk_eject' then nextCard=0
+  elseif e=='term_resize' or e=='monitor_resize' then draw(clock())
+  else
+   local btn=button(e,a)
+   if btn then choose(({LEFT=1,CENTER=2,RIGHT=3})[btn]) end
+  end
+ end
+end
+return M
+]])
+
+writeFile('pinebox/render.lua', [[
+local pine=require('derby.vendor.Pine3D')
+local scene=require('pinebox.scene')
+local mesh=require('casino.mesh')
+local M={}
+M.minW,M.minH=39,19
+-- The wide shot frames the tray and the board; throws push in on the dice.
+M.wide={-12.5,8.5,0,1.2,.6,0}
+local function line(t,y,text,fg,bg)
+ local w,h=t.getSize(); if y>h or y<1 then return end
+ t.setCursorPos(1,y); t.setBackgroundColor(bg or colors.black); t.setTextColor(fg or colors.white)
+ t.write((text..string.rep(' ',w)):sub(1,w))
+end
+function M.slots(w)
+ local third=math.floor(w/3)
+ return {{x1=1,x2=third},{x1=third+1,x2=2*third},{x1=2*third+1,x2=w}}
+end
+M.barColors={{colors.black,colors.white},{colors.black,colors.yellow},{colors.white,colors.red}}
+function M.new(t)
+ assert(t.isColor(),'Pine Shut the Box requires an advanced colour computer or monitor')
+ require('casino.palette').apply(t)
+ local old=term.redirect(t)
+ local w,h=t.getSize()
+ local f=pine.newFrame(1,2,w,math.max(1,h-4)); f:setBackgroundColor(colors.black)
+ local stage=f:newObject(scene.stage(),0,0,0)
+ local tiles={}
+ for n=1,9 do
+  tiles[n]={plain=scene.tileModel(n,false),lit=scene.tileModel(n,true)}
+  tiles[n].obj=f:newObject(tiles[n].plain,scene.tile.x,0,scene.tileZ(n)); tiles[n].shown='plain'
+ end
+ local lampOn,lampOff=scene.lamp(colors.yellow),scene.lamp(colors.gray)
+ local lamps={}
+ for i,p in ipairs(scene.lamps()) do lamps[i]={on=f:newObject(lampOn,p[1],p[2],p[3]),off=f:newObject(lampOff,p[1],p[2],p[3])} end
+ local base=scene.dieTriangles()
+ local dice={f:newObject(base,0,-5,0),f:newObject(base,0,-5,0)}
+ local cam=M.wide
+ local function aim() f:setFoV(w/math.max(1,h-4)>3 and 66 or 56); mesh.look(f,table.unpack(cam)) end
+ aim()
+ term.redirect(old)
+ local api={frame=f}
+ -- v.tiles[n] = {down=0..1 (fallen), lit=bool, lift=y}; v.dice[i] = {pos, matrix} or nil;
+ -- v.camera = {x,y,z, tx,ty,tz} (default: the wide shot)
+ function api:draw(v)
+  local previous=term.redirect(t)
+  local ww,hh=t.getSize()
+  if ww~=w or hh~=h then w,h=ww,hh; f:setSize(1,2,w,math.max(1,h-4)); aim() end
+  if w<M.minW or h<M.minH then
+   t.setBackgroundColor(colors.black); t.clear(); line(t,2,'SHUT THE BOX: display needs 39 x 19'); line(t,4,'Resize or use a larger monitor.')
+   term.redirect(previous); return
+  end
+  local c=v.camera or M.wide
+  if c~=cam then cam=c; aim() end
+  local objects={stage}
+  for n,tile in ipairs(tiles) do
+   local s=v.tiles and v.tiles[n] or {}
+   local want=s.lit and 'lit' or 'plain'
+   if tile.shown~=want then tile.obj:setModel(tile[want]); tile.shown=want end
+   tile.obj:setPos(scene.tile.x,s.lift or 0,scene.tileZ(n)); tile.obj:setRot(0,0,(s.down or 0)*1.5)
+   objects[#objects+1]=tile.obj
+  end
+  for i,l in ipairs(lamps) do objects[#objects+1]=(v.lamps and v.lamps(i)) and l.on or l.off end
+  for i,d in ipairs(dice) do
+   local p=v.dice and v.dice[i]
+   if p then d:setModel(scene.dieModel(base,p.matrix)); d:setPos(p.pos[1],p.pos[2],p.pos[3]); objects[#objects+1]=d end
+  end
+  f:drawObjects(objects); f:drawBuffer()
+  local right=('CREDITS %s  BET %d '):format(tostring(v.credits or '--'),v.bet or 0)
+  line(t,1,' '..(v.title or 'PINE SHUT THE BOX'),colors.yellow,colors.blue)
+  t.setCursorPos(math.max(1,w-#right+1),1); t.setTextColor(colors.white); t.setBackgroundColor(colors.blue); t.write(right)
+  line(t,h-2,' '..(v.info or ''),colors.white,colors.gray)
+  local msg=v.message or ''; local pad=math.max(0,math.floor((w-#msg)/2))
+  line(t,h-1,string.rep(' ',pad)..msg,v.highlight and colors.black or colors.yellow,v.highlight and colors.yellow or colors.black)
+  for i,s in ipairs(M.slots(w)) do
+   local label=v.options and v.options[i] and v.options[i].label or ''
+   local width=s.x2-s.x1+1; local lp=math.max(0,math.floor((width-#label)/2))
+   local fg,bg=M.barColors[i][1],M.barColors[i][2]
+   if label=='' then fg,bg=colors.gray,colors.black end
+   t.setCursorPos(s.x1,h); t.setTextColor(fg); t.setBackgroundColor(bg)
+   t.write((string.rep(' ',lp)..label..string.rep(' ',width)):sub(1,width))
+  end
+  term.redirect(previous)
+ end
+ return api
+end
+-- Camera for a throw at time t: chase the dice while they tumble, then the moment they
+-- settle snap-zoom onto them (a fast punch-in that overshoots and springs back), hold,
+-- and ease back to the wide shot by `back` seconds after they stop.
+M.snap=.12
+local function mix(a,b,u) local o={}; for i=1,6 do o[i]=a[i]+(b[i]-a[i])*u end; return o end
+local function ease(u) u=math.max(0,math.min(1,u)); return u*u*(3-2*u) end
+function M.follow(positions,t,duration,back)
+ local x=(positions[1][1]+positions[2][1])/2; local z=(positions[1][3]+positions[2][3])/2
+ local chase={x-8,6.2,z*.6,x+1,.4,z*.8}
+ -- Pull the close-up back when the dice land far apart so both stay in the shot.
+ local dx,dz=positions[1][1]-positions[2][1],positions[1][3]-positions[2][3]
+ local k=math.max(1,math.min(2.4,math.sqrt(dx*dx+dz*dz)/2.2))
+ local close={x-4.4*k,1+6*k,z*.9,x+.3,0,z}
+ local punch=mix(chase,close,1.18)
+ if t<.3 then return mix(M.wide,chase,ease(t/.3)) end
+ if t<duration then return chase end
+ local s=t-duration
+ if s<M.snap then local u=s/M.snap; return mix(chase,punch,1-(1-u)^3) end
+ if s<M.snap+.18 then return mix(punch,close,ease((s-M.snap)/.18)) end
+ if s<back-.6 then return close end
+ return mix(close,M.wide,ease((s-back+.6)/.6))
+end
+return M
+]])
+
+writeFile('pinebox/rules.lua', [[
+-- Shut the Box, played as a grand prize round: tiles 1-9, always two dice, remove any
+-- tiles that add up to the roll. A roll that no remaining tiles can make ends the round;
+-- clearing all nine wins the grand prize. The board is a 9-bit mask (bit i = tile i+1).
+local M={}
+M.full=511
+M.bets={1,2,5,10}
+-- With perfect play the board clears 7.14% of the time; 13x returns about 93%.
+M.prize=13
+local sums={}
+for m=0,M.full do local s=0; for i=0,8 do if bit32.btest(m,2^i) then s=s+i+1 end end; sums[m]=s end
+function M.sum(m) return sums[m] end
+function M.has(m,tile) return bit32.btest(m,2^(tile-1)) end
+function M.tiles(m) local out={}; for i=1,9 do if M.has(m,i) then out[#out+1]=i end end; return out end
+-- Every set of remaining tiles adding up to the roll, as masks, fewest tiles first.
+function M.moves(board,roll)
+ local out={}
+ local sub=board
+ while sub>0 do
+  if sums[sub]==roll then out[#out+1]=sub end
+  sub=bit32.band(sub-1,board)
+ end
+ local function count(m) return #M.tiles(m) end
+ table.sort(out,function(a,b) if count(a)~=count(b) then return count(a)<count(b) end return a>b end)
+ return out
+end
+-- Chance of clearing the board from each position with perfect play, and the best move.
+local chance,best
+local function solve()
+ chance={[0]=1}; best={}
+ -- Removing tiles only lowers the mask, so solve from small masks upward.
+ for m=1,M.full do
+  local p=0; best[m]={}
+  for roll=2,12 do
+   local ways=6-math.abs(roll-7)
+   local top,choice=0,nil
+   local sub=m
+   while sub>0 do
+    if sums[sub]==roll then
+     local q=chance[bit32.band(m,bit32.bnot(sub))]
+     if q>top or not choice then top,choice=q,sub end
+    end
+    sub=bit32.band(sub-1,m)
+   end
+   best[m][roll]=choice; p=p+ways*top
+  end
+  chance[m]=p/36
+ end
+end
+function M.chance(board) if not chance then solve() end return chance[board] end
+function M.best(board,roll) if not best then solve() end return board>0 and best[board][roll] or nil end
+return M
+]])
+
+writeFile('pinebox/scene.lua', [[
+-- Pine3D meshes for the grand prize stage: a felt dice tray with padded rails, the
+-- nine-number board behind it, and the dice. Camera on -x looking +x; +z is screen right.
+local mesh=require('casino.mesh')
+local font=require('casino.font')
+local dice=require('pinebox.dice')
+local M={}
+local tri,quad,box=mesh.tri,mesh.quad,mesh.box
+M.tile={width=1.15,height=1.8,gap=.12,x=5.6}
+function M.tileZ(n) return (n-5)*(M.tile.width+M.tile.gap) end
+function M.stage()
+ local m={}; local T=dice.tray
+ box(m,-14,-.6,-16,34,.5,32,colors.blue)
+ box(m,T.xmin,-.2,T.zmin,T.xmax-T.xmin,.2,T.zmax-T.zmin,colors.green)
+ -- Rails: low at the front so the camera sees in, taller behind as a backboard.
+ box(m,T.xmin-.5,-.2,T.zmin-.5,.5,.55,T.zmax-T.zmin+1,colors.red)
+ box(m,T.xmax,-.2,T.zmin-.5,.5,1.1,T.zmax-T.zmin+1,colors.red)
+ box(m,T.xmin,-.2,T.zmin-.5,T.xmax-T.xmin,.8,.5,colors.red)
+ box(m,T.xmin,-.2,T.zmax,T.xmax-T.xmin,.8,.5,colors.red)
+ box(m,T.xmin-.55,.33,T.zmin-.55,.6,.08,T.zmax-T.zmin+1.1,colors.yellow)
+ -- Number board: a dark panel with a gold frame and a marquee header.
+ local half=4.5*(M.tile.width+M.tile.gap)+.35
+ box(m,M.tile.x+.25,-.2,-half,.5,2.6,2*half,colors.black)
+ box(m,M.tile.x+.15,2.35,-half-.2,.6,.25,2*half+.4,colors.yellow)
+ box(m,M.tile.x+.25,2.6,-half,.5,1.3,2*half,colors.purple)
+ box(m,M.tile.x+.15,3.9,-half-.2,.6,.2,2*half+.4,colors.yellow)
+ return m
+end
+-- A number tile standing on its bottom edge (origin), face toward the camera.
+function M.tileModel(n,lit)
+ local m={}; local w,h=M.tile.width/2,M.tile.height
+ local face=lit and colors.yellow or colors.white
+ box(m,-.08,0,-w,.16,h,2*w,face)
+ local cell=.26; local text=tostring(n)
+ local u0=-font.width(text)*cell/2
+ font.draw(m,text,u0,h/2+2.5*cell,cell,colors.red,function(u,vv) return {-.1,vv,u} end,{-1,0,0})
+ return m
+end
+-- A die centred on the origin, red with white pips, in its unrotated pose.
+local pipLayout={
+ [1]={{0,0}},[2]={{-1,-1},{1,1}},[3]={{-1,-1},{0,0},{1,1}},[4]={{-1,-1},{1,-1},{-1,1},{1,1}},
+ [5]={{-1,-1},{1,-1},{0,0},{-1,1},{1,1}},[6]={{-1,-1},{1,-1},{-1,0},{1,0},{-1,1},{1,1}},
+}
+function M.dieTriangles()
+ local h=dice.half; local out={}
+ box(out,-h,-h,-h,2*h,2*h,2*h,colors.red)
+ for value,n in pairs(dice.faces) do
+  -- Two axes spanning the face.
+  local a=n[1]~=0 and {0,1,0} or {1,0,0}
+  local b={n[2]*a[3]-n[3]*a[2],n[3]*a[1]-n[1]*a[3],n[1]*a[2]-n[2]*a[1]}
+  local s,p=h*.5,h*.17
+  for _,pip in ipairs(pipLayout[value]) do
+   local function at(du,dv)
+    local u,vv=pip[1]*s+du,pip[2]*s+dv
+    return {n[1]*(h+.01)+a[1]*u+b[1]*vv,n[2]*(h+.01)+a[2]*u+b[2]*vv,n[3]*(h+.01)+a[3]*u+b[3]*vv}
+   end
+   quad(out,at(-p,-p),at(p,-p),at(p,p),at(-p,p),colors.white,n)
+  end
+ end
+ return out
+end
+-- The die triangles rotated by matrix m (die space to world). Red faces are lit from
+-- above, so the top face reads bright and the sides dark and the cube keeps its edges.
+function M.dieModel(base,m)
+ local out={}
+ for i,t in ipairs(base) do
+  local a=dice.apply(m,{t.x1,t.y1,t.z1}); local b=dice.apply(m,{t.x2,t.y2,t.z2}); local c=dice.apply(m,{t.x3,t.y3,t.z3})
+  local color=t.c
+  if color==colors.red then
+   local ux,uy,uz=b[1]-a[1],b[2]-a[2],b[3]-a[3]; local vx,vy,vz=c[1]-a[1],c[2]-a[2],c[3]-a[3]
+   local nx,ny,nz=uy*vz-uz*vy,uz*vx-ux*vz,ux*vy-uy*vx
+   local n=math.sqrt(nx*nx+ny*ny+nz*nz)
+   if n>0 and math.abs(ny/n)<.6 then color=colors.magenta end
+  end
+  out[i]={x1=a[1],y1=a[2],z1=a[3],x2=b[1],y2=b[2],z2=b[3],x3=c[1],y3=c[2],z3=c[3],c=color,forceRender=t.forceRender}
+ end
+ return out
+end
+function M.lamp(color) local m={}; box(m,-.15,-.15,-.15,.3,.3,.3,color); return m end
+function M.lamps()
+ local out={}; local half=4.5*(M.tile.width+M.tile.gap)
+ for n=0,16 do out[#out+1]={M.tile.x+.1,3.25,-half+n*(2*half/16)} end
+ return out
+end
+return M
+]])
+
+writeFile('pinebox.lua', [[
+-- Pine Shut the Box: a Pine3D grand prize round. Roll two dice, knock down tiles that
+-- add up to the roll, clear all nine for the grand prize.
+-- pinebox --demo  exhibition play with a practice meter
+require('pinebox.app').run({...})
+]])
+
+writeFile('pinejack/app.lua', [[
+-- Entry: pinejack [--demo] [--terminal | --monitor NAME]
+local M={}
+function M.run(args)
+ require('casino.app').run(args or {},'pinejack','PINE JACK',function(t,wallet)
+  require('pinejack.game').run({target=t,wallet=wallet})
+ end)
+end
+return M
+]])
+
+writeFile('pinejack/game.lua', [[
+-- Pine Jack: the table loop. The round is a script (a coroutine) that deals, asks for
+-- decisions and waits on animations; the event loop animates, reads the three cabinet
+-- buttons and resumes the script. The house reserves the stake plus the largest possible
+-- return on DEAL, is raised on double or split, and settles once when the hand ends.
+local rules=require('pinejack.rules')
+local scene=require('pinejack.scene')
+local renderer=require('pinejack.render')
+local M={}
+M.dealTime=.42
+M.tray={4.8,.4,0}
+M.discard={3.6,.3,-6.5}
+local function lerp(a,b,u) return a+(b-a)*u end
+-- Actors are cards and chip stacks gliding between table positions.
+local function actors(clock)
+ local list={}; local api={list=list}; local n=0
+ function api:add(a) n=n+1; a.id=a.id or ('a'..n); list[#list+1]=a; return a end
+ -- Move to (x,y,z) with face rotation rx, starting after delay, over dur, lifted by arc.
+ function api:move(a,to,dur,delay,arc)
+  local now=clock(); local x,y,z,rx=api.pose(a,now)
+  a.from={x,y,z,rx}; a.to={to[1],to[2],to[3],to[4] or rx}; a.t0=now+(delay or 0); a.dur=dur or M.dealTime; a.arc=arc or 0
+ end
+ function api.pose(a,now)
+  if not a.to then return a.from[1],a.from[2],a.from[3],a.from[4] end
+  local u=math.max(0,math.min(1,(now-a.t0)/a.dur)); local e=1-(1-u)^3
+  return lerp(a.from[1],a.to[1],e),lerp(a.from[2],a.to[2],e)+a.arc*math.sin(math.pi*u),lerp(a.from[3],a.to[3],e),lerp(a.from[4],a.to[4],u)
+ end
+ function api:remove(a) for i,b in ipairs(list) do if b==a then table.remove(list,i); return end end end
+ function api:clear() for i=#list,1,-1 do list[i]=nil end end
+ function api:frame(now)
+  local out={}
+  for _,a in ipairs(list) do
+   if not a.hidden then
+    local x,y,z,rx=api.pose(a,now)
+    out[#out+1]={id=a.id,card=a.card,chips=a.chips,x=x,y=y,z=z,rx=rx,ry=a.ry}
+   end
+  end
+  return out
+ end
+ return api
+end
+local sounds=require('casino.sound')
+local KEYS={[keys.one]=1,[keys.two]=2,[keys.three]=3,[keys.left]=1,[keys.up]=2,[keys.right]=3,[keys.space]=2,[keys.enter]=2}
+local HOTKEYS={[keys.h]='hit',[keys.s]='stand',[keys.d]='double',[keys.p]='split',[keys.b]='bet',[keys.c]='cash'}
+-- opts: target, wallet, clock(), random(lo,hi), button(event,p1)->'LEFT'|'CENTER'|'RIGHT',
+-- sound, newShoe() (tests stack the deck)
+function M.run(opts)
+ local t=opts.target
+ local wallet=opts.wallet
+ local clock=opts.clock or function() return os.epoch('utc')/1000 end
+ local random=opts.random or math.random
+ local button=opts.button or function(e,p) if e=='redstone' then return require('input').getButton(e,p) end end
+ local sound=opts.sound or sounds()
+ local view=renderer.new(t)
+ local act=actors(clock)
+ local betIndex=1
+ local newShoe=opts.newShoe or function() return rules.newShoe(random) end
+ local shoe=newShoe()
+ local hands,dealer,active={},{},0
+ local message,highlight='',false
+ local request -- what the script is waiting for: {wait=time} or {ask=options}
+ local results -- per-hand outcome labels after settlement
+ local function say(text,hi) message=text; highlight=hi or false end
+ local function bet() return rules.bets[betIndex] end
+ local function balance() local s=wallet:session(); return s and s.balance end
+ local function wait(s) coroutine.yield({wait=clock()+s}) end
+ local function ask(options,card) return coroutine.yield({ask=options,card=card}) end
+ -- Table geometry.
+ local function handZ(h) return scene.handZ[#hands][h] end
+ local function playerSpot(h,i) return {scene.playerX+(i-1)*scene.fan.x,.012*i,handZ(h)-.75+(i-1)*scene.fan.z,0} end
+ local function dealerSpot(i,down) return {scene.dealerX,.012*i,-.9+(i-1)*scene.fan.z,down and math.pi or 0} end
+ local function deal(target,down)
+  local c=rules.draw(shoe)
+  local a=act:add({card=c,from={scene.shoe[1],scene.shoe[2],scene.shoe[3],math.pi},ry=0})
+  act:move(a,target,M.dealTime,0,.9)
+  sound:play(clock(),'hat',.8,12+random(0,6))
+  return c,a
+ end
+ local function dealPlayer(h)
+  local hand=hands[h]; local c,a=deal(playerSpot(h,#hand.cards+1))
+  hand.cards[#hand.cards+1]=c; hand.actors[#hand.actors+1]=a
+  wait(M.dealTime)
+ end
+ local function dealDealer(down)
+  local c,a=deal(dealerSpot(#dealer.cards+1,down),down)
+  dealer.cards[#dealer.cards+1]=c; dealer.actors[#dealer.actors+1]=a
+  wait(M.dealTime)
+ end
+ local function revealHole()
+  if not dealer.hidden then return end
+  dealer.hidden=false
+  local a=dealer.actors[2]; local s=dealerSpot(2,false)
+  act:move(a,s,.45,0,.6); sound:play(clock(),'hat',.8,20)
+  wait(.5)
+ end
+ local function placeBet(h)
+  local hand=hands[h]
+  if hand.chips then act:move(hand.chips,{scene.betX,0,handZ(h)},.3); hand.chips.chips=hand.stake
+  else hand.chips=act:add({chips=hand.stake,from={scene.betX,0,handZ(h),0}}) end
+ end
+ local function sweep()
+  for i,a in ipairs(act.list) do act:move(a,{M.discard[1],M.discard[2],M.discard[3],a.card and math.pi or 0},.4,(i-1)*.03,.5) end
+  if #act.list>0 then wait(.5) end
+  act:clear(); hands,dealer,results={},{},nil
+ end
+ local function describe(cards,hidden)
+  local out={}
+  for i,c in ipairs(cards) do out[#out+1]=(hidden and i==2) and '??' or rules.describe(c) end
+  return table.concat(out,' ')
+ end
+ local function totalText(cards)
+  local n,soft=rules.total(cards)
+  if n>21 then return n..' BUST' end
+  if #cards==2 and n==21 then return 'BLACKJACK' end
+  return (soft and 'SOFT ' or '')..n
+ end
+ -- Settle with the house; on failure hold the table until a retry succeeds.
+ local function settle(round,amount)
+  local ok,err=wallet:settle(round,amount)
+  while not ok do
+   say('HOUSE OFFLINE: PAYOUT PENDING')
+   local a=ask({{name='retry',label='RETRY'},{name='retry',label='RETRY'},{name='retry',label='RETRY'}})
+   if a=='retry' then ok,err=wallet:retry() end
+  end
+ end
+ local function decide(h)
+  local hand=hands[h]
+  while rules.total(hand.cards)<21 and not hand.done do
+   local options={{name='hit',label='HIT'},{name='stand',label='STAND'}}
+   local extra={}
+   if rules.canDouble(hand) and (balance() or 0)>=hand.stake then extra[#extra+1]={name='double',label='DOUBLE'} end
+   if rules.canSplit(hands,hand) and (balance() or 0)>=hand.stake then extra[#extra+1]={name='split',label='SPLIT'} end
+   if #extra==1 then options[3]=extra[1] elseif #extra==2 then options[3]={name='more',label='MORE...'} end
+   say(#hands>1 and ('HAND %d: %s'):format(h,totalText(hand.cards)) or totalText(hand.cards))
+   local a=ask(options)
+   if a=='more' then
+    a=ask({extra[1],extra[2],{name='back',label='BACK'}})
+   end
+   if a=='hit' then dealPlayer(h)
+   elseif a=='stand' then hand.done=true
+   elseif a=='double' and rules.canDouble(hand) then
+    local stake=hand.stake
+    hand.doubled=true; hand.stake=stake*2
+    local ok,err=wallet:increase(hands.round,stake,rules.maximum(hands))
+    if not ok then hand.doubled=false; hand.stake=stake; say(tostring(err):upper()); wait(1)
+    else placeBet(h); sound:play(clock(),'snare',.7,10); dealPlayer(h); hand.done=true end
+   elseif a=='split' and rules.canSplit(hands,hand) then
+    local second={cards={table.remove(hand.cards)},actors={table.remove(hand.actors)},stake=hand.stake,split=true}
+    hand.split=true; hands[2]=second
+    local ok,err=wallet:increase(hands.round,hand.stake,rules.maximum(hands))
+    if not ok then
+     hands[2]=nil; hand.split=false; hand.cards[2]=second.cards[1]; hand.actors[2]=second.actors[1]
+     say(tostring(err):upper()); wait(1)
+    else
+     -- Slide both hands apart and give each its second card.
+     for i,a in ipairs(hand.actors) do act:move(a,playerSpot(1,i),.35) end
+     act:move(second.actors[1],playerSpot(2,1),.35)
+     placeBet(1); placeBet(2); wait(.4)
+     local aces=hand.cards[1].rank=='A'
+     dealPlayer(1); dealPlayer(2)
+     if aces then hand.aces=true; second.aces=true; hand.done=true; second.done=true end
+    end
+   end
+  end
+ end
+ local function round()
+  local stake=bet()
+  local r,err=wallet:begin(stake,rules.maximum({{cards={},stake=stake}}))
+  if not r then say(tostring(err):upper()); return end
+  hands={{cards={},actors={},stake=stake},round=r}
+  dealer={cards={},actors={},hidden=true}
+  placeBet(1); wait(.2)
+  dealPlayer(1); dealDealer(false); dealPlayer(1); dealDealer(true)
+  local up=rules.value(dealer.cards[1].rank)
+  local dealerBJ=rules.total(dealer.cards)==21
+  if up==1 or up==10 then say('DEALER CHECKS FOR BLACKJACK'); wait(.8) end
+  local playerBJ=rules.blackjack(hands[1])
+  if (up==1 or up==10) and dealerBJ or playerBJ then
+   revealHole()
+  else
+   for h=1,2 do if hands[h] then active=h; decide(h) end end
+   active=0
+   revealHole()
+   local live=false
+   for _,hand in ipairs(hands) do if not rules.bust(hand.cards) then live=true end end
+   while live and rules.dealerHits(dealer.cards) do dealDealer(false) end
+  end
+  -- Settle every hand together, then move chips to show it.
+  local total=0; results={}
+  for h,hand in ipairs(hands) do
+   local back,label=rules.handReturn(hand,dealer.cards)
+   total=total+back; results[h]=label
+   if back==0 then act:move(hand.chips,{M.tray[1],M.tray[2],M.tray[3]},.5,.1*h,.6)
+   elseif back>hand.stake then
+    local win=act:add({chips=back-hand.stake,from={M.tray[1],M.tray[2],M.tray[3],0}})
+    act:move(win,{scene.betX,0,handZ(h)+.8},.5,.1*h,.8)
+   end
+  end
+  settle(r,total)
+  local staked=0; for _,hand in ipairs(hands) do staked=staked+hand.stake end
+  local summary={}; for h,label in ipairs(results) do summary[#summary+1]=(#results>1 and h..' ' or '')..label end
+  local net=total-staked
+  say(table.concat(summary,' / ')..(net>0 and ('  +'..net) or net<0 and ('  '..net) or '  EVEN'),net>0)
+  if net>0 then for n,p in ipairs({12,16,19,24}) do sound:play(clock()+.4+n*.1,'bell',1,p) end
+  elseif net<0 then sound:play(clock()+.3,'bass',1,6) end
+  wait(.6)
+ end
+ local function script()
+  while true do
+   if rules.needsShuffle(shoe) then shoe=newShoe(); say('SHUFFLING A FRESH SHOE'); wait(1) end
+   local s=wallet:session()
+   local options
+   if s then options={{name='bet',label='BET '..bet()},{name='deal',label='DEAL'},{name='cash',label=wallet.mode=='live' and 'CASH OUT' or 'RESET'}}
+   else options={}; if #hands==0 then say(wallet.problem and wallet.problem:upper() or 'INSERT YOUR HOUSE CARD TO PLAY') end end
+   if s and #hands==0 then say(('%s: CHOOSE A BET, THEN DEAL'):format(s.name:upper())) end
+   local a=ask(options,true)
+   if a=='bet' then betIndex=betIndex%#rules.bets+1; say(('BET %d'):format(bet())); sound:play(clock(),'pling',.6,6+betIndex*3)
+   elseif a=='cash' then
+    if #hands>0 then sweep() end
+    if wallet.mode=='live' then
+     local had=wallet:cashout()
+     if had then say(('CARD RETURNED: %d CREDITS ON YOUR ACCOUNT'):format(had),true) end
+    else wallet:cashout(); say('PRACTICE METER RESET TO 100') end
+    wait(1.5)
+   elseif a=='deal' then
+    if (balance() or 0)<bet() then say('NOT ENOUGH CREDITS: LOWER THE BET'); wait(1)
+    else if #hands>0 then sweep() end; round() end
+   end
+  end
+ end
+ local co=coroutine.create(script)
+ local function resume(...)
+  local ok,r=coroutine.resume(co,...)
+  if not ok then error(r,0) end
+  request=r
+ end
+ local function choose(i,name)
+  if not request or not request.ask then return end
+  local opts=request.ask
+  if name then for _,o in ipairs(opts) do if o.name==name then return resume(name) end end; return end
+  if opts[i] then resume(opts[i].name) end
+ end
+ local nextCard=0
+ local function update(now)
+  if request and request.wait and now>=request.wait then resume() end
+  if now>=nextCard then
+   nextCard=now+1
+   if wallet:refresh() and request and request.card then resume('card') end
+  end
+  sound:tick(now)
+ end
+ local function draw(now)
+  local hide=dealer.hidden
+  local p={}
+  for h,hand in ipairs(hands) do
+   local mark=(#hands>1 and (active==h and '>' or ' ')..h..' ' or 'YOU  ')
+   p[#p+1]=mark..describe(hand.cards)..'  '..(results and results[h] and results[h] or totalText(hand.cards))
+  end
+  local up=dealer.cards and #dealer.cards>0
+  view:draw({actors=act:frame(now),credits=balance(),bet=bet(),title=wallet.title,
+   dealer=up and ('DEALER  '..describe(dealer.cards,hide)..'  '..(hide and '' or totalText(dealer.cards))) or 'DEALER',
+   player=#p>0 and table.concat(p,' | ') or '',message=message,highlight=highlight,
+   options=request and request.ask})
+ end
+ wallet:refresh()
+ resume()
+ local timer=os.startTimer(0)
+ while true do
+  local e,a,b,c=os.pullEvent()
+  if e=='timer' and a==timer then
+   local now=clock(); update(now); draw(now); timer=os.startTimer(.05)
+  elseif e=='key' then
+   if a==keys.q or a==keys.backspace then
+    if #hands==0 or (request and request.ask and request.card) then return end
+   elseif HOTKEYS[a] then choose(nil,HOTKEYS[a])
+   elseif KEYS[a] then choose(KEYS[a]) end
+  elseif e=='monitor_touch' or e=='mouse_click' then
+   local w,h=t.getSize()
+   if c==h then for i,s in ipairs(renderer.slots(w)) do if b>=s.x1 and b<=s.x2 then choose(i) end end end
+  elseif e=='disk' or e=='disk_eject' then nextCard=0
+  elseif e=='term_resize' or e=='monitor_resize' then draw(clock())
+  else
+   local btn=button(e,a)
+   if btn then choose(({LEFT=1,CENTER=2,RIGHT=3})[btn]) end
+  end
+ end
+end
+return M
+]])
+
+writeFile('pinejack/render.lua', [[
+local pine=require('derby.vendor.Pine3D')
+local scene=require('pinejack.scene')
+local mesh=require('casino.mesh')
+local M={}
+M.minW,M.minH=39,19
+local function line(t,y,text,fg,bg)
+ local w,h=t.getSize(); if y>h or y<1 then return end
+ t.setCursorPos(1,y); t.setBackgroundColor(bg or colors.black); t.setTextColor(fg or colors.white)
+ t.write((text..string.rep(' ',w)):sub(1,w))
+end
+-- Three-way button bar on the bottom row: LEFT, CENTER, RIGHT cabinet buttons.
+function M.slots(w)
+ local third=math.floor(w/3)
+ return {{x1=1,x2=third},{x1=third+1,x2=2*third},{x1=2*third+1,x2=w}}
+end
+M.barColors={{colors.black,colors.white},{colors.black,colors.yellow},{colors.white,colors.red}}
+function M.new(t)
+ assert(t.isColor(),'Pine Jack requires an advanced colour computer or monitor')
+ require('casino.palette').apply(t)
+ local old=term.redirect(t)
+ local w,h=t.getSize()
+ local f=pine.newFrame(1,2,w,math.max(1,h-5)); f:setBackgroundColor(colors.black); f:setFoV(58)
+ local tableObj=f:newObject(scene.table(),0,0,0)
+ -- Short, wide displays get a wider lens so the bet circles stay in view.
+ local function aim() f:setFoV(w/math.max(1,h-5)>3 and 70 or 58); mesh.look(f,-9.6,7.4,0,.5,0,0) end
+ aim()
+ term.redirect(old)
+ local cards,stacks={},{}
+ local function cardModel(c)
+  local k=c.rank..c.suit
+  cards[k]=cards[k] or scene.cardModel(c.rank,c.suit); return cards[k],k
+ end
+ local function stackModel(n) stacks[n]=stacks[n] or scene.stack(n); return stacks[n],'chips'..n end
+ local pool={}
+ local api={frame=f}
+ -- v.actors: {id, card={rank,suit} | chips=amount, x,y,z, rx, ry}
+ function api:draw(v)
+  local previous=term.redirect(t)
+  local ww,hh=t.getSize()
+  if ww~=w or hh~=h then w,h=ww,hh; f:setSize(1,2,w,math.max(1,h-5)); aim() end
+  if w<M.minW or h<M.minH then
+   t.setBackgroundColor(colors.black); t.clear(); line(t,2,'PINE JACK: display needs 39 x 19'); line(t,4,'Resize or use a larger monitor.')
+   term.redirect(previous); return
+  end
+  local objects={tableObj}
+  for _,a in ipairs(v.actors or {}) do
+   local model,key
+   if a.card then model,key=cardModel(a.card) else model,key=stackModel(a.chips) end
+   local o=pool[a.id]
+   if not o then o=f:newObject(model,a.x,a.y,a.z); o.key=key; pool[a.id]=o
+   elseif o.key~=key then o:setModel(model); o.key=key end
+   o:setPos(a.x,a.y,a.z); o:setRot(a.rx or 0,a.ry or 0,0)
+   objects[#objects+1]=o
+  end
+  f:drawObjects(objects); f:drawBuffer()
+  local right=('CREDITS %s  BET %d '):format(tostring(v.credits or '--'),v.bet or 0)
+  line(t,1,' '..(v.title or 'PINE JACK'),colors.yellow,colors.blue)
+  t.setCursorPos(math.max(1,w-#right+1),1); t.setTextColor(colors.white); t.setBackgroundColor(colors.blue); t.write(right)
+  line(t,h-3,' '..(v.dealer or ''),colors.white,colors.gray)
+  line(t,h-2,' '..(v.player or ''),colors.white,colors.gray)
+  local msg=v.message or ''; local pad=math.max(0,math.floor((w-#msg)/2))
+  line(t,h-1,string.rep(' ',pad)..msg,v.highlight and colors.black or colors.yellow,v.highlight and colors.yellow or colors.black)
+  for i,s in ipairs(M.slots(w)) do
+   local label=v.options and v.options[i] and v.options[i].label or ''
+   local width=s.x2-s.x1+1; local lp=math.max(0,math.floor((width-#label)/2))
+   local fg,bg=M.barColors[i][1],M.barColors[i][2]
+   if label=='' then fg,bg=colors.gray,colors.black end
+   t.setCursorPos(s.x1,h); t.setTextColor(fg); t.setBackgroundColor(bg)
+   t.write((string.rep(' ',lp)..label..string.rep(' ',width)):sub(1,width))
+  end
+  term.redirect(previous)
+ end
+ return api
+end
+return M
+]])
+
+writeFile('pinejack/rules.lua', [[
+-- Blackjack rules: six-deck shoe, dealer stands on soft 17 and peeks for blackjack,
+-- blackjack pays 3:2, double on any first two cards (also after a split), one split,
+-- split aces take one card each. All amounts are whole credits; bets are even.
+local M={}
+M.decks=6
+M.cut=.75
+M.bets={2,4,10,20,50}
+M.ranks={'A','2','3','4','5','6','7','8','9','10','J','Q','K'}
+M.suits={'S','H','D','C'}
+M.red={H=true,D=true}
+function M.value(rank)
+ if rank=='A' then return 1 end
+ if rank=='J' or rank=='Q' or rank=='K' then return 10 end
+ return tonumber(rank)
+end
+function M.newShoe(random)
+ random=random or math.random
+ local s={cards={},next=1}
+ for _=1,M.decks do for _,su in ipairs(M.suits) do for _,r in ipairs(M.ranks) do s.cards[#s.cards+1]={rank=r,suit=su} end end end
+ for i=#s.cards,2,-1 do local j=random(1,i); s.cards[i],s.cards[j]=s.cards[j],s.cards[i] end
+ return s
+end
+function M.draw(shoe) local c=shoe.cards[shoe.next]; shoe.next=shoe.next+1; return {rank=c.rank,suit=c.suit} end
+function M.needsShuffle(shoe) return shoe.next>#shoe.cards*M.cut end
+-- Total and whether an ace is counted as 11.
+function M.total(cards)
+ local t,aces=0,0
+ for _,c in ipairs(cards) do t=t+M.value(c.rank); if c.rank=='A' then aces=aces+1 end end
+ if aces>0 and t+10<=21 then return t+10,true end
+ return t,false
+end
+function M.blackjack(hand) return #hand.cards==2 and not hand.split and M.total(hand.cards)==21 end
+function M.bust(cards) return M.total(cards)>21 end
+function M.canDouble(hand) return #hand.cards==2 and not hand.doubled and not hand.aces end
+function M.canSplit(hands,hand)
+ return #hands==1 and #hand.cards==2 and M.value(hand.cards[1].rank)==M.value(hand.cards[2].rank)
+end
+function M.dealerHits(cards)
+ local t=M.total(cards)
+ return t<17
+end
+-- What one hand returns to the player (stake included) against the dealer's final cards.
+function M.handReturn(hand,dealer)
+ local mine=M.total(hand.cards)
+ if mine>21 then return 0,'BUST' end
+ local bj,dbj=M.blackjack(hand),#dealer==2 and M.total(dealer)==21
+ if bj and dbj then return hand.stake,'PUSH' end
+ if bj then return hand.stake+math.floor(hand.stake*3/2),'BLACKJACK' end
+ if dbj then return 0,'LOSE' end
+ local theirs=M.total(dealer)
+ if theirs>21 or mine>theirs then return hand.stake*2,'WIN' end
+ if mine==theirs then return hand.stake,'PUSH' end
+ return 0,'LOSE'
+end
+-- The most the current hands could still return: what the house must reserve.
+function M.maximum(hands)
+ local n=0
+ for _,h in ipairs(hands) do
+  if #h.cards<=2 and not h.split and not h.doubled then n=n+h.stake+math.floor(h.stake*3/2)
+  else n=n+h.stake*2 end
+ end
+ return n
+end
+function M.describe(c) return c.rank..({S='\6',H='\3',D='\4',C='\5'})[c.suit] end
+return M
+]])
+
+writeFile('pinejack/scene.lua', [[
+-- Pine3D meshes for the blackjack table. Camera on -x looking +x and down; y is up and
+-- +z is screen right. Cards lie flat with their top edge toward +x so they read upright.
+local mesh=require('casino.mesh')
+local M={}
+local tri,quad,box=mesh.tri,mesh.quad,mesh.box
+local UP={0,1,0}
+-- A flat polygon on the plane y, from (u=z, v=x) points, fanned from the first point.
+local function flat(m,y,pts,color,facing)
+ for i=2,#pts-1 do
+  tri(m,{pts[1][2],y,pts[1][1]},{pts[i][2],y,pts[i][1]},{pts[i+1][2],y,pts[i+1][1]},color,facing or UP)
+ end
+end
+local function ring(cu,cv,r,n,stretch)
+ local p={{cu,cv}}
+ for i=0,n do local a=i/n*2*math.pi; p[#p+1]={cu+math.cos(a)*r,cv+math.sin(a)*r*(stretch or 1)} end
+ return p
+end
+M.card={length=2,width=1.4}
+local font=require('casino.font')
+local function glyphs(m,y,text,u0,v0,cell,color) font.flat(m,y,text,u0,v0,cell,color) end
+-- Suit pips centred on (cu, cv) with half-size s.
+local function pip(m,y,suit,cu,cv,s,color)
+ if suit=='D' then flat(m,y,{{cu,cv+s},{cu+s*.75,cv},{cu,cv-s},{cu-s*.75,cv}},color)
+ elseif suit=='H' then
+  flat(m,y,ring(cu-s*.45,cv+s*.35,s*.5,8),color); flat(m,y,ring(cu+s*.45,cv+s*.35,s*.5,8),color)
+  flat(m,y,{{cu-s*.95,cv+s*.25},{cu+s*.95,cv+s*.25},{cu,cv-s}},color)
+ elseif suit=='S' then
+  flat(m,y,ring(cu-s*.45,cv-s*.2,s*.5,8),color); flat(m,y,ring(cu+s*.45,cv-s*.2,s*.5,8),color)
+  flat(m,y,{{cu-s*.95,cv-s*.1},{cu,cv+s},{cu+s*.95,cv-s*.1}},color)
+  flat(m,y,{{cu-s*.12,cv-s*.4},{cu+s*.12,cv-s*.4},{cu+s*.3,cv-s},{cu-s*.3,cv-s}},color)
+ else
+  flat(m,y,ring(cu,cv+s*.45,s*.42,8),color); flat(m,y,ring(cu-s*.5,cv-s*.15,s*.42,8),color); flat(m,y,ring(cu+s*.5,cv-s*.15,s*.42,8),color)
+  flat(m,y,{{cu-s*.12,cv},{cu+s*.12,cv},{cu+s*.3,cv-s},{cu-s*.3,cv-s}},color)
+ end
+end
+-- A card centred on the origin, face up (+y). Rotating rotX = pi shows the back.
+function M.cardModel(rank,suit)
+ local m={}; local L,W=M.card.length/2,M.card.width/2
+ local color=(suit=='H' or suit=='D') and colors.red or colors.black
+ flat(m,.02,{{-W,L},{W,L},{W,-L},{-W,-L}},colors.white)
+ -- Index (rank and a small pip) in the left strip, which stays visible when cards fan
+ -- to the right; a larger pip at the lower right shows on the top card.
+ local cell=rank=='10' and .15 or .2
+ glyphs(m,.035,rank,-W+.08,L-.1,cell,color)
+ pip(m,.035,suit,-W+.38,L-1.45,.26,color)
+ pip(m,.035,suit,.3,-.45,.32,color)
+ -- Back: blue with a lighter inset, facing down.
+ local D={0,-1,0}
+ flat(m,0,{{-W,L},{W,L},{W,-L},{-W,-L}},colors.blue,D)
+ flat(m,-.015,{{-W+.15,L-.15},{W-.15,L-.15},{W-.15,-L+.15},{-W+.15,-L+.15}},colors.lightBlue,D)
+ flat(m,-.03,{{0,L-.45},{W-.35,0},{0,-L+.45},{-W+.35,0}},colors.blue,D)
+ return m
+end
+M.chipColors={[1]=colors.white,[5]=colors.red,[10]=colors.blue,[25]=colors.lime,[100]=colors.black}
+M.chipValues={100,25,10,5,1}
+-- Split an amount into chips, largest first.
+function M.chips(amount)
+ local out={}
+ for _,v in ipairs(M.chipValues) do while amount>=v and #out<12 do out[#out+1]=v; amount=amount-v end end
+ return out
+end
+-- A stack of chips for an amount, sitting on y=0.
+function M.stack(amount)
+ local m={}; local h=.09
+ for i,v in ipairs(M.chips(amount)) do
+  local y0,y1=(i-1)*h,i*h-.012
+  local p=ring(0,0,.36,8)
+  local top={}; for k=2,#p do top[#top+1]=p[k] end
+  for k=2,#top-1 do tri(m,{top[1][2],y1,top[1][1]},{top[k][2],y1,top[k][1]},{top[k+1][2],y1,top[k+1][1]},M.chipColors[v],UP) end
+  for k=1,#top-1 do
+   local a,b=top[k],top[k+1]; local mid={(a[2]+b[2])/2,0,(a[1]+b[1])/2}
+   quad(m,{a[2],y0,a[1]},{b[2],y0,b[1]},{b[2],y1,b[1]},{a[2],y1,a[1]},k%2==0 and colors.white or M.chipColors[v],mid)
+  end
+ end
+ return m
+end
+-- The table: felt, padded rail, betting spots, the insurance arc, shoe and chip tray.
+function M.table()
+ local m={}
+ box(m,-5,-.4,-9,11,.4,18,colors.green)
+ box(m,-5.8,-.4,-9.6,.8,.5,19.2,colors.brown)
+ box(m,-5,-.4,-9.6,11,.5,.6,colors.brown); box(m,-5,-.4,9,11,.5,.6,colors.brown)
+ for _,z in ipairs({-2.8,0,2.8}) do
+  local outer=ring(z,-3.3,.62,12); local inner=ring(z,-3.3,.52,12)
+  for k=2,#outer-1 do quad(m,{outer[k][2],.005,outer[k][1]},{outer[k+1][2],.005,outer[k+1][1]},{inner[k+1][2],.005,inner[k+1][1]},{inner[k][2],.005,inner[k][1]},colors.white,UP) end
+ end
+ -- Insurance line: a gold arc between the player's cards and the dealer's.
+ local prev
+ for n=0,16 do
+  local a=(n/16-.5)*1.7; local x,z=-4.5+math.cos(a)*5.2,math.sin(a)*5.2
+  if prev then quad(m,{prev[1],.006,prev[2]},{x,.006,z},{x+.08,.006,z},{prev[1]+.08,.006,prev[2]},colors.yellow,UP) end
+  prev={x,z}
+ end
+ -- Shoe on the dealer's left (screen right) and the chip tray behind the dealer cards.
+ box(m,3.2,0,5.4,1.8,.9,1.3,colors.red)
+ box(m,3.0,.2,5.5,.25,.6,1.1,colors.black)
+ box(m,4.4,0,-3.2,.9,.25,6.4,colors.gray)
+ local x=4.5
+ for i,v in ipairs(M.chipValues) do box(m,x,.25,-3.0+(i-1)*1.25,.7,.18,1.0,M.chipColors[v]) end
+ return m
+end
+M.shoe={3.1,.8,6.0}
+-- Where hands and bets sit: player cards, bet circles (one per split hand), dealer cards.
+M.playerX,M.betX,M.dealerX=-1.9,-3.3,2.7
+M.handZ={[1]={0},[2]={-2.8,2.8}}
+M.fan={x=.25,z=.75}
+return M
+]])
+
+writeFile('pinejack.lua', [[
+-- Pine Jack: Pine3D blackjack on the house wallet, played with the three cabinet buttons.
+-- pinejack --demo  exhibition play with a practice meter
+require('pinejack.app').run({...})
+]])
+
+writeFile('pineslots/app.lua', [[
+-- Entry: pineslots [setup | --demo] [--terminal | --monitor NAME]
+local M={}
+function M.run(args)
+ args=args or {}
+ if args[1]=='setup' then return require('pineslots.controls').setup() end
+ require('casino.app').run(args,'pineslots','PINE SLOTS',function(t,wallet)
+  require('pineslots.machine').run({target=t,wallet=wallet})
+ end)
+end
+return M
+]])
+
+writeFile('pineslots/controls.lua', [[
+-- Physical cabinet controls: a pull arm and three buttons, each wired to a redstone input.
+-- An input is a computer side ("left") or a Redstone Relay side ("redstone_relay_0:left"),
+-- for cabinets whose sides are taken by the monitor, drive and modem. Only rising edges
+-- count, so a lever left on does not spin twice and holding a button does not repeat.
+local M={names={'arm','bet','max','cash'},path='/pineslots-settings'}
+M.labels={arm='PULL ARM',bet='BET ONE',max='MAX BET',cash='CASH OUT'}
+M.defaults={arm='right',bet='left',max='top',cash='back'}
+function M.load()
+ settings.load(M.path)
+ local c={}
+ for _,n in ipairs(M.names) do c[n]=settings.get('pineslots.'..n,M.defaults[n]) end
+ return c
+end
+function M.read(spec)
+ if type(spec)~='string' or spec=='' or spec=='none' then return false end
+ local device,side=spec:match('^(.+):(%a+)$')
+ if device then
+  local ok,on=pcall(peripheral.call,device,'getInput',side)
+  return ok and on==true
+ end
+ local ok,on=pcall(redstone.getInput,spec)
+ return ok and on==true
+end
+-- Keyboard and touch stand in for the cabinet on a desk or a bare monitor.
+local KEYS={[keys.space]='arm',[keys.enter]='arm',[keys.one]='bet',[keys.b]='bet',[keys.two]='max',[keys.m]='max',[keys.three]='cash',[keys.c]='cash'}
+function M.new(config,read)
+ read=read or M.read
+ local api={config=config,last={}}
+ for _,n in ipairs(M.names) do api.last[n]=read(config[n]) end
+ -- Controls that went from off to on since the last poll.
+ function api:poll()
+  local out={}
+  for _,n in ipairs(M.names) do
+   local on=read(config[n])
+   if on and not self.last[n] then out[#out+1]=n end
+   self.last[n]=on
+  end
+  return out
+ end
+ function api:key(code) return KEYS[code] end
+ return api
+end
+-- Every input that could carry a control: computer sides and attached relays.
+function M.candidates()
+ local out={}
+ for _,side in ipairs(redstone.getSides()) do out[#out+1]=side end
+ for _,name in ipairs(peripheral.getNames()) do
+  if peripheral.hasType(name,'redstone_relay') then
+   for _,side in ipairs(redstone.getSides()) do out[#out+1]=name..':'..side end
+  end
+ end
+ return out
+end
+-- Learn each control by having the operator use it.
+function M.setup()
+ print('PINE SLOTS CONTROL SETUP')
+ print('Use each control when asked. Enter skips it (keyboard and touch still work).')
+ local chosen={}; local used={}
+ for _,n in ipairs(M.names) do
+  local list=M.candidates(); local last={}
+  for _,spec in ipairs(list) do last[spec]=M.read(spec) end
+  write(M.labels[n]..': waiting... ')
+  local found
+  local timer=os.startTimer(.1)
+  while not found do
+   local e,a=os.pullEvent()
+   if e=='key' and (a==keys.enter or a==keys.numPadEnter) then found='none'
+   elseif e=='timer' and a==timer or e=='redstone' then
+    for _,spec in ipairs(list) do
+     local on=M.read(spec)
+     if on and not last[spec] and not used[spec] then found=spec; break end
+     last[spec]=on
+    end
+    if e=='timer' then timer=os.startTimer(.1) end
+   end
+  end
+  print(found)
+  chosen[n]=found; if found~='none' then used[found]=true end
+ end
+ for _,n in ipairs(M.names) do settings.set('pineslots.'..n,chosen[n]) end
+ settings.save(M.path)
+ print('Saved '..M.path..'. Run pineslots to play.')
+ return chosen
+end
+return M
+]])
+
+writeFile('pineslots/machine.lua', [=[
+-- The slot machine itself: one event loop driving the reels, lamps, credit meter and sound.
+-- The outcome is drawn and settled with the house the moment the arm is pulled; the reel
+-- animation only reveals it, so a pulled card or a crash mid-spin cannot change a payout.
+local reels=require('pineslots.reels')
+local controls=require('pineslots.controls')
+local renderer=require('pineslots.render')
+local M={}
+M.speed=14 -- stops per second while spinning
+M.stopAt={1.1,1.55,2.0}
+M.brake=.35
+M.bounce=.25
+-- Reel motion: constant speed, an ease-out brake landing exactly on the target stop
+-- (positions decrease so symbols travel downward), then a small bounce.
+function M.plan(from,target,stopAt)
+ local raw=from-M.speed*(stopAt-M.brake/2)
+ local final=target+reels.size*math.floor((raw-target)/reels.size)
+ return {from=from,final=final,speed=(from-final)/(stopAt-M.brake/2),stopAt=stopAt}
+end
+function M.position(p,t)
+ local cruise=p.stopAt-M.brake
+ if t<=cruise then return p.from-p.speed*t end
+ if t<=p.stopAt then local u=t-cruise; return p.from-p.speed*cruise-p.speed*(u-u*u/(2*M.brake)) end
+ if t<p.stopAt+M.bounce then return p.final-.18*math.sin(math.pi*(t-p.stopAt)/M.bounce) end
+ return p.final
+end
+local sounds=require('casino.sound')
+-- opts: target, wallet, controls (from controls.new), clock(), random(lo,hi), exitKeys
+function M.run(opts)
+ local t=opts.target
+ local wallet=opts.wallet
+ local input=opts.controls or controls.new(controls.load())
+ local clock=opts.clock or function() return os.epoch('utc')/1000 end
+ local random=opts.random or math.random
+ local view=renderer.new(t)
+ local sound=opts.sound or sounds()
+ local bet,positions=1,{0,0,0}
+ local spin,result,hold
+ local message,highlight='',false
+ local pressed={}
+ local shown -- credit meter value while a win rolls up
+ local idleSince=clock(); local nextCard=0
+ local function say(text,hi) message=text; highlight=hi or false end
+ local function balance() local s=wallet:session(); return s and s.balance end
+ local function welcome()
+  local s=wallet:session()
+  if s then say(('%s: PULL THE ARM TO SPIN'):format(s.name:upper()))
+  elseif wallet.problem then say(wallet.problem:upper())
+  else say('INSERT YOUR HOUSE CARD TO PLAY') end
+ end
+ local function start(stops,round,demo)
+  local now=clock(); local total,wins=reels.evaluate(stops,bet)
+  spin={start=now,plans={},stops=stops,total=total,wins=wins,demo=demo,round=round,stopped=0}
+  for i=1,3 do spin.plans[i]=M.plan(positions[i],stops[i],M.stopAt[i]) end
+  shown=balance(); result=nil
+  say(demo and 'INSERT YOUR HOUSE CARD TO PLAY' or 'GOOD LUCK!')
+  for n=0,math.floor(M.stopAt[3]*10) do sound:play(now+n/10,'hat',.6,18+n%3) end
+ end
+ local function pull()
+  if spin and spin.demo then for i=1,3 do positions[i]=positions[i]%reels.size end; spin=nil end
+  if spin then return end
+  if hold then
+   local ok,err=wallet:retry()
+   if ok then hold=nil; say('PAYOUT CONFIRMED',true) else say('HOUSE OFFLINE: PULL TO RETRY ('..tostring(err)..')') end
+   return
+  end
+  local s=wallet:session()
+  if not s then say(wallet.problem and wallet.problem:upper() or 'INSERT YOUR HOUSE CARD TO PLAY'); return end
+  if s.balance<bet then say(s.balance>0 and 'NOT ENOUGH CREDITS: PRESS BET ONE TO LOWER' or 'NO CREDITS: VISIT THE CASHIER'); return end
+  local round,err=wallet:begin(bet,reels.maxReturn(bet))
+  if not round then say(tostring(err):upper()); return end
+  local stops=reels.spin(random)
+  local total=reels.evaluate(stops,bet)
+  local ok,settleErr=wallet:settle(round,total)
+  if not ok then hold={round=round,total=total,error=settleErr} end
+  start(stops,round,false)
+ end
+ local function act(name)
+  if not name then return end
+  local now=clock(); pressed[name]=now+.25; idleSince=now
+  if name=='arm' then return pull() end
+  if spin and not spin.demo then return end
+  if spin and spin.demo then spin=nil end
+  if name=='bet' then bet=bet%reels.maxBet+1; say(('BET %d: %d LINE%s'):format(bet,bet,bet>1 and 'S' or '')); sound:play(now,'pling',.6,8+bet*2)
+  elseif name=='max' then bet=reels.maxBet; say('MAX BET: ALL 5 LINES'); sound:play(now,'pling',.6,20)
+  elseif name=='cash' then
+   if hold then say('PAYOUT PENDING: PULL THE ARM TO RETRY'); return end
+   if wallet.mode=='exhibition' then
+    wallet:cashout(); say('PRACTICE METER RESET TO 100')
+   else
+    local had=wallet:cashout()
+    if had then say(('CARD RETURNED: %d CREDITS ON YOUR ACCOUNT'):format(had),true); for n=0,4 do sound:play(now+n*.08,'chime',.8,12+n*2) end
+    else say('NO CARD TO RETURN') end
+   end
+  end
+ end
+ local function finish(now)
+  local s=spin; spin=nil
+  for i=1,3 do positions[i]=s.stops[i] end
+  if s.demo then welcome(); return end
+  result={wins=s.wins,total=s.total,at=now}
+  if hold then say('HOUSE OFFLINE: PULL THE ARM TO RETRY PAYOUT')
+  elseif s.total>0 then
+   say(('WINNER! %d CREDITS'):format(s.total),true)
+   local notes=s.total>=80 and {12,16,19,24,19,24,28,31} or s.total>=15 and {12,16,19,24} or {14,18}
+   for n,p in ipairs(notes) do sound:play(now+n*.11,'bell',1,p) end
+  else shown=nil; say('NO WIN. PULL AGAIN!') end
+ end
+ local function update(now)
+  for _,n in ipairs(input:poll()) do act(n) end
+  if now>=nextCard then
+   nextCard=now+1
+   if wallet:refresh() then welcome() end
+  end
+  if spin then
+   local t=now-spin.start
+   for i=1,3 do
+    positions[i]=M.position(spin.plans[i],t)
+    if spin.stopped<i and t>=M.stopAt[i] then spin.stopped=i; sound:play(now,'snare',1,4+i) end
+   end
+   if t>=M.stopAt[3]+M.bounce then finish(now) end
+  elseif result and result.total>0 and shown then
+   -- Credit meter rolls up the win, a few credits per frame.
+   local target=balance() or shown
+   shown=math.min(target,shown+math.max(1,math.ceil(result.total/20)))
+   if shown>=target then shown=nil end
+  end
+  if result and result.total>0 and not spin and #result.wins>1 then
+   local w=result.wins[math.floor((now-result.at)/1.4)%#result.wins+1]
+   if now-result.at>1.4 then
+    say(('LINE %d %s: %s %s %s PAYS %d'):format(w.line,reels.lineNames[w.line],reels.names[w.symbols[1]],reels.names[w.symbols[2]],reels.names[w.symbols[3]],w.pay),true)
+   end
+  end
+  -- Attract: with no card in a live cabinet, run a free demo spin every few seconds.
+  if wallet.mode=='live' and not wallet:session() and not spin and now-idleSince>6 then
+   idleSince=now; start(reels.spin(random),nil,true)
+  end
+  sound:tick(now)
+ end
+ local function lamps(now)
+  if result and result.total>0 and not spin and now-result.at<4 then
+   local on=math.floor(now*6)%2==0; return function() return on end
+  end
+  local phase=math.floor(now*(spin and 16 or 5))
+  return function(i) return (i+phase)%4==0 end
+ end
+ local function lines(now)
+  local lit={}
+  if result and not spin and result.total>0 then
+   local on=math.floor(now*4)%2==0
+   for _,w in ipairs(result.wins) do lit[w.line]=on end
+   return lit
+  end
+  for n=1,bet do lit[n]=true end
+  return lit
+ end
+ local function draw(now)
+  local p={}; for k,v in pairs(pressed) do if v>now then p[k]=true end end
+  view:draw({positions=positions,bet=bet,credits=shown or balance(),title=wallet.title,
+   lamps=lamps(now),lines=lines(now),pressed=p,message=message,highlight=highlight})
+ end
+ wallet:refresh(); welcome()
+ local timer=os.startTimer(0)
+ while true do
+  local e,a,b,c=os.pullEvent()
+  if e=='timer' and a==timer then
+   local now=clock(); update(now); draw(now); timer=os.startTimer(.05)
+  elseif e=='redstone' then for _,n in ipairs(input:poll()) do act(n) end
+  elseif e=='key' then
+   if a==keys.q or a==keys.backspace then if not spin or spin.demo then return end end
+   act(input:key(a))
+  elseif e=='monitor_touch' or e=='mouse_click' then
+   local w,h=t.getSize()
+   if c==h then for _,btn in ipairs(renderer.buttons(w)) do if b>=btn.x1 and b<=btn.x2 then act(btn.name) end end
+   elseif c>1 and c<h-1 then act('arm') end
+  elseif e=='disk' or e=='disk_eject' then nextCard=0
+  elseif e=='term_resize' or e=='monitor_resize' then draw(clock()) end
+ end
+end
+return M
+]=])
+
+writeFile('pineslots/reels.lua', [[
+-- Reel strips, paylines and paytable. Every stop is equally likely, so returns and the
+-- largest possible win for each bet are computed exactly by visiting all 16^3 outcomes.
+local M={}
+M.size=16
+M.strips={'CPBPRPCBPSBPRBCD','PCBPRCPBSPCRBPDC','BPCRPBCPSBPRCPDB'}
+M.names={C='CHERRY',P='PLUM',B='BELL',R='BAR',S='SEVEN',D='DIAMOND'}
+-- Three of a kind on a line, per credit on that line.
+M.three={D=200,S=80,R=30,B=15,P=10,C=10}
+-- Cherries reading from the left reel: one pays 1, two pay 3.
+M.cherry={1,3}
+-- Row offsets per reel (-1 top, 0 centre, 1 bottom). Each credit bet lights one more line.
+M.lines={{0,0,0},{-1,-1,-1},{1,1,1},{-1,0,1},{1,0,-1}}
+M.lineNames={'CENTER','TOP','BOTTOM','DIAGONAL','DIAGONAL'}
+M.maxBet=#M.lines
+function M.symbol(reel,stop)
+ local i=stop%M.size+1
+ return M.strips[reel]:sub(i,i)
+end
+function M.linePay(a,b,c)
+ if a==b and b==c then return M.three[a] end
+ if a=='C' then return b=='C' and M.cherry[2] or M.cherry[1] end
+ return 0
+end
+function M.evaluate(stops,bet)
+ local total,wins=0,{}
+ for n=1,bet do
+  local l=M.lines[n]; local s={}
+  for r=1,3 do s[r]=M.symbol(r,stops[r]+l[r]) end
+  local pay=M.linePay(s[1],s[2],s[3])
+  if pay>0 then total=total+pay; wins[#wins+1]={line=n,pay=pay,symbols=s} end
+ end
+ return total,wins
+end
+function M.spin(random)
+ random=random or math.random
+ return {random(0,M.size-1),random(0,M.size-1),random(0,M.size-1)}
+end
+local cache
+-- {maximum={per bet}, rtp=return per credit, hit=fraction of single-line spins that pay}
+function M.stats()
+ if cache then return cache end
+ local maximum={}; for b=1,M.maxBet do maximum[b]=0 end
+ local paid,hits,n=0,0,0
+ for a=0,M.size-1 do for b=0,M.size-1 do for c=0,M.size-1 do
+  local stops={a,b,c}; local running=0
+  for bet=1,M.maxBet do
+   local l=M.lines[bet]
+   running=running+M.linePay(M.symbol(1,a+l[1]),M.symbol(2,b+l[2]),M.symbol(3,c+l[3]))
+   if running>maximum[bet] then maximum[bet]=running end
+   if bet==1 then paid=paid+running; if running>0 then hits=hits+1 end end
+  end
+  n=n+1
+ end end end
+ cache={maximum=maximum,rtp=paid/n,hit=hits/n}
+ return cache
+end
+-- The house reservation for a spin: the most this bet can ever return.
+function M.maxReturn(bet) return M.stats().maximum[bet] end
+return M
+]])
+
+writeFile('pineslots/render.lua', [[
+local pine=require('derby.vendor.Pine3D')
+local scene=require('pineslots.scene')
+local M={}
+M.minW,M.minH=39,19
+local function line(t,y,text,fg,bg)
+ local w,h=t.getSize(); if y>h or y<1 then return end
+ t.setCursorPos(1,y); t.setBackgroundColor(bg or colors.black); t.setTextColor(fg or colors.white)
+ t.write((text..string.rep(' ',w)):sub(1,w))
+end
+M.line=line
+-- Bottom-row button bar; returns the x ranges so touches map to the same buttons.
+function M.buttons(w)
+ local third=math.floor(w/3)
+ return {{x1=1,x2=third,name='bet',label='BET ONE',fg=colors.black,bg=colors.white},
+  {x1=third+1,x2=2*third,name='max',label='MAX BET',fg=colors.black,bg=colors.yellow},
+  {x1=2*third+1,x2=w,name='cash',label='CASH OUT',fg=colors.white,bg=colors.red}}
+end
+function M.new(t)
+ assert(t.isColor(),'Pine Slots requires an advanced colour computer or monitor')
+ require('casino.palette').apply(t)
+ local old=term.redirect(t)
+ local w,h=t.getSize()
+ local f=pine.newFrame(1,2,w,math.max(1,h-3)); f:setBackgroundColor(colors.black); f:setFoV(52)
+ local cabinet=f:newObject(scene.cabinet(),0,0,0)
+ local reels={}
+ for i=1,3 do reels[i]=f:newObject(scene.reel(i),0,0,scene.reelZ[i]*scene.side) end
+ local lampOn,lampOff,lineOn,lineOff=scene.lamp(colors.yellow),scene.lamp(colors.gray),scene.lamp(colors.lime),scene.lamp(colors.black)
+ local lamps={}
+ for i,p in ipairs(scene.lamps()) do lamps[i]={on=f:newObject(lampOn,p[1],p[2],p[3]),off=f:newObject(lampOff,p[1],p[2],p[3])} end
+ local lineLamps={}
+ for i,pair in ipairs(scene.lineLamps()) do
+  lineLamps[i]={}
+  for j,p in ipairs(pair) do lineLamps[i][j]={on=f:newObject(lineOn,p[1],p[2],p[3]),off=f:newObject(lineOff,p[1],p[2],p[3])} end
+ end
+ f:setCamera({x=-17,y=.9,z=0,rotX=-90,rotY=0,rotZ=-2})
+ term.redirect(old)
+ local api={frame=f}
+ -- view: positions[3], lamps(i)->bool, lines[5]->bool, pressed{name=true},
+ -- title, credits, bet, win, message, highlight
+ function api:draw(v)
+  local previous=term.redirect(t)
+  local ww,hh=t.getSize()
+  if ww~=w or hh~=h then w,h=ww,hh; f:setSize(1,2,w,math.max(1,h-3)) end
+  if w<M.minW or h<M.minH then
+   t.setBackgroundColor(colors.black); t.clear(); line(t,2,'PINE SLOTS: display needs 39 x 19'); line(t,4,'Resize or use a larger monitor.')
+   term.redirect(previous); return
+  end
+  local objects={cabinet}
+  for i=1,3 do reels[i]:setRot(0,0,(v.positions[i] or 0)*scene.step) end
+  for i,l in ipairs(lamps) do objects[#objects+1]=(v.lamps and v.lamps(i)) and l.on or l.off end
+  for i,pair in ipairs(lineLamps) do for _,l in ipairs(pair) do objects[#objects+1]=(v.lines and v.lines[i]) and l.on or l.off end end
+  for i=1,3 do objects[#objects+1]=reels[i] end
+  f:drawObjects(objects); f:drawBuffer()
+  local right=('CREDITS %s  BET %d '):format(tostring(v.credits or '--'),v.bet or 1)
+  line(t,1,' '..(v.title or 'PINE SLOTS'),colors.yellow,colors.blue)
+  t.setCursorPos(math.max(1,w-#right+1),1); t.setTextColor(colors.white); t.setBackgroundColor(colors.blue); t.write(right)
+  local msg=v.message or ''
+  local pad=math.max(0,math.floor((w-#msg)/2))
+  line(t,h-1,string.rep(' ',pad)..msg,v.highlight and colors.black or colors.yellow,v.highlight and colors.yellow or colors.black)
+  for _,b in ipairs(M.buttons(w)) do
+   local width=b.x2-b.x1+1; local label=b.label; local lp=math.max(0,math.floor((width-#label)/2))
+   local down=v.pressed and v.pressed[b.name]
+   t.setCursorPos(b.x1,h); t.setTextColor(down and b.bg or b.fg); t.setBackgroundColor(down and colors.gray or b.bg)
+   t.write((string.rep(' ',lp)..label..string.rep(' ',width)):sub(1,width))
+  end
+  term.redirect(previous)
+ end
+ return api
+end
+return M
+]])
+
+writeFile('pineslots/scene.lua', [[
+-- Pine3D meshes for the cabinet. The pull arm and buttons are physical, in the world.
+-- The camera sits on -x looking toward +x; y is up and
+-- M.side is the z direction that appears on the right of the screen.
+local reels=require('pineslots.reels')
+local M={}
+local pi=math.pi
+M.side=1
+M.radius=3
+M.faces=reels.size
+M.step=2*pi/M.faces
+M.reelZ={-2.5,0,2.5}
+M.halfWidth=1.05
+M.window={y=1.72,z=3.85,x=-3.3}
+local mesh=require('casino.mesh')
+local tri,quad=mesh.tri,mesh.quad
+M.tri=tri
+M.box=mesh.box
+-- Symbol artwork in face units: u right, v up, both within -0.5..0.5. Each shape is a
+-- star-shaped outline fanned from its first point, so concave bells still fill correctly.
+local function ring(cx,cy,rx,ry,n)
+ local p={{cx,cy}}
+ for i=0,n do local a=i/n*2*pi; p[#p+1]={cx+math.cos(a)*rx,cy+math.sin(a)*ry} end
+ return p
+end
+local function fan(...) local p={...}; local cx,cy=0,0; for _,q in ipairs(p) do cx=cx+q[1]; cy=cy+q[2] end
+ table.insert(p,1,{cx/#p,cy/#p}); p[#p+1]=p[2]; return p end
+M.art={
+ D={{colors.lightBlue,fan({-.3,.4},{.3,.4},{.48,.14},{-.48,.14})},{colors.cyan,fan({-.48,.14},{.48,.14},{0,-.48})},{colors.white,fan({-.12,.4},{.12,.4},{0,.2})}},
+ S={{colors.red,fan({-.38,.48},{.42,.48},{.42,.3},{-.38,.3})},{colors.red,fan({.2,.3},{.42,.3},{-.02,-.48},{-.24,-.48})}},
+ R={{colors.black,fan({-.48,.24},{.48,.24},{.48,-.24},{-.48,-.24})},{colors.yellow,fan({-.36,.05},{.36,.05},{.36,-.05},{-.36,-.05})}},
+ B={{colors.yellow,fan({-.14,.42},{.14,.42},{.3,.2},{.33,-.18},{.47,-.32},{-.47,-.32},{-.33,-.18},{-.3,.2})},{colors.orange,fan({-.09,-.32},{.09,-.32},{.09,-.46},{-.09,-.46})}},
+ C={{colors.lime,fan({-.2,-.1},{.1,.46},{.16,.42},{-.12,-.1})},{colors.lime,fan({.2,-.04},{.1,.46},{.16,.46},{.28,-.04})},{colors.red,ring(-.2,-.22,.22,.24,8)},{colors.red,ring(.22,-.14,.22,.24,8)}},
+ P={{colors.purple,ring(0,-.06,.4,.4,10)},{colors.lime,fan({0,.3},{.32,.5},{.1,.26})}},
+}
+-- One drum. Face k is at angle k*step below the front, so stop k-1 sits above stop k.
+-- Rotating the drum by rotZ = position*step brings that stop to the front.
+function M.reel(i)
+ local m={}; local R=M.radius; local hh=R*math.tan(M.step/2); local hw=M.halfWidth; local s=M.side
+ for k=0,M.faces-1 do
+  local a=k*M.step; local ca,sa=math.cos(a),math.sin(a)
+  local n={-ca,-sa,0}; local up={-sa,ca,0}
+  local function at(u,v,lift)
+   return {-R*ca+v*up[1]+lift*n[1],-R*sa+v*up[2]+lift*n[2],u*s}
+  end
+  quad(m,at(-hw,hh,0),at(hw,hh,0),at(hw,-hh,0),at(-hw,-hh,0),colors.white,n)
+  for layer,shape in ipairs(M.art[reels.symbol(i,k)]) do
+   local p=shape[2]; local size=hh*1.62
+   for j=2,#p-1 do
+    tri(m,at(p[1][1]*size,p[1][2]*size,.04+layer*.03),at(p[j][1]*size,p[j][2]*size,.04+layer*.03),at(p[j+1][1]*size,p[j+1][2]*size,.04+layer*.03),shape[1],n)
+   end
+  end
+ end
+ return m
+end
+-- Static cabinet: front panel with the reel window, gold trim, topper, body and deck.
+function M.cabinet()
+ local m={}; local w=M.window; local s=M.side
+ local function zbox(x,y,z1,sx,sy,z2,c) local a,b=math.min(z1*s,z2*s),math.max(z1*s,z2*s); M.box(m,x,y,a,sx,sy,b-a,c) end
+ -- Body: back wall behind the drums plus side walls, so nothing sits in front of the reels.
+ zbox(3.3,-6,-5.2,1,8.6,5.2,colors.black)
+ zbox(-3.3,-6,-5.2,6.6,8.6,-4.9,colors.red)
+ zbox(-3.3,-6,4.9,6.6,8.6,5.2,colors.red)
+ zbox(-3.5,w.y,-5.2,.2,.9,5.2,colors.red)
+ zbox(-3.5,-2.6,-5.2,.2,2.6-w.y,5.2,colors.red)
+ zbox(-3.5,-w.y,-5.2,.2,2*w.y,-w.z,colors.red)
+ zbox(-3.5,-w.y,w.z,.2,2*w.y,5.2,colors.red)
+ for _,z in ipairs({-1.45,1.05}) do zbox(-3.45,-w.y,z,.15,2*w.y,z+.4,colors.gray) end
+ -- Gold trim around the window.
+ zbox(-3.62,w.y,-w.z-.15,.12,.15,w.z+.15,colors.yellow)
+ zbox(-3.62,-w.y-.15,-w.z-.15,.12,.15,w.z+.15,colors.yellow)
+ zbox(-3.62,-w.y,-w.z-.15,.12,2*w.y,-w.z,colors.yellow)
+ zbox(-3.62,-w.y,w.z,.12,2*w.y,w.z+.15,colors.yellow)
+ -- Topper with a diamond emblem.
+ zbox(-3.4,2.6,-4.6,5,2.4,4.6,colors.blue)
+ zbox(-3.55,2.75,-4.4,.15,.12,4.4,colors.yellow)
+ zbox(-3.55,4.75,-4.4,.15,.12,4.4,colors.yellow)
+ local e=-3.6
+ tri(m,{e,4.45,-.6*s},{e,4.45,.6*s},{e,3.9,0},colors.lightBlue,{-1,0,0})
+ tri(m,{e,4.45,-.6*s},{e,4.6,-.35*s},{e,4.45,0},colors.lightBlue,{-1,0,0})
+ tri(m,{e,4.45,.6*s},{e,4.6,.35*s},{e,4.45,0},colors.lightBlue,{-1,0,0})
+ quad(m,{e,4.6,-.35*s},{e,4.6,.35*s},{e,4.45,.6*s},{e,4.45,-.6*s},colors.lightBlue,{-1,0,0})
+ tri(m,{e-.02,4.45,-.6*s},{e-.02,4.45,.6*s},{e-.02,3.9,0},colors.cyan,{-1,0,0})
+ for _,z in ipairs({-3.2,-2.2,2.2,3.2}) do zbox(-3.6,3.6,z-.25,.1,.5,z+.25,colors.white) end
+ -- Button deck below the window and the coin tray.
+ zbox(-4.7,-3.3,-5.2,1.4,.7,5.2,colors.black)
+ zbox(-4.8,-3.0,-5.3,.25,.12,5.3,colors.yellow)
+ zbox(-4.5,-5.6,-2.5,1.2,.6,2.5,colors.gray)
+ zbox(-4.55,-5.1,-2.3,.1,.1,2.3,colors.black)
+ return m
+end
+-- A lamp, lit or dark.
+function M.lamp(color)
+ local m={}; M.box(m,-.15,-.15,-.15,.3,.3,.3,color); return m
+end
+-- Lamp positions: marquee chase above and below the window, payline lamps either side.
+function M.lamps()
+ local out={}
+ for n=0,12 do local z=(-4.5+n*.75)*M.side; out[#out+1]={-3.7,2.17,z}; end
+ for n=12,0,-1 do local z=(-4.5+n*.75)*M.side; out[#out+1]={-3.7,-2.17,z} end
+ return out
+end
+-- {left, right} lamp positions for each payline.
+function M.lineLamps()
+ local L,Rz=-4.45*M.side,4.45*M.side; local row=2*M.radius*math.tan(M.step/2)
+ return {{{-3.7,0,L},{-3.7,0,Rz}},{{-3.7,row,L},{-3.7,row,Rz}},{{-3.7,-row,L},{-3.7,-row,Rz}},
+  {{-3.7,1.55,L},{-3.7,-1.55,Rz}},{{-3.7,-1.55,L},{-3.7,1.55,Rz}}}
+end
+return M
+]])
+
+writeFile('pineslots.lua', [[
+-- Pine Slots: a Pine3D slot machine with a physical pull arm and three cabinet buttons.
+-- pineslots setup   learn which redstone inputs carry the arm and buttons
+-- pineslots --demo  exhibition play with a practice meter
+require('pineslots.app').run({...})
 ]])
 
 writeFile('race.lua', [[
@@ -7769,6 +9779,9 @@ local games = {
     { name = "Blackjack", cmd = "blackjack" },
     { name = "Baccarat", cmd = "baccarat" },
     { name = "Super Slots", cmd = "slots" },
+    { name = "Pine Slots", cmd = "pineslots" },
+    { name = "Pine Jack", cmd = "pinejack" },
+    { name = "Pine Shut the Box", cmd = "pinebox" },
     { name = "Horse Race", cmd = "race" },
     { name = "Can't Stop (Free)", cmd = "cant_stop" },
     { name = "Can't Stop (Dedicated Spawn)", cmd = "cant_stop_kiosk" },

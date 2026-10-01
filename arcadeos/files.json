@@ -5,7 +5,7 @@
    "description": "ArcadeOS shell and accessories",
    "required": true,
    "turtle": false,
-   "size": 127609,
+   "size": 128841,
    "files": [
     {
      "src": "arcadeos/boot.lua",
@@ -138,9 +138,19 @@
      "size": 253
     },
     {
+     "src": "arcadeos/apps/pinebox/app.lua",
+     "dest": "/arcadeos/apps/pinebox/app.lua",
+     "size": 252
+    },
+    {
      "src": "arcadeos/apps/pinedungeon/app.lua",
      "dest": "/arcadeos/apps/pinedungeon/app.lua",
      "size": 262
+    },
+    {
+     "src": "arcadeos/apps/pinejack/app.lua",
+     "dest": "/arcadeos/apps/pinejack/app.lua",
+     "size": 244
     },
     {
      "src": "arcadeos/apps/pinelanes/app.lua",
@@ -151,6 +161,11 @@
      "src": "arcadeos/apps/pinelinks/app.lua",
      "dest": "/arcadeos/apps/pinelinks/app.lua",
      "size": 255
+    },
+    {
+     "src": "arcadeos/apps/pineslots/app.lua",
+     "dest": "/arcadeos/apps/pineslots/app.lua",
+     "size": 247
     },
     {
      "src": "arcadeos/apps/race/app.lua",
@@ -210,7 +225,7 @@
     {
      "src": "arcadeos/lib/launcher.lua",
      "dest": "/arcadeos/lib/launcher.lua",
-     "size": 7951
+     "size": 8440
     },
     {
      "src": "arcadeos/lib/ui.lua",
@@ -255,10 +270,10 @@
    ]
   },
   "arcade": {
-   "description": "Arcade games: Blackjack, Slots, Can't Stop, Race, RPS Rogue, IdleCraft",
+   "description": "Arcade games: Blackjack, Slots, Pine Slots, Pine Jack, Pine Shut the Box, Can't Stop, Race, RPS Rogue, IdleCraft",
    "required": false,
    "turtle": false,
-   "size": 269266,
+   "size": 355908,
    "files": [
     {
      "src": "cc-arcade/audio.lua",
@@ -278,7 +293,7 @@
     {
      "src": "cc-arcade/credits.lua",
      "dest": "/pkg/arcade/credits.lua",
-     "size": 4974
+     "size": 5501
     },
     {
      "src": "cc-arcade/house.lua",
@@ -294,6 +309,21 @@
      "src": "cc-arcade/input.lua",
      "dest": "/pkg/arcade/input.lua",
      "size": 3606
+    },
+    {
+     "src": "cc-arcade/pinebox.lua",
+     "dest": "/pkg/arcade/pinebox.lua",
+     "size": 237
+    },
+    {
+     "src": "cc-arcade/pinejack.lua",
+     "dest": "/pkg/arcade/pinejack.lua",
+     "size": 184
+    },
+    {
+     "src": "cc-arcade/pineslots.lua",
+     "dest": "/pkg/arcade/pineslots.lua",
+     "size": 259
     },
     {
      "src": "cc-arcade/race.lua",
@@ -314,6 +344,36 @@
      "src": "cc-arcade/track.lua",
      "dest": "/pkg/arcade/track.lua",
      "size": 18826
+    },
+    {
+     "src": "cc-arcade/casino/app.lua",
+     "dest": "/pkg/arcade/casino/app.lua",
+     "size": 1362
+    },
+    {
+     "src": "cc-arcade/casino/font.lua",
+     "dest": "/pkg/arcade/casino/font.lua",
+     "size": 1708
+    },
+    {
+     "src": "cc-arcade/casino/mesh.lua",
+     "dest": "/pkg/arcade/casino/mesh.lua",
+     "size": 1551
+    },
+    {
+     "src": "cc-arcade/casino/palette.lua",
+     "dest": "/pkg/arcade/casino/palette.lua",
+     "size": 642
+    },
+    {
+     "src": "cc-arcade/casino/sound.lua",
+     "dest": "/pkg/arcade/casino/sound.lua",
+     "size": 564
+    },
+    {
+     "src": "cc-arcade/casino/wallet.lua",
+     "dest": "/pkg/arcade/casino/wallet.lua",
+     "size": 3605
     },
     {
      "src": "cc-arcade/derby/app.lua",
@@ -424,6 +484,91 @@
      "src": "cc-arcade/derby/vendor/betterblittle.lua",
      "dest": "/pkg/arcade/derby/vendor/betterblittle.lua",
      "size": 6135
+    },
+    {
+     "src": "cc-arcade/pinebox/app.lua",
+     "dest": "/pkg/arcade/pinebox/app.lua",
+     "size": 251
+    },
+    {
+     "src": "cc-arcade/pinebox/dice.lua",
+     "dest": "/pkg/arcade/pinebox/dice.lua",
+     "size": 8450
+    },
+    {
+     "src": "cc-arcade/pinebox/game.lua",
+     "dest": "/pkg/arcade/pinebox/game.lua",
+     "size": 8891
+    },
+    {
+     "src": "cc-arcade/pinebox/render.lua",
+     "dest": "/pkg/arcade/pinebox/render.lua",
+     "size": 5276
+    },
+    {
+     "src": "cc-arcade/pinebox/rules.lua",
+     "dest": "/pkg/arcade/pinebox/rules.lua",
+     "size": 1945
+    },
+    {
+     "src": "cc-arcade/pinebox/scene.lua",
+     "dest": "/pkg/arcade/pinebox/scene.lua",
+     "size": 3763
+    },
+    {
+     "src": "cc-arcade/pinejack/app.lua",
+     "dest": "/pkg/arcade/pinejack/app.lua",
+     "size": 246
+    },
+    {
+     "src": "cc-arcade/pinejack/game.lua",
+     "dest": "/pkg/arcade/pinejack/game.lua",
+     "size": 13059
+    },
+    {
+     "src": "cc-arcade/pinejack/render.lua",
+     "dest": "/pkg/arcade/pinejack/render.lua",
+     "size": 3514
+    },
+    {
+     "src": "cc-arcade/pinejack/rules.lua",
+     "dest": "/pkg/arcade/pinejack/rules.lua",
+     "size": 2709
+    },
+    {
+     "src": "cc-arcade/pinejack/scene.lua",
+     "dest": "/pkg/arcade/pinejack/scene.lua",
+     "size": 5051
+    },
+    {
+     "src": "cc-arcade/pineslots/app.lua",
+     "dest": "/pkg/arcade/pineslots/app.lua",
+     "size": 347
+    },
+    {
+     "src": "cc-arcade/pineslots/controls.lua",
+     "dest": "/pkg/arcade/pineslots/controls.lua",
+     "size": 3221
+    },
+    {
+     "src": "cc-arcade/pineslots/machine.lua",
+     "dest": "/pkg/arcade/pineslots/machine.lua",
+     "size": 7976
+    },
+    {
+     "src": "cc-arcade/pineslots/reels.lua",
+     "dest": "/pkg/arcade/pineslots/reels.lua",
+     "size": 2228
+    },
+    {
+     "src": "cc-arcade/pineslots/render.lua",
+     "dest": "/pkg/arcade/pineslots/render.lua",
+     "size": 3615
+    },
+    {
+     "src": "cc-arcade/pineslots/scene.lua",
+     "dest": "/pkg/arcade/pineslots/scene.lua",
+     "size": 5461
     },
     {
      "src": "cc-arcade/screensavers/bounce.lua",
@@ -800,7 +945,7 @@
    "description": "Factory and TurtleOS turtle automation (turtles only)",
    "required": false,
    "turtle": true,
-   "size": 493669,
+   "size": 494465,
    "files": [
     {
      "src": "cc-factory/factory.lua",
@@ -875,7 +1020,7 @@
     {
      "src": "cc-factory/lib_inventory.lua",
      "dest": "/pkg/factory/lib_inventory.lua",
-     "size": 44413
+     "size": 43944
     },
     {
      "src": "cc-factory/lib_inventory_utils.lua",
@@ -895,7 +1040,7 @@
     {
      "src": "cc-factory/lib_logger.lua",
      "dest": "/pkg/factory/lib_logger.lua",
-     "size": 12290
+     "size": 12773
     },
     {
      "src": "cc-factory/lib_mine_policy.lua",
@@ -945,12 +1090,12 @@
     {
      "src": "cc-factory/lib_placement.lua",
      "dest": "/pkg/factory/lib_placement.lua",
-     "size": 14571
+     "size": 14756
     },
     {
      "src": "cc-factory/lib_reporter.lua",
      "dest": "/pkg/factory/lib_reporter.lua",
-     "size": 2057
+     "size": 2071
     },
     {
      "src": "cc-factory/lib_safe_miner.lua",
@@ -1005,7 +1150,7 @@
     {
      "src": "cc-factory/lib_world.lua",
      "dest": "/pkg/factory/lib_world.lua",
-     "size": 9265
+     "size": 9079
     },
     {
      "src": "cc-factory/lib_worldstate.lua",
@@ -1035,7 +1180,7 @@
     {
      "src": "cc-factory/state_check_requirements.lua",
      "dest": "/pkg/factory/state_check_requirements.lua",
-     "size": 4520
+     "size": 5289
     },
     {
      "src": "cc-factory/state_done.lua",
