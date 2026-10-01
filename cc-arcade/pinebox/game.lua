@@ -151,8 +151,30 @@ function M.run(opts)
     sound:play(clock(),'hat',.5,12+players.avatars[p])
    elseif a=='ante' and s then
     local key=s.account or s.name or 'card'
-    local r=players.rounds[key]; local ok,err
-    if r then ok,err=wallet:increase(r,stake,pot) else r,err=wallet:begin(stake,pot); ok=r~=nil end
+    local r=players.rounds[key]; local ok,err,context
+    if r then ok,err,context=wallet:increase(r,stake,pot)
+    else r,err,context=wallet:begin(stake,pot); ok=r~=nil end
+    -- Hold this exact seat/ante until its request is acknowledged. Passing the
+    -- card or pressing ANTE again must not charge or increment the pot twice.
+    while not ok and context and context.pending do
+     say('HOUSE OFFLINE: ANTE PENDING')
+     local action=ask({{name='retry',label='RETRY'},{name='retry',label='RETRY'},{name='retry',label='RETRY'}})
+     if action=='retry' then
+      ok,err,context=wallet:retry()
+      if context and context.matches==false then context.pending=true end
+      if ok and not r then
+       r=context and context.round
+       if not r then ok=false; err='Recovered ante needs cashier review'; context={pending=true} end
+      end
+     end
+    end
+    if context and context.status and context.status~='open' then
+     -- An operator closed this reservation while it was interrupted. Do not
+     -- seat it; refund any other account's collected ante before cancelling.
+     players.rounds[key]=nil
+     for _,other in pairs(players.rounds) do settle(other,0,'refund') end
+     players=nil; say('MATCH CANCELLED: ROUND CLOSED BY HOUSE'); wait(1.5); return false
+    end
     if ok then
      players.rounds[key]=r; players.seat[p]=key; players.names[p]=wallet.mode=='live' and s.name or nil; players.pot=players.pot+stake
      players.current=p+1; sound:play(clock(),'pling',.8,10+p*3)
@@ -245,7 +267,10 @@ function M.run(opts)
  local function resume(...)
   local ok,r=coroutine.resume(co,...)
   if not ok then error(r,0) end
-  request=r
+  -- The gameplay script also calls CC APIs, which yield nil/string event
+  -- filters. Keep those distinct from its own timed waits and choices.
+  if type(r)=='table' and (r.ask or r.wait) then request=r
+  else request={event=true,filter=r} end
  end
  local function choose(i,name)
   if not request or not request.ask then return end
@@ -256,7 +281,7 @@ function M.run(opts)
  local nextCard=0
  local function update(now)
   if request and request.wait and now>=request.wait then resume() end
-  if now>=nextCard then
+  if now>=nextCard and not (request and request.event) then
    nextCard=now+1
    if wallet:refresh() and request and request.card then resume('card') end
   end
@@ -301,8 +326,12 @@ function M.run(opts)
  local timer=os.startTimer(0)
  while true do
   local e,a,b,c=os.pullEvent()
+  local forwarding=request and request.event
+  if forwarding and (not request.filter or request.filter==e) then resume(e,a,b,c) end
   if e=='timer' and a==timer then
    local now=clock(); update(now); draw(now); timer=os.startTimer(.05)
+  elseif forwarding then
+   if e=='disk' or e=='disk_eject' then nextCard=0 end
   elseif e=='key' then
    if a==keys.q or a==keys.backspace then
     if request and request.ask and request.card==true then return end

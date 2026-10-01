@@ -13,8 +13,8 @@ authentication, packet loss, or the real host ledger.
 | Attraction | Current money mode | Executed consumer coverage |
 | --- | --- | --- |
 | Pine Slots | Live account rounds when station/cashier is configured; local exhibition otherwise | Game ID, 5-credit MAX bet with 206-credit maximum, settlement before animation, ignored second pull during spin, pending-payout cashout guard, failed/successful retries, cashout after acknowledgement |
-| Pine Jack | One player versus dealer, with one optional split | Opening 3:2 reservation, double and split/double maximum increases, aggregate settlement, rejected increase rollback |
-| Pine Shut the Box | Solo against house; 2–4 seats ante into a shared pot | Solo 13x reservation/loss, cancelled ante refund, two seats sharing one account/round, two separate cards and account-specific tie settlements |
+| Pine Jack | One player versus dealer, with one optional split | Opening 3:2 reservation, double and split/double maximum increases, aggregate settlement, definite-decline rollback, real-wire lost double/split hold/retry and exactly-once continuation |
+| Pine Shut the Box | Solo against house; 2–4 seats ante into a shared pot | Solo 13x reservation/loss, cancelled ante refund, two seats sharing one account/round, two separate cards and account-specific tie settlements; real-wire lost ante/increase recovery and cancellation |
 | Pine Lanes (Furball bowling) | Free local gameplay | Setup/mascot selection, actual physics roll and scored result, exit, no money/network API access |
 | Pine Links (Furball golf) | Free local gameplay | Start, actual physics shot and stroke accounting, exit, no money/network API access |
 | Pine Ball (Furball baseball) | Free local gameplay | Start, actual pitch/outcome commit, exit, no money/network API access |
@@ -54,48 +54,45 @@ These numeric results are calculated from the checked-in deterministic math, not
 marketing estimates or a simulation confidence interval. The blackjack edge has
 not been calculated by this harness.
 
-## Remaining interrupted-raise limitation
+## Interrupted-round recovery regression coverage
 
-Receipt ownership and the displayed account balance are covered after a lost
-`increase` acknowledgement. Full gameplay recovery for that case is **not**
-certified: the current credits adapter does not reconcile the caller's captured
-round stake/maximum or its saved round entry when replaying an increase receipt.
-For example, reserving 4 then increasing by 2 with a lost reply can leave a captured
-stake of 4 while the host reservation is 6. The host remains authoritative and
-blocks a new round while the old one is open, but the game's rolled-back raise
-and refund meter require a separate recovery change and regression before live
-acceptance. This is an existing limitation, not fixed by the receipt-account guard.
+The original failure is fixed: reserve 4/10, commit an increase of 2/12 while
+losing its reply, then retry. Captured and persisted terms now converge to host
+stake 6 / maximum 12. The receipt remains bound to its operation, account and
+round; acknowledging the increase cannot count as acknowledging a blocked payout.
 
-
-The separate, non-default release gate reproduces this against the real wallet,
-credits adapter, client, host and saved bytes:
+`known_recovery_gap.lua` retains this exact regression and is included in the
+default suite as well as a separate blocking CI job. It must exit zero:
 
 ```sh
 python3 cc-arcade/tools/test_contracts.py --suite tests/known_recovery_gap.lua
 ```
 
-**Expected today: exit 1. This failure blocks live readiness.** It is intentionally
-excluded from the passing regression suite, not waived or counted as a passing
-expected-failure assertion. The minimal sequence is reserve 4/10, lose the reply
-for an increase of 2 with maximum 12, attempt a settlement while that increase is
-pending, then retry. Current error:
+The consumer tests also run **actual Jack and Box event loops with the real
+wallet, credits adapter, client and host**. Rendering/audio remain stubs. Tests
+cover:
 
-```text
-KNOWN RECOVERY GAP: interrupted increase metadata did not converge: captured stake=4, host=6; persisted stake=4, host=6; captured maximum=10, host=12; persisted maximum=10, host=12
-```
+- Jack double/split with a lost request or lost reply, repeated same-ID retries,
+  ignored gameplay/Q controls while the financial action is unresolved, exactly
+  one continuation and settlement, and rollback after a definite host decline
+- Authoritative metadata lookup loss, missing legacy-host fields, durable recovery
+  marker after client recreation, and blocked new mutations until reconciliation
+- Operator-closed rounds, interrupted terminal balance lookup, correct captured
+  account display, and valid aggregate balances above the per-transaction cap
+- Box first-ante reservation and shared-card later increase with request/reply
+  loss, one seat/pot increment, exact recovered-stake cancellation refund and a
+  completed shared-card tie
+- CC nil/string event-filter forwarding through both gameplay coroutines, frame
+  progress during transport waits, and no competing card-refresh network call
 
-The reproducer also prints the real diagnostic that settlement was blocked,
-retry acknowledged `increase`, and the host round remains `open`. It does not
-claim to drive the full blackjack event loop for that diagnostic.
-
-To unblock: reconcile authoritative round stake/maximum after recovering an
-increase, preserve the intended gameplay action through acknowledgement loss,
-and distinguish an increase receipt from a settlement/refund receipt before
-allowing gameplay to resume or showing a payout as confirmed. Add actual Jack
-lost-double/lost-split event-loop regressions, correct refund/display checks, and
-restart coverage. This requires a separately reviewed continuation change; do
-not fix it by allowing a second charge, forgetting the open round, guessing the
-new stake, or making this gate accept stale metadata.
+A cashier/host update must precede clients for the new additive `roundStatus`
+terms. A new client will hold recovery rather than guess when an older host omits
+stake/maximum. Restart reconciles ledger state; it does not restore a vanished
+shoe, hand or game world. Already-open interrupted games still require the
+existing cashier review/refund path before another round begins. General
+reservation failures outside the covered ante/raise continuation retain their
+existing station-retry/operator-review flow. None of these results replaces the
+real CC:Tweaked/peripheral acceptance checklist.
 
 ## Integration seams for a later paid-mode implementation
 

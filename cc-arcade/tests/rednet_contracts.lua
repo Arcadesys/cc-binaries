@@ -324,5 +324,6 @@ test('actual credits API crosses wire and preserves captured card account',funct
  sane(h)
 end)
 test('attraction consumer wallet contracts',function() require('tests.consumer_contracts')(check,eq) end)
+test('interrupted-raise release regression',function() check(require('tests.known_recovery_gap'),'Recovery gate passed') end)
 print(('PASS Pine Rednet contracts: %d scenarios, %d assertions'):format(scenarios,assertions))
 return {scenarios=scenarios,assertions=assertions}

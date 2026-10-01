@@ -47,6 +47,6 @@ jobs:
       - name: Install Lua
         run: sudo apt-get update && sudo apt-get install --yes lua5.4
       - name: Reject stale interrupted-round recovery
-        # Intentionally blocking until the documented production gap is fixed.
-        # Do not mark continue-on-error or treat the default harness pass as release approval.
+        # Keep the recovered-regression gate blocking; never hide a failure with continue-on-error.
+        # Automated passes still require the documented in-game acceptance.
         run: python3 cc-arcade/tools/test_contracts.py --lua lua5.4 --suite tests/known_recovery_gap.lua

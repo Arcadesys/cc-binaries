@@ -108,6 +108,14 @@ have an explicit admission price with no winnings. The price, replay fee and
 interrupted-session refund policy remain decisions, and admission integration is
 not implemented by this harness.
 
+## Pine Derby still needs separate calibration
+
+The current `derby/odds.lua` table was calibrated over 100,000 simulation seeds.
+This report does not retune or certify those race payouts at a 2% edge. A race-table
+change needs a documented seed model, renewed calibration/error bounds, stake
+rounding policy and reservation tests. Do not extrapolate the exact Slots result
+to horse racing or other attractions.
+
 ## Multiplayer versus
 
 Keep this separate from the solo house tables: winning payouts plus exactly one

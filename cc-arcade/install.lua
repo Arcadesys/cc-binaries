@@ -1837,7 +1837,7 @@ function M.live(game,name,credits,card)
  credits=credits or require('credits')
  card=card or require('derby.ui').card
  local w={mode='live',title=name or 'PINE CASINO'}
- local current,ejecting
+ local current,ejecting,waiting
  local function same(a,b) return a and b and a.path==b.path and a.account==b.account end
  -- Re-reads the drive. Returns true when the inserted card changed.
  function w:refresh()
@@ -1857,38 +1857,59 @@ function M.live(game,name,credits,card)
  function w:session() return current end
  function w:begin(stake,maximum)
   if not current then return nil,'Insert your house card' end
-  local round,err=credits.beginRound(game,stake,maximum,current.path)
-  if not round then return nil,err end
+  local round,err,context=credits.beginRound(game,stake,maximum,current.path)
+  if not round then waiting=context and context.request; return nil,err,context end
+  waiting=nil
   current.balance=current.balance-stake
   return round
  end
  -- Raise the stake mid-round (double down, split); maximum covers the new best case.
  function w:increase(round,stake,maximum)
-  local ok,err=credits.increaseRound(round,stake,maximum)
-  if not ok then return false,err end
+  local ok,err,context=credits.increaseRound(round,stake,maximum)
+  if not ok then
+   waiting=context and context.request or {op='increase',account=round.account,round=round.round,stake=stake,maximum=maximum}
+   return false,err,context
+  end
+  waiting=nil
   if current and current.account==round.account then current.balance=current.balance-stake end
   return true
  end
  -- Settles even if the card was pulled mid-spin: the round names its own account.
  function w:settle(round,amount)
   local ok,balance=pcall(credits.settleRound,round,amount)
-  if not ok then return false,tostring(balance) end
+  if not ok then waiting={op='settle',round=round.round,account=round.account,amount=amount}; return false,tostring(balance) end
+  waiting=nil
   if current and current.account==round.account then current.balance=balance end
   return true,balance
  end
  -- Hands a round's whole stake back (a cancelled table).
  function w:refund(round)
   local ok,err=pcall(credits.refundRound,round)
-  if not ok then return false,tostring(err) end
+  if not ok then waiting={op='refund',round=round.round,account=round.account}; return false,tostring(err) end
+  waiting=nil
   if current and current.account==round.account then current.balance=current.balance+round.stake end
   return true
  end
  function w:retry()
-  local ok,r,account=credits.retry()
+  local ok,r,account,context=credits.retry()
+  local request=context and context.request
+  local matches=true
+  if waiting then
+   matches=request~=nil
+   for key,value in pairs(waiting) do if not request or request[key]~=value then matches=false end end
+  end
+  context=context or {}; context.matches=matches
   -- The durable request identifies this receipt's account, including retries
   -- after a restart. The card currently in the drive may belong to someone else.
-  if ok and current and current.account==account and r and r.balance then current.balance=r.balance end
-  return ok,r
+  if current and current.account==account then
+   if context.balance~=nil then current.balance=context.balance
+   elseif ok and r and r.balance then current.balance=r.balance end
+  end
+  -- Its balance is valid for its own account, but a recovered increase is not
+  -- acknowledgement of a later blocked settlement. Keep that wait unresolved.
+  if not matches then return false,'Recovered a different operation; cashier review is required',context end
+  if ok or (context.status and context.status~='open' and not context.pending) then waiting=nil end
+  return ok,r,context
  end
  -- Hands the card back. The balance stays on the account for the cashier or another game.
  function w:cashout()
@@ -1984,6 +2005,19 @@ local ui=require('derby.ui')
 local M={}
 local client
 local bindings={}
+-- Captured handles are updated from authoritative terms after a recovered raise.
+local handles={}
+local function remember(round)
+ local refs=handles[round.round] or {}; handles[round.round]=refs; refs[round]=true
+end
+local function blocked(cli)
+ local recovery=cli:localState().recovery
+ if recovery then return {ok=false,pending=true,error='Round recovery must finish before another action',request=recovery.request} end
+end
+local function mutation(cli,q)
+ local r=blocked(cli) or cli:mutate(q)
+ return r,{pending=r.offline==true or r.pending==true,request=q}
+end
 local function demo()
  return not config.read() and (_G.ARCADE_DEV_MODE or (arcadeos and arcadeos.freeplay()))
 end
@@ -2051,43 +2085,84 @@ function M.beginRound(game,stake,maximum,path)
   if not status.ok or status.status=='open' then return nil,'Interrupted round '..old.round..': cashier must review/refund it' end
  end
  local id='arcade:'..os.getComputerID()..':'..(localState.counter+1)
- local r=cli:mutate({op='reserve',account=c.account,game=game,stake=stake,maximum=maximum,round=id})
- if not r.ok then return nil,r.error end
+ local q={op='reserve',account=c.account,game=game,stake=stake,maximum=maximum,round=id}
+ local r,context=mutation(cli,q)
+ if not r.ok then return nil,r.error,context end
  local round={account=c.account,round=id,game=game,stake=stake,maximum=maximum}
  localState=cli:localState(); localState.rounds[c.account]=round; cli:saveLocal(localState)
- bindings[path or 'default']=c.account
+ bindings[path or 'default']=c.account; remember(round)
  return round
 end
 function M.increaseRound(round,stake,maximum)
  if round.demo then round.stake=round.stake+stake; round.maximum=maximum; return true end
- local r=network():mutate({op='increase',round=round.round,account=round.account,stake=stake,maximum=maximum})
- if not r.ok then return false,r.error end
+ remember(round)
+ local r,context=mutation(network(),{op='increase',round=round.round,account=round.account,stake=stake,maximum=maximum})
+ if not r.ok then return false,r.error,context end
  round.stake=round.stake+stake; round.maximum=maximum
  local s=network():localState(); s.rounds[round.account]=round; network():saveLocal(s)
  return true
 end
 function M.settleRound(round,amount)
  if round.demo then return 999 end
- local r=checked(network():mutate({op='settle',round=round.round,account=round.account,amount=amount}))
- local s=network():localState(); s.rounds[round.account]=nil; network():saveLocal(s)
+ local r=checked((mutation(network(),{op='settle',round=round.round,account=round.account,amount=amount})))
+ local s=network():localState(); s.rounds[round.account]=nil; network():saveLocal(s); handles[round.round]=nil
  return r.balance
 end
 function M.refundRound(round)
  if round.demo then return true end
- checked(network():mutate({op='refund',round=round.round,account=round.account}))
- local s=network():localState(); s.rounds[round.account]=nil; network():saveLocal(s); return true
+ checked((mutation(network(),{op='refund',round=round.round,account=round.account})))
+ local s=network():localState(); s.rounds[round.account]=nil; network():saveLocal(s); handles[round.round]=nil; return true
 end
--- Resend the last unacknowledged request (for example a settlement lost while the house
--- was offline). Returns ok, the house result, and the persisted request account.
+-- Return the original receipt identity as well as its result. Reconciliation is
+-- persisted before its read can yield, so a missing status reply keeps all new
+-- mutations blocked until retry completes, including after client recreation.
 function M.retry()
  if demo() then return true,{ok=true} end
- local cli=network(); local r=cli:retry()
- if not r.ok then return false,r.error end
- local s=cli:localState(); local q=s.last and s.last.request
- if q and (q.op=='settle' or q.op=='refund') and s.rounds[q.account] and s.rounds[q.account].round==q.round then
-  s.rounds[q.account]=nil; cli:saveLocal(s)
+ local cli=network(); local s=cli:localState(); local r,q
+ if s.recovery then r,q=s.recovery.result,s.recovery.request
+ else
+  r=cli:retry(); s=cli:localState(); q=s.pending or (s.last and s.last.request)
  end
- return true,r,q and q.account
+ local context={request=q,pending=r.offline==true or r.pending==true}
+ if not r.ok then return false,r.error,q and q.account,context end
+ if q and (q.op=='reserve' or q.op=='increase') then
+  s.recovery={request=q,result=r}; cli:saveLocal(s)
+  local status=cli:read({op='roundStatus',round=q.round,account=q.account})
+  local function integer(n) return type(n)=='number' and n>=0 and n%1==0 and n<=1000000000 end
+  if not status.ok or not integer(status.stake) or not integer(status.maximum) or status.maximum<status.stake then
+   context.pending=true
+   return false,status.error or 'House did not return authoritative round terms',q.account,context
+  end
+  context.status=status.status
+  local saved=s.rounds[q.account]
+  if saved and saved.round~=q.round then
+   context.pending=true; return false,'A different account round requires cashier review',q.account,context
+  end
+  local game=(saved and saved.game) or q.game
+  local round={account=q.account,round=q.round,game=game,stake=status.stake,maximum=status.maximum}
+  for handle in pairs(handles[q.round] or {}) do
+   if handle.account==q.account then handle.stake=status.stake; handle.maximum=status.maximum end
+  end
+  context.round=round
+  if status.status=='open' then s.rounds[q.account]=round
+  elseif status.status=='settled' or status.status=='refunded' then
+   -- The increase receipt predates an operator refund/settlement. Read this
+   -- explicit account, never the card path or that stale receipt balance.
+   local balance=cli:read({op='lookup',account=q.account})
+   local amount=balance.balance
+   local validBalance=type(amount)=='number' and amount>=0 and amount<math.huge and amount%1==0
+   if not balance.ok or not validBalance then
+    context.pending=true; return false,balance.error or 'House balance unavailable',q.account,context
+   end
+   context.balance=balance.balance; s.rounds[q.account]=nil; handles[q.round]=nil
+  else context.pending=true; return false,'Unknown host round status',q.account,context end
+  s.recovery=nil; cli:saveLocal(s)
+  if status.status~='open' then return false,'Round '..status.status..'; the interrupted hand cannot continue',q.account,context end
+ elseif q and (q.op=='settle' or q.op=='refund') then
+  if s.rounds[q.account] and s.rounds[q.account].round==q.round then s.rounds[q.account]=nil; cli:saveLocal(s) end
+  handles[q.round]=nil
+ end
+ return true,r,q and q.account,context
 end
 -- Unchecked edits must fail loudly if a forgotten consumer tries the old API.
 function M.set() error('HOUSE: local balance editing is retired',0) end
@@ -2550,7 +2625,8 @@ function M.apply(s,q)
   return {ok=true,balance=a.balance,name=a.name,account=q.account}
  elseif q.op=='roundStatus' then
   local r=s.rounds[q.round]; if not r or r.account~=q.account then return fail('Unknown round') end
-  return {ok=true,status=r.status,paid=r.paid}
+  -- Additive v1 fields let interrupted clients recover the actual reserved terms.
+  return {ok=true,status=r.status,paid=r.paid,stake=r.stake,maximum=r.maximum}
  elseif q.op=='status' then return s.transactions[q.id] and s.transactions[q.id].result or fail('Unknown transaction') end
  if type(q.id)~='string' or #q.id>160 then return fail('Transaction ID required') end
  -- The transport serialises a stable request and rejects reuse with different content.
@@ -8448,8 +8524,30 @@ function M.run(opts)
     sound:play(clock(),'hat',.5,12+players.avatars[p])
    elseif a=='ante' and s then
     local key=s.account or s.name or 'card'
-    local r=players.rounds[key]; local ok,err
-    if r then ok,err=wallet:increase(r,stake,pot) else r,err=wallet:begin(stake,pot); ok=r~=nil end
+    local r=players.rounds[key]; local ok,err,context
+    if r then ok,err,context=wallet:increase(r,stake,pot)
+    else r,err,context=wallet:begin(stake,pot); ok=r~=nil end
+    -- Hold this exact seat/ante until its request is acknowledged. Passing the
+    -- card or pressing ANTE again must not charge or increment the pot twice.
+    while not ok and context and context.pending do
+     say('HOUSE OFFLINE: ANTE PENDING')
+     local action=ask({{name='retry',label='RETRY'},{name='retry',label='RETRY'},{name='retry',label='RETRY'}})
+     if action=='retry' then
+      ok,err,context=wallet:retry()
+      if context and context.matches==false then context.pending=true end
+      if ok and not r then
+       r=context and context.round
+       if not r then ok=false; err='Recovered ante needs cashier review'; context={pending=true} end
+      end
+     end
+    end
+    if context and context.status and context.status~='open' then
+     -- An operator closed this reservation while it was interrupted. Do not
+     -- seat it; refund any other account's collected ante before cancelling.
+     players.rounds[key]=nil
+     for _,other in pairs(players.rounds) do settle(other,0,'refund') end
+     players=nil; say('MATCH CANCELLED: ROUND CLOSED BY HOUSE'); wait(1.5); return false
+    end
     if ok then
      players.rounds[key]=r; players.seat[p]=key; players.names[p]=wallet.mode=='live' and s.name or nil; players.pot=players.pot+stake
      players.current=p+1; sound:play(clock(),'pling',.8,10+p*3)
@@ -8542,7 +8640,10 @@ function M.run(opts)
  local function resume(...)
   local ok,r=coroutine.resume(co,...)
   if not ok then error(r,0) end
-  request=r
+  -- The gameplay script also calls CC APIs, which yield nil/string event
+  -- filters. Keep those distinct from its own timed waits and choices.
+  if type(r)=='table' and (r.ask or r.wait) then request=r
+  else request={event=true,filter=r} end
  end
  local function choose(i,name)
   if not request or not request.ask then return end
@@ -8553,7 +8654,7 @@ function M.run(opts)
  local nextCard=0
  local function update(now)
   if request and request.wait and now>=request.wait then resume() end
-  if now>=nextCard then
+  if now>=nextCard and not (request and request.event) then
    nextCard=now+1
    if wallet:refresh() and request and request.card then resume('card') end
   end
@@ -8598,8 +8699,12 @@ function M.run(opts)
  local timer=os.startTimer(0)
  while true do
   local e,a,b,c=os.pullEvent()
+  local forwarding=request and request.event
+  if forwarding and (not request.filter or request.filter==e) then resume(e,a,b,c) end
   if e=='timer' and a==timer then
    local now=clock(); update(now); draw(now); timer=os.startTimer(.05)
+  elseif forwarding then
+   if e=='disk' or e=='disk_eject' then nextCard=0 end
   elseif e=='key' then
    if a==keys.q or a==keys.backspace then
     if request and request.ask and request.card==true then return end
@@ -9083,6 +9188,20 @@ function M.run(opts)
    if a=='retry' then ok,err=wallet:retry() end
   end
  end
+ -- Keep the tentative double/split intact while its exact raise is uncertain.
+ -- A definite refusal rolls it back; a recovered receipt resumes it once.
+ local function increase(round,stake,maximum)
+  local ok,err,context=wallet:increase(round,stake,maximum)
+  while not ok and context and context.pending do
+   say('HOUSE OFFLINE: RAISE PENDING')
+   local a=ask({{name='retry',label='RETRY'},{name='retry',label='RETRY'},{name='retry',label='RETRY'}})
+   if a=='retry' then
+    ok,err,context=wallet:retry()
+    if context and context.matches==false then context.pending=true end
+   end
+  end
+  return ok,err,context and context.status and context.status~='open'
+ end
  local function decide(h)
   local hand=hands[h]
   while rules.total(hand.cards)<21 and not hand.done do
@@ -9101,13 +9220,15 @@ function M.run(opts)
    elseif a=='double' and rules.canDouble(hand) then
     local stake=hand.stake
     hand.doubled=true; hand.stake=stake*2
-    local ok,err=wallet:increase(hands.round,stake,rules.maximum(hands))
+    local ok,err,closed=increase(hands.round,stake,rules.maximum(hands))
+    if closed then hands.aborted=true; return end
     if not ok then hand.doubled=false; hand.stake=stake; say(tostring(err):upper()); wait(1)
     else placeBet(h); sound:play(clock(),'snare',.7,10); dealPlayer(h); hand.done=true end
    elseif a=='split' and rules.canSplit(hands,hand) then
     local second={cards={table.remove(hand.cards)},actors={table.remove(hand.actors)},stake=hand.stake,split=true}
     hand.split=true; hands[2]=second
-    local ok,err=wallet:increase(hands.round,hand.stake,rules.maximum(hands))
+    local ok,err,closed=increase(hands.round,hand.stake,rules.maximum(hands))
+    if closed then hands.aborted=true; return end
     if not ok then
      hands[2]=nil; hand.split=false; hand.cards[2]=second.cards[1]; hand.actors[2]=second.actors[1]
      say(tostring(err):upper()); wait(1)
@@ -9138,7 +9259,10 @@ function M.run(opts)
   if (up==1 or up==10) and dealerBJ or playerBJ then
    revealHole()
   else
-   for h=1,2 do if hands[h] then active=h; decide(h) end end
+   for h=1,2 do if hands[h] then active=h; decide(h); if hands.aborted then break end end end
+   if hands.aborted then
+    say('ROUND CLOSED BY HOUSE: HAND CANCELLED'); wait(1.5); act:clear(); hands,dealer,results={},{},nil; return
+   end
    active=0
    revealHole()
    local live=false
@@ -9192,7 +9316,10 @@ function M.run(opts)
  local function resume(...)
   local ok,r=coroutine.resume(co,...)
   if not ok then error(r,0) end
-  request=r
+  -- CC APIs yield an event filter (often nil), whereas this script's own
+  -- waits/choices yield request tables. Forward raw events only to API waits.
+  if type(r)=='table' and (r.ask or r.wait) then request=r
+  else request={event=true,filter=r} end
  end
  local function choose(i,name)
   if not request or not request.ask then return end
@@ -9203,7 +9330,7 @@ function M.run(opts)
  local nextCard=0
  local function update(now)
   if request and request.wait and now>=request.wait then resume() end
-  if now>=nextCard then
+  if now>=nextCard and not (request and request.event) then
    nextCard=now+1
    if wallet:refresh() and request and request.card then resume('card') end
   end
@@ -9227,8 +9354,13 @@ function M.run(opts)
  local timer=os.startTimer(0)
  while true do
   local e,a,b,c=os.pullEvent()
+  local forwarding=request and request.event
+  if forwarding and (not request.filter or request.filter==e) then resume(e,a,b,c) end
   if e=='timer' and a==timer then
    local now=clock(); update(now); draw(now); timer=os.startTimer(.05)
+  elseif forwarding then
+   -- Transport owns this event; do not turn the same key into a table action.
+   if e=='disk' or e=='disk_eject' then nextCard=0 end
   elseif e=='key' then
    if a==keys.q or a==keys.backspace then
     if #hands==0 or (request and request.ask and request.card) then return end

@@ -13,24 +13,34 @@ Minecraft installation, credentials, modem, or inventory is required. Exit statu
 is nonzero on an assertion failure or timeout. CI runs the support and contract
 suites on both Lua versions. This does **not** replace the existing CraftOS suites.
 
-## Release is blocked by interrupted-raise recovery
+## Interrupted-raise recovery gate
 
-The default suite passes supported contract scenarios. A **separate blocking
-acceptance gate currently fails**:
+The default suite includes this recovery regression. To run it alone:
 
 ```sh
 python3 cc-arcade/tools/test_contracts.py --suite tests/known_recovery_gap.lua
 ```
 
-When the host commits an increase but the reply is lost, retry acknowledges that
-increase while the caller and saved local round retain their old stake/maximum.
-Pine Jack can also roll back a double/split locally and later mistake receipt of
-that earlier operation for completion of a payout. This needs authoritative round
-terms, operation-specific recovery and game continuation handling, not just a
-balance refresh. The CI release-recovery job must remain failing until the gap is
-fixed; do not bypass it or call a green default suite in-game readiness. The
-account-identity fix in this change prevents a retry balance being shown on a
-replacement card, but does not claim to solve interrupted raises.
+This reproduces the original lost-increase bug and now requires captured and
+persisted stake/maximum to converge to authoritative host terms. It also asserts
+that acknowledging an earlier increase cannot count as completing a later blocked
+settlement. The separate CI release-recovery job remains a required behavioral
+check; it has not been disabled or marked optional.
+
+Recovery persists a marker before querying host terms, blocks new mutations until
+reconciliation finishes, and matches the exact operation/account/round. Jack holds
+a tentative double/split through uncertain acknowledgments instead of rolling it
+back and continuing. Definite declines still roll back. Jack and Box forward actual
+CC event waits from their game scripts, so wallet Rednet replies and timeouts reach
+the waiting code without a competing card refresh consuming them.
+
+Update the house host before clients: successful v1 roundStatus responses now
+include additive stake and maximum fields. Existing clients ignore these extras;
+new clients fail closed during recovery if an old host cannot supply them. A
+program restart reconciles financial terms, not a vanished blackjack shoe or game
+state. An interrupted open hand still requires the documented cashier
+review/refund path before a new game starts. Native CC/peripheral acceptance below
+is still required; local/CI green does not imply in-game verification.
 
 ## What actually runs
 

@@ -20,6 +20,9 @@
 -- allowed and participate in ledger idempotency. Names are currently coerced with
 -- tostring; owner is supplied by service, not trusted from the request. Empty
 -- round/game strings and zero-credit rounds are accepted by the deployed ledger.
+-- Successful roundStatus includes additive stake/maximum totals from the host.
+-- Existing v1 status/paid meanings are unchanged; the recovery contract requires
+-- the new terms rather than assuming an interrupted client's local stake is current.
 -- Fixtures containing NaN/infinity are local adversarial inputs, not JSON files.
 local M={protocol='pine-derby-house-v1',maxCredits=1000000000}
 local reads={snapshot=true,lookup=true,status=true,roundStatus=true}
@@ -161,10 +164,12 @@ function M.validateResponse(q,r,originalRequest)
  elseif op=='lookup' then
   if not balance(r) or not isString(r.name) or not isString(r.account) or r.account~=q.account then return fail('invalid lookup response') end
  elseif op=='roundStatus' then
+  if not credits(r.stake) or not credits(r.maximum) or r.maximum<r.stake then return fail('round status needs valid authoritative stake and maximum') end
   if r.status=='open' then
    if r.paid~=nil then return fail('open round must not have a paid field') end
   elseif r.status=='settled' or r.status=='refunded' then
-   if not credits(r.paid) then return fail('closed round needs paid credits') end
+   if not credits(r.paid) or r.paid>r.maximum then return fail('closed round needs paid credits within its maximum') end
+   if r.status=='refunded' and r.paid~=r.stake then return fail('refunded round must pay its full authoritative stake') end
   else return fail('invalid round status') end
  elseif op=='create' then
   if not isString(r.account) or r.balance~=0 then return fail('invalid create response') end
@@ -213,10 +218,12 @@ function M.fixtureState(context)
  if context=='empty' then s.bank=0; s.accounts={}; s.nextAccount=0
  elseif context=='rich' then s.bank=M.maxCredits; s.accounts['house-1'].balance=M.maxCredits; s.accounts['house-2'].balance=0
  elseif context=='largeBalance' then s.bank=2000000000; s.accounts['house-1'].balance=M.maxCredits+1
- elseif context=='open' or context=='settled' or context=='refunded' then
+ elseif context=='open' or context=='increased' or context=='settled' or context=='refunded' then
   s.rounds['arcade:42:1']={account='house-1',stake=10,maximum=40,status='open',game='pinejack',owner='42'}
   s.accounts['house-1'].balance=90
-  if context~='open' then
+  if context=='increased' then
+   local r=s.rounds['arcade:42:1']; r.stake=20; r.maximum=80; s.accounts['house-1'].balance=80
+  elseif context~='open' then
    local r=s.rounds['arcade:42:1']; r.status=context; r.paid=context=='settled' and 30 or 10
    s.accounts['house-1'].balance=s.accounts['house-1'].balance+r.paid
   end
@@ -243,9 +250,10 @@ valid('lookup accumulated balance above request cap',{op='lookup',account='house
 valid('lookup from display',{op='lookup',account='house-2'},{ok=true,account='house-2',name='BETA',balance=30},'funded','display')
 valid('status returns original receipt',{op='status',id='42:receipt'},{ok=true,balance=120,paid=30},'receipt','display',9)
 valid('status pending receipt',{op='status',id='7:pending'},{ok=true,pending=true,id='7:pending'},'pending')
-valid('roundStatus open omits paid',{op='roundStatus',account='house-1',round='arcade:42:1'},{ok=true,status='open'},'open','display')
-valid('roundStatus settled',{op='roundStatus',account='house-1',round='arcade:42:1'},{ok=true,status='settled',paid=30},'settled')
-valid('roundStatus refunded',{op='roundStatus',account='house-1',round='arcade:42:1'},{ok=true,status='refunded',paid=10},'refunded')
+valid('roundStatus open omits paid',{op='roundStatus',account='house-1',round='arcade:42:1'},{ok=true,status='open',stake=10,maximum=40},'open','display')
+valid('roundStatus reports increased total terms',{op='roundStatus',account='house-1',round='arcade:42:1'},{ok=true,status='open',stake=20,maximum=80},'increased')
+valid('roundStatus settled',{op='roundStatus',account='house-1',round='arcade:42:1'},{ok=true,status='settled',paid=30,stake=10,maximum=40},'settled')
+valid('roundStatus refunded',{op='roundStatus',account='house-1',round='arcade:42:1'},{ok=true,status='refunded',paid=10,stake=10,maximum=40},'refunded')
 valid('create named account',{op='create',id='7:create',name='NEW PLAYER'},{ok=true,account='house-3',balance=0},nil,'cashier',7)
 valid('create default guest',{op='create',id='7:guest'},{ok=true,account='house-1',balance=0},'empty','cashier',7)
 valid('create coerces numeric name',{op='create',id='7:number',name=123},{ok=true,account='house-3',balance=0},nil,'cashier',7)
@@ -343,6 +351,10 @@ rejected('pending transfer freezes reservations',{op='reserve',id='42:pending',a
 M.validResponses={}
 for _,c in ipairs(M.validRequests) do M.validResponses[#M.validResponses+1]={name=c.name,request=M.copy(c.request),response=M.copy(c.expected)} end
 local function response(name,q,r) M.validResponses[#M.validResponses+1]={name=name,request=q,response=r} end
+response('roundStatus zero-cost reward terms',{op='roundStatus'},{ok=true,status='open',stake=0,maximum=5})
+response('roundStatus zero-liability terms',{op='roundStatus'},{ok=true,status='open',stake=0,maximum=0})
+response('roundStatus maximum integer terms',{op='roundStatus'},{ok=true,status='open',stake=1000000000,maximum=1000000000})
+response('roundStatus settled loss retains reserved terms',{op='roundStatus'},{ok=true,status='settled',stake=10,maximum=40,paid=0})
 response('ordinary denial',{op='lookup',account='missing'},{ok=false,error='Insert a new house account card'})
 response('transport timeout',{op='lookup',account='house-1'},{ok=false,error='House offline; request retained for retry',offline=true})
 response('client pending reconciliation',{op='deposit',id='7:1',account='house-1',amount=5},{ok=false,error='Cashier transfer pending reconciliation',pending=true})
@@ -379,9 +391,22 @@ badResponse('negative balance',lookup,{ok=true,account='house-1',name='ALPHA',ba
 badResponse('NaN balance',lookup,{ok=true,account='house-1',name='ALPHA',balance=0/0})
 badResponse('wrong lookup account',lookup,{ok=true,account='house-2',name='BETA',balance=30})
 badResponse('missing name',lookup,{ok=true,account='house-1',balance=100})
-badResponse('open round with paid',{op='roundStatus'},{ok=true,status='open',paid=0})
-badResponse('settled round without paid',{op='roundStatus'},{ok=true,status='settled'})
-badResponse('unknown round status',{op='roundStatus'},{ok=true,status='complete',paid=10})
+badResponse('open round with paid',{op='roundStatus'},{ok=true,status='open',paid=0,stake=10,maximum=40})
+badResponse('settled round without paid',{op='roundStatus'},{ok=true,status='settled',stake=10,maximum=40})
+badResponse('unknown round status',{op='roundStatus'},{ok=true,status='complete',paid=10,stake=10,maximum=40})
+badResponse('roundStatus legacy missing recovery terms',{op='roundStatus'},{ok=true,status='open'})
+for _,status in ipairs({'open','settled','refunded'}) do
+ for _,field in ipairs({'stake','maximum'}) do
+  for _,bad in ipairs({{name='missing'},{name='string',value='10'},{name='negative',value=-1},
+   {name='fractional',value=.5},{name='over cap',value=1000000001},{name='NaN',value=0/0},{name='infinite',value=math.huge}}) do
+   local r={ok=true,status=status,stake=10,maximum=40}; if status~='open' then r.paid=10 end; r[field]=bad.value
+   badResponse('roundStatus '..status..' '..field..' '..bad.name,{op='roundStatus'},r)
+  end
+ end
+end
+badResponse('roundStatus maximum below total stake',{op='roundStatus'},{ok=true,status='open',stake=20,maximum=10})
+badResponse('roundStatus paid exceeds maximum',{op='roundStatus'},{ok=true,status='settled',stake=10,maximum=40,paid=41})
+badResponse('roundStatus refund differs from total stake',{op='roundStatus'},{ok=true,status='refunded',stake=20,maximum=80,paid=10})
 badResponse('create nonzero opening balance',{op='create'},{ok=true,account='house-3',balance=10})
 badResponse('reserve wrong round',{op='reserve',round='wanted'},{ok=true,round='other',balance=90})
 badResponse('increase missing balance',{op='increase'},{ok=true})

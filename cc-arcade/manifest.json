@@ -23,11 +23,11 @@
     },
     {
      "path": "casino/wallet.lua",
-     "size": 4177
+     "size": 5310
     },
     {
      "path": "credits.lua",
-     "size": 5549
+     "size": 8592
     },
     {
      "path": "derby/client.lua",
@@ -110,11 +110,11 @@
     },
     {
      "path": "casino/wallet.lua",
-     "size": 4177
+     "size": 5310
     },
     {
      "path": "credits.lua",
-     "size": 5549
+     "size": 8592
     },
     {
      "path": "derby/client.lua",
@@ -209,11 +209,11 @@
     },
     {
      "path": "casino/wallet.lua",
-     "size": 4177
+     "size": 5310
     },
     {
      "path": "credits.lua",
-     "size": 5549
+     "size": 8592
     },
     {
      "path": "derby/client.lua",
@@ -265,7 +265,7 @@
     },
     {
      "path": "pinejack/game.lua",
-     "size": 13059
+     "size": 14575
     },
     {
      "path": "pinejack/render.lua",
@@ -308,11 +308,11 @@
     },
     {
      "path": "casino/wallet.lua",
-     "size": 4177
+     "size": 5310
     },
     {
      "path": "credits.lua",
-     "size": 5549
+     "size": 8592
     },
     {
      "path": "derby/client.lua",
@@ -372,7 +372,7 @@
     },
     {
      "path": "pinebox/game.lua",
-     "size": 15361
+     "size": 16984
     },
     {
      "path": "pinebox/render.lua",
@@ -419,7 +419,7 @@
     },
     {
      "path": "derby/ledger.lua",
-     "size": 5487
+     "size": 5602
     },
     {
      "path": "derby/odds.json",
@@ -519,7 +519,7 @@
     },
     {
      "path": "derby/ledger.lua",
-     "size": 5487
+     "size": 5602
     },
     {
      "path": "derby/odds.lua",

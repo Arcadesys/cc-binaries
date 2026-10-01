@@ -29,7 +29,7 @@ function M.live(game,name,credits,card)
  credits=credits or require('credits')
  card=card or require('derby.ui').card
  local w={mode='live',title=name or 'PINE CASINO'}
- local current,ejecting
+ local current,ejecting,waiting
  local function same(a,b) return a and b and a.path==b.path and a.account==b.account end
  -- Re-reads the drive. Returns true when the inserted card changed.
  function w:refresh()
@@ -49,38 +49,59 @@ function M.live(game,name,credits,card)
  function w:session() return current end
  function w:begin(stake,maximum)
   if not current then return nil,'Insert your house card' end
-  local round,err=credits.beginRound(game,stake,maximum,current.path)
-  if not round then return nil,err end
+  local round,err,context=credits.beginRound(game,stake,maximum,current.path)
+  if not round then waiting=context and context.request; return nil,err,context end
+  waiting=nil
   current.balance=current.balance-stake
   return round
  end
  -- Raise the stake mid-round (double down, split); maximum covers the new best case.
  function w:increase(round,stake,maximum)
-  local ok,err=credits.increaseRound(round,stake,maximum)
-  if not ok then return false,err end
+  local ok,err,context=credits.increaseRound(round,stake,maximum)
+  if not ok then
+   waiting=context and context.request or {op='increase',account=round.account,round=round.round,stake=stake,maximum=maximum}
+   return false,err,context
+  end
+  waiting=nil
   if current and current.account==round.account then current.balance=current.balance-stake end
   return true
  end
  -- Settles even if the card was pulled mid-spin: the round names its own account.
  function w:settle(round,amount)
   local ok,balance=pcall(credits.settleRound,round,amount)
-  if not ok then return false,tostring(balance) end
+  if not ok then waiting={op='settle',round=round.round,account=round.account,amount=amount}; return false,tostring(balance) end
+  waiting=nil
   if current and current.account==round.account then current.balance=balance end
   return true,balance
  end
  -- Hands a round's whole stake back (a cancelled table).
  function w:refund(round)
   local ok,err=pcall(credits.refundRound,round)
-  if not ok then return false,tostring(err) end
+  if not ok then waiting={op='refund',round=round.round,account=round.account}; return false,tostring(err) end
+  waiting=nil
   if current and current.account==round.account then current.balance=current.balance+round.stake end
   return true
  end
  function w:retry()
-  local ok,r,account=credits.retry()
+  local ok,r,account,context=credits.retry()
+  local request=context and context.request
+  local matches=true
+  if waiting then
+   matches=request~=nil
+   for key,value in pairs(waiting) do if not request or request[key]~=value then matches=false end end
+  end
+  context=context or {}; context.matches=matches
   -- The durable request identifies this receipt's account, including retries
   -- after a restart. The card currently in the drive may belong to someone else.
-  if ok and current and current.account==account and r and r.balance then current.balance=r.balance end
-  return ok,r
+  if current and current.account==account then
+   if context.balance~=nil then current.balance=context.balance
+   elseif ok and r and r.balance then current.balance=r.balance end
+  end
+  -- Its balance is valid for its own account, but a recovered increase is not
+  -- acknowledgement of a later blocked settlement. Keep that wait unresolved.
+  if not matches then return false,'Recovered a different operation; cashier review is required',context end
+  if ok or (context.status and context.status~='open' and not context.pending) then waiting=nil end
+  return ok,r,context
  end
  -- Hands the card back. The balance stays on the account for the cashier or another game.
  function w:cashout()

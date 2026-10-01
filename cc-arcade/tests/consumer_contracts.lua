@@ -94,20 +94,21 @@ local function liveFixture(game,options)
  local function commit(round,amount) balances[round.account]=balances[round.account]+amount; return balances[round.account] end
  function credits.settleRound(round,amount)
   note('settle',{round=round.round,account=round.account,amount=amount})
-  if options.failSettle then pending={round=round,amount=amount}; error('HOUSE: unavailable',0) end
+  if options.failSettle then pending={round=round,amount=amount,request={op='settle',round=round.round,account=round.account,amount=amount}}; error('HOUSE: unavailable',0) end
   return commit(round,amount)
  end
  function credits.refundRound(round)
   note('refund',{round=round.round,account=round.account,stake=round.stake})
-  if options.failRefund then pending={round=round,amount=round.stake}; error('HOUSE: unavailable',0) end
+  if options.failRefund then pending={round=round,amount=round.stake,request={op='refund',round=round.round,account=round.account}}; error('HOUSE: unavailable',0) end
   commit(round,round.stake); return true
  end
  function credits.retry()
   note('retry')
-  if options.failRetry then return false,'still unavailable' end
+  if options.failRetry then return false,'still unavailable',pending and pending.round.account,{pending=true,request=pending and pending.request} end
   local account=pending and pending.round.account or nil
+  local context={pending=false,request=pending and pending.request}
   local balance=pending and commit(pending.round,pending.amount) or nil; pending=nil
-  return true,{ok=true,balance=balance},account
+  return true,{ok=true,balance=balance},account,context
  end
  local wallet=rt.env.require('casino.wallet').live(game,game,credits,function() return inserted end)
  local fixture={runtime=rt,wallet=wallet,credits=credits,log=log,balances=balances,options=options}
@@ -134,7 +135,263 @@ local function boxOptions(values)
   seed=(seed*1103515245+12345)%2147483648; return lo+seed%(hi-lo+1)
  end}
 end
+-- Run actual game coroutines against actual wallet/credits/host, replacing only
+-- render/audio and the physical event source. Both nested and outer API waits
+-- receive the real fake-Rednet messages and transport timers.
+local function wireFixture(game)
+ local hub=require('tests.support.hub').new(); local node=hub:computer(3)
+ node.require('derby.config').write({role='station',modem='wired',host=1})
+ local state=hub:state(); state.accounts['house-2']={name='Bo',balance=60}; state.nextAccount=2
+ hub.host.require('derby.store').open('/house-bank/state',{}):save(state); hub:restartHost()
+ local current
+ local f={hub=hub,node=node}
+ function f:card(account)
+  current=account and {path='/disk',drive='drive_0',account=account} or nil
+  node.env.fs.makeDir('/disk')
+  local file=assert(node.env.fs.open('/disk/house-card.json','w'))
+  file.write(node.env.textutils.serializeJSON({account=account})); file.close()
+ end
+ function f:call(fn)
+  hub:task(node,fn); hub:pump()
+  if not node.finished then hub:timeout(node); hub:pump() end
+  assert(node.finished,'Wallet fixture call did not complete'); return node.result
+ end
+ function f:reload()
+  node=hub:computer(3,node.files); self.node=node
+  self.credits=node.require('credits')
+  self.wallet=node.require('casino.wallet').live(game,'WIRE '..game,self.credits,function() return current end)
+ end
+ f:card('house-1'); f:reload()
+ function f:play(module,options)
+  local rt=gameRuntime(); local rawSend=rt.send
+  function rt:send(...)
+   node.co=self.co; node.finished=false; hub.now=self.now
+   rawSend(self,...); hub:pump()
+   while coroutine.status(self.co)~='dead' do
+    local earliest
+    for _,at in pairs(node.timers) do if not earliest or at<earliest then earliest=at end end
+    if not earliest or earliest>hub.now then break end
+    hub:timeout(node); hub:pump()
+   end
+  end
+  rt:run(module,self.wallet,options); self.runtime=rt; return rt
+ end
+ function f:requests(op)
+  local out={}
+  for _,packet in ipairs(hub.trace) do
+   local q=packet.from==3 and packet.message.request
+   if q and (not op or q.op==op) then out[#out+1]=q end
+  end
+  return out
+ end
+ function f:lose(op,kind)
+  local token
+  hub.hook=function(packet)
+   local q=packet.from==3 and packet.message.request
+   if q and q.op==op then token=packet.message.token; if kind=='request' then return false end end
+   if kind=='reply' and packet.from==1 and packet.message.token==token then return false end
+  end
+ end
+ return f
+end
 return function(check,eq)
+ -- Metadata reconciliation has its own durable retry stage. Losing that read
+ -- never resends the acknowledged increase, including after client recreation.
+ for _,fault in ipairs({'status timeout','legacy host'}) do
+  local f=wireFixture('pinejack'); f:call(function() return f.wallet:refresh() end)
+  local round=f:call(function() return f.wallet:begin(4,10) end)
+  f:lose('increase','reply'); check(not f:call(function() return f.wallet:increase(round,2,12) end),'Increase reply lost before '..fault)
+  local token
+  f.hub.hook=function(packet)
+   local q=packet.from==3 and packet.message.request
+   if q and q.op=='roundStatus' then token=packet.message.token end
+   if packet.from==1 and packet.message.token==token then
+    if fault=='status timeout' then return false end
+    packet.message.result.stake=nil; packet.message.result.maximum=nil; return {packet}
+   end
+  end
+  local result=f:call(function() return {f.wallet:retry()} end)
+  check(not result[1] and result[3].pending,'Unconfirmed authoritative terms remain pending: '..fault)
+  eq(round.stake,4,'No guessed increase total before authoritative terms')
+  local saved=f.node.require('derby.store').open('/house-client/state',{}):get()
+  check(saved.recovery~=nil,'Recovery intent is durable'); local counter=saved.counter
+  check(not f:call(function() return f.credits.increaseRound(round,1,14) end),'New mutation blocked while terms unavailable')
+  eq(f.node.require('derby.store').open('/house-client/state',{}):get().counter,counter,'Blocked mutation consumes no transaction ID')
+  if fault=='status timeout' then f:reload(); f:call(function() return f.wallet:refresh() end) end
+  f.hub.hook=nil; check(f:call(function() return f.wallet:retry() end),'Authoritative read retry recovers '..fault)
+  saved=f.node.require('derby.store').open('/house-client/state',{}):get()
+  eq(saved.rounds['house-1'].stake,6,'Saved stake becomes host total'); eq(saved.rounds['house-1'].maximum,12,'Saved maximum becomes host total')
+  check(not saved.recovery,'Completed reconciliation clears durable marker')
+  if fault=='legacy host' then eq(round.stake,6,'Bound handle updates after host upgrade'); eq(round.maximum,12,'Bound maximum updates after host upgrade') end
+  local sent=#f:requests('increase'); check(f:call(function() return f.wallet:retry() end),'Repeated receipt retry stays safe')
+  eq(#f:requests('increase'),sent,'Metadata retries never resend increase'); eq(f.hub:state().rounds[round.round].stake,6,'Duplicate retry cannot add stake twice')
+  local reservations=#f:requests('reserve')
+  check(not f:call(function() return f.wallet:begin(1,2) end),'Recreated/interrupted open hand requires review before new gameplay')
+  eq(#f:requests('reserve'),reservations,'Restart cannot silently create another paid hand')
+  check(f:call(function() return f.wallet:refund(saved.rounds['house-1']) end),'Recovered exact terms can be refunded')
+  eq(f.wallet:session().balance,100,'Recovered refund display matches host'); eq(f.hub:state().accounts['house-1'].balance,100,'Recovered refund returns all six credits')
+ end
+ -- An operator can close the interrupted round. A stale increase receipt must
+ -- neither resume its hand nor overwrite the authoritative refunded balance.
+ do
+  local f=wireFixture('pinejack'); f:call(function() return f.wallet:refresh() end)
+  local round=f:call(function() return f.wallet:begin(4,10) end)
+  f:lose('increase','reply'); f:call(function() return f.wallet:increase(round,2,12) end)
+  local service=f.hub.host.require('derby.service').new(f.hub.host.require('derby.store').open('/house-bank/state',{}),{},function() error('No inventory needed') end)
+  check(service:operator('refund',round.round).ok,'Operator refunds committed interrupted increase'); f.hub:restartHost()
+  f:lose('lookup','reply')
+  local result=f:call(function() return {f.wallet:retry()} end)
+  check(not result[1] and result[3].pending and result[3].status=='refunded','Terminal balance lookup timeout still holds recovery')
+  check(f.node.require('derby.store').open('/house-client/state',{}):get().recovery~=nil,'Terminal lookup retains durable marker')
+  eq(f.wallet:session().balance,96,'Stale increase receipt cannot overwrite terminal balance while lookup pending')
+  f.hub.hook=nil; result=f:call(function() return {f.wallet:retry()} end)
+  check(not result[1] and not result[3].pending and result[3].status=='refunded','Terminal round cannot report a resumable raise')
+  eq(f.wallet:session().balance,100,'Terminal retry reads authoritative refunded account balance')
+  local saved=f.node.require('derby.store').open('/house-client/state',{}):get()
+  check(not saved.recovery and not saved.rounds['house-1'],'Closed round and recovery clear only after authoritative lookup')
+ end
+ -- An acknowledgement for an earlier raise never masquerades as a blocked
+ -- settlement acknowledgement (legacy callers fail closed for cashier review).
+ do
+  local f=wireFixture('pinejack'); f:call(function() return f.wallet:refresh() end)
+  local round=f:call(function() return f.wallet:begin(4,10) end)
+  f:lose('increase','reply'); f:call(function() return f.wallet:increase(round,2,12) end)
+  check(not f:call(function() return f.wallet:settle(round,0) end),'Pending increase blocks settlement')
+  f.hub.hook=nil; local result=f:call(function() return {f.wallet:retry()} end)
+  check(not result[1] and result[3].matches==false,'Increase receipt cannot complete a settlement wait')
+  eq(round.stake,6,'Mismatched consumer wait still reconciles authoritative stake')
+  eq(f.wallet:session().balance,94,'Mismatched wait still displays its own acknowledged account balance')
+  eq(f.hub:state().rounds[round.round].status,'open','No phantom settlement after increase replay')
+  eq(#f:requests('settle'),0,'Blocked settlement never went on the wire')
+ end
+ -- Real Jack coroutine + wire: uncertain double/split holds before drawing or
+ -- accepting another decision; exact retries resume the original action once.
+ for _,raise in ipairs({'double','split'}) do for _,loss in ipairs({'request','reply'}) do
+  local f=wireFixture('pinejack')
+  local deck=raise=='double' and {'6','6','5','10','10','9'} or {'8','6','8','10','3','K','10','9'}
+  local rt=f:play('pinejack.game',{newShoe=stacked(deck)}); rt:tick(1)
+  if raise=='double' then rt:key('one',1) end
+  rt:key('two',5)
+  if raise=='split' then rt:key('three',1) end
+  f:lose('increase',loss); rt:key(raise=='double' and 'three' or 'two')
+  local framesBefore=#rt.frames; rt:key('q'); rt:tick(.5)
+  check(coroutine.status(rt.co)~='dead','Q cannot exit while raise transport is awaiting an event')
+  check(#rt.frames>framesBefore,'Rendering continues while raw transport is waiting')
+  rt:tick(2.5)
+  eq(rt.frame.options[1].name,'retry','Jack holds '..raise..' after lost '..loss)
+  local held=rt.frame.player; local frames=#rt.frames
+  rt:key('h'); rt:key('s'); rt:key('c'); rt:key('q'); rt:tick(.5)
+  eq(rt.frame.player,held,'Held raise ignores hit/stand/cash/quit'); check(#rt.frames>frames,'Renderer ticks continue while raise held')
+  eq(#f:requests('settle'),0,'No payout is attempted before raise acknowledged')
+  rt:key('one',3); eq(rt.frame.options[1].name,'retry','Repeated timeout retains raise hold')
+  local requests=f:requests('increase'); eq(#requests,2,'Second attempt is a retry')
+  eq(requests[1].id,requests[2].id,'Retried increase preserves transaction ID')
+  f:card('house-2'); rt:send('disk'); rt:tick(2)
+  eq(f.wallet:session().account,'house-2','Replacement card can be displayed during raise hold')
+  f.hub.hook=nil; rt:key('one',5)
+  if raise=='split' then rt:key('three',5); rt:key('two',5) end
+  local state=f.hub:state(); eq(state.accounts['house-1'].balance,raise=='double' and 108 or 106,'Recovered '..raise..' pays the original hand correctly')
+  eq(state.accounts['house-2'].balance,60,'Replacement card is never charged'); eq(f.wallet:session().balance,60,'Replacement card meter stays correct')
+  eq(#f:requests('settle'),1,'Recovered hand settles once')
+  for _,round in pairs(state.rounds) do eq(round.status,'settled','Recovered game round reaches terminal state') end
+  check(rt:quit(),'Recovered Jack hand returns to idle')
+ end end
+ -- The actual Jack hand must hold through the second, metadata-read stage and
+ -- through a terminal account lookup; lower-level recovery alone is not enough.
+ for _,terminal in ipairs({false,true}) do
+  local f=wireFixture('pinejack'); local rt=f:play('pinejack.game',{newShoe=stacked({'6','6','5','10','10','9'})})
+  rt:tick(1); rt:key('one',1); rt:key('two',5); f:lose('increase','reply'); rt:key('three',3)
+  local roundId=f:requests('reserve')[1].round
+  if terminal then
+   local service=f.hub.host.require('derby.service').new(f.hub.host.require('derby.store').open('/house-bank/state',{}),{},function() error('No inventory needed') end)
+   check(service:operator('refund',roundId).ok,'Operator closes pending real Jack double'); f.hub:restartHost()
+   f:lose('lookup','reply')
+  else f:lose('roundStatus','reply') end
+  rt:key('one',3)
+  eq(rt.frame.options[1].name,'retry','Actual Jack stays held while authoritative '..(terminal and 'balance' or 'terms')..' unavailable')
+  local raises=#f:requests('increase'); local hand=rt.frame.player
+  rt:key('h'); rt:key('s'); rt:key('q'); rt:tick(.5)
+  eq(rt.frame.player,hand,'No gameplay continuation during reconciliation read hold')
+  eq(#f:requests('settle'),0,'Read-stage timeout never produces payout')
+  f.hub.hook=nil; rt:key('one',5)
+  eq(#f:requests('increase'),raises,'Second-stage retry never resends the acknowledged raise')
+  if terminal then
+   eq(f.wallet:session().balance,100,'Aborted Jack hand refreshes authoritative refunded meter')
+   eq(#f:requests('settle'),0,'Closed interrupted hand never resumes or settles again')
+   eq(f.hub:state().rounds[roundId].status,'refunded','Operator closure preserved')
+  else
+   eq(f.hub:state().accounts['house-1'].balance,108,'Read-stage recovery resumes exact doubled win')
+   eq(#f:requests('settle'),1,'Resumed double settles exactly once')
+  end
+  check(rt:quit(),'Reconciled/aborted Jack hand returns to idle')
+ end
+ -- A request that never reached the host may be declined on retry. This is a
+ -- normal decline, not a confirmed raise: rollback the tentative double.
+ do
+  local f=wireFixture('pinejack'); local rt=f:play('pinejack.game',{newShoe=stacked({'6','10','5','7'})})
+  rt:tick(1); rt:key('one',1); rt:key('two',5); f:lose('increase','request'); rt:key('three',3)
+  local state=f.hub:state(); state.bank=166
+  f.hub.host.require('derby.store').open('/house-bank/state',{}):save(state); f.hub.inventories.bank.count=166; f.hub:restartHost()
+  f.hub.hook=nil; rt:key('one',3)
+  eq(rt.frame.options[2].name,'stand','Definite declined retry returns to original hand decisions')
+  eq(f.wallet:session().balance,96,'Declined raise costs no extra credits')
+  rt:key('two',5); eq(f.hub:state().accounts['house-1'].balance,96,'Rolled-back original hand settles normally')
+  eq(f:requests('settle')[1].amount,0,'Decline does not turn a losing eleven into a doubled result'); check(rt:quit(),'Declined retry does not wedge Jack')
+ end
+ -- Account balances are not capped at the per-transaction one-billion limit.
+ do
+  local f=wireFixture('pinejack'); local state=f.hub:state()
+  state.accounts['house-1'].balance=1000000001; state.bank=1000000100
+  f.hub.host.require('derby.store').open('/house-bank/state',{}):save(state); f.hub.inventories.bank.count=state.bank; f.hub:restartHost()
+  f:call(function() return f.wallet:refresh() end); local round=f:call(function() return f.wallet:begin(4,10) end)
+  f:lose('increase','reply'); f:call(function() return f.wallet:increase(round,2,12) end)
+  local service=f.hub.host.require('derby.service').new(f.hub.host.require('derby.store').open('/house-bank/state',{}),{},function() error('No inventory needed') end)
+  check(service:operator('refund',round.round).ok,'Large account interrupted raise refunded'); f.hub:restartHost(); f.hub.hook=nil
+  local result=f:call(function() return {f.wallet:retry()} end)
+  check(not result[1] and not result[3].pending and result[3].status=='refunded','Valid large account balance does not wedge recovery')
+  eq(f.wallet:session().balance,1000000001,'Full large refunded balance retained')
+ end
+ -- Box recovers the exact first reservation or shared-card increase before
+ -- accepting another ante; cancellation returns the whole acknowledged stake.
+ for _,operation in ipairs({'reserve','increase'}) do for _,loss in ipairs({'request','reply'}) do
+  local f=wireFixture('pinebox'); local rt=f:play('pinebox.game',boxOptions({})); rt:tick(1)
+  rt:key('space',1) -- choose player count
+  if operation=='increase' then rt:key('right',1) end -- three seats, cancel after two antes
+  rt:key('space',1)
+  if operation=='increase' then rt:key('space',1) end -- first shared-card ante
+  f:lose(operation,loss); rt:key('space',3)
+  eq(rt.frame.options[1].name,'retry','Box holds uncertain '..operation..' after lost '..loss)
+  eq(rt.frame.players.pot,operation=='reserve' and 0 or 1,'Unacknowledged ante is not added to pot')
+  rt:key('q'); rt:key('c'); rt:tick(.5); check(coroutine.status(rt.co)~='dead','Pending Box ante cannot exit/cash out')
+  rt:key('space',3); eq(rt.frame.options[1].name,'retry','Repeated Box timeout retains original ante')
+  local requests=f:requests(operation); eq(requests[#requests].id,requests[#requests-1].id,'Box retries exact same transaction')
+  f.hub.hook=nil; rt:key('space',2)
+  eq(rt.frame.players.pot,operation=='reserve' and 1 or 2,'Recovered ante enters pot exactly once')
+  eq(rt.frame.players.current,operation=='reserve' and 2 or 3,'Recovered ante advances exactly one seat')
+  rt:key('left',3)
+  eq(#f:requests('refund'),1,'Cancelled shared account refunds once')
+  eq(f.hub:state().accounts['house-1'].balance,100,'Cancellation returns all recovered antes')
+  eq(f.wallet:session().balance,100,'Box refund meter uses reconciled whole stake')
+  check(rt:quit(),'Recovered and cancelled Box returns to idle')
+ end end
+ -- A recovered shared-card raise can also finish the real match, not just cancel.
+ do
+  local f=wireFixture('pinebox'); local rt=f:play('pinebox.game',boxOptions({1,1,1,1,1,1,1,1})); rt:tick(1)
+  for _=1,3 do rt:key('space',1) end
+  f:lose('increase','reply'); rt:key('space',3); f.hub.hook=nil; rt:key('space',2)
+  for _=1,6 do rt:key('space',9) end; rt:tick(6)
+  eq(#f:requests('settle'),1,'Recovered shared-card Box match settles once')
+  eq(f:requests('settle')[1].amount,2,'Recovered shared-card tie returns the complete pot')
+  eq(f.hub:state().accounts['house-1'].balance,100,'Recovered Box tie conserves both antes'); check(rt:quit(),'Recovered shared-card match completes')
+ end
+ -- Box's real ante/refund path also has nested wallet transport yields.
+ do
+  local f=wireFixture('pinebox'); local rt=f:play('pinebox.game',boxOptions({})); rt:tick(1)
+  for _,key in ipairs({'space','space','space'}) do rt:key(key,2) end
+  eq(#f:requests('reserve'),1,'Real Box ante crosses wire once')
+  rt:key('left',3); eq(#f:requests('refund'),1,'Real Box cancellation refunds through wire')
+  eq(f.hub:state().accounts['house-1'].balance,100,'Box returns full cancelled ante'); check(rt:quit(),'Real Box coroutine returns to idle')
+ end
  -- Wallet ownership survives disk removal or swapping a second account into the
  -- same mount path; a result must not overwrite the other player's display.
  do

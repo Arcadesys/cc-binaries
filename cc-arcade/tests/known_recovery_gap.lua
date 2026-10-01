@@ -1,7 +1,9 @@
--- Non-default release gate for the existing interrupted-increase recovery gap.
+-- Focused release gate for the original interrupted-increase recovery gap.
+-- Also required by the default rednet_contracts suite.
 -- Run from repository root:
 --   python3 cc-arcade/tools/test_contracts.py --suite tests/known_recovery_gap.lua
--- EXPECTED TODAY: exit 1. Do not suppress this failure or count it as readiness.
+-- Release gate: must pass after authoritative metadata and operation-specific
+-- recovery fixes. A nonzero exit blocks readiness; it is never an expected pass.
 -- This executes the actual wallet, credits, client, server and store over the
 -- isolated fake-Rednet hub. No copied ledger, invented paid APIs or live hardware.
 local hub=require('tests.support.hub').new()
@@ -34,7 +36,8 @@ assert(not run(function() return wallet:settle(round,0) end),'Pending increase m
 -- 4. Retry acknowledges the original increase; it must preserve authoritative
 --    round metadata for subsequent gameplay/refund recovery.
 hub.hook=nil
-assert(run(function() return wallet:retry() end),'Fixture retry must recover the increase receipt')
+local retry=run(function() return {wallet:retry()} end)
+assert(not retry[1] and retry[3].matches==false,'An increase receipt must not acknowledge the later blocked settlement')
 local saved=node.require('derby.store').open('/house-client/state',{}):get()
 local persisted=assert(saved.rounds[round.account],'Saved open round disappeared')
 local host=hub:state().rounds[round.round]
@@ -42,7 +45,7 @@ print(('DIAGNOSTIC: settlement was blocked; retry acknowledged %s; host round re
  :format(saved.last.request.op,host.status))
 -- The diagnostic above also identifies why a game's generic payout-retry loop
 -- cannot treat every successful retry as a completed settlement. Its continuation
--- needs an additional actual-game regression in the separately reviewed fix.
+-- is also covered by actual Jack/Box event-loop regressions in consumer_contracts.
 local failures={}
 local function same(label,actual,expected)
  if actual~=expected then failures[#failures+1]=label..'='..tostring(actual)..', host='..tostring(expected) end
@@ -52,5 +55,17 @@ same('persisted stake',persisted.stake,host.stake)
 same('captured maximum',round.maximum,host.maximum)
 same('persisted maximum',persisted.maximum,host.maximum)
 assert(#failures==0,'KNOWN RECOVERY GAP: interrupted increase metadata did not converge: '..table.concat(failures,'; '))
-print('PASS interrupted increase metadata release gate')
+assert(host.status=='open','Mismatched retry must leave the unpaid round open')
+assert(wallet:session().balance==94,'Recovered receipt must show its own authoritative account balance')
+-- Separately recover an increase through a wallet with no later blocked intent.
+-- The same durable receipt is replayed, never a second increase transaction.
+local resumed=node.require('casino.wallet').live('pinejack','RECOVERY GATE',credits,function()
+ return {path='/disk',drive='drive_0',account='house-1'}
+end)
+assert(run(function() return resumed:refresh() end))
+local normal=run(function() return {resumed:retry()} end)
+assert(normal[1] and normal[3].request.op=='increase','Same-operation recovery must succeed')
+assert(hub:state().rounds[round.round].stake==6,'Repeated recovery must not add the increase twice')
+assert(resumed:session().balance==94,'Same-operation recovery retains exact account balance')
+print('PASS interrupted increase metadata and operation-identity release gate')
 return true
