@@ -21,7 +21,7 @@ check(not fs.exists(dir..'/pine-ball/vendor'),'Furball games share the derby Pin
 local boot=read('/startup.lua')
 check(boot:find('pinearcade.lua',1,true) and boot:find(dir,1,true),'Startup runs the menu')
 -- Each Furball game loads its renderer (and so Pine3D) the way its entry file sets up require.
-for _,name in ipairs({'pineball','pinelinks','pinelanes','pinedungeon'}) do
+for _,name in ipairs({'pineball','pinelinks','pinelanes','pinedungeon','pineface'}) do
  local entry=fs.combine(dir,state.catalog[name].entry)
  local src=read(entry)
  check(src:find('derby',1,true),name..' entry falls back to the shared Pine3D')
@@ -41,7 +41,7 @@ local app=require('pinearcade.app')
 local t=window.create(term.current(),1,1,51,19,false)
 local now=0; local launched={}; local paused=0
 local opts={dir=dir,target=t,clock=function() return now end,
- launch=function(item,args) launched[#launched+1]=item.name; return item.name~='pinedungeon' end,
+ launch=function(item,args) launched[#launched+1]=item.name; return item.name~='pineface' end,
  pause=function() paused=paused+1 end}
 local co=coroutine.create(function() app.run(opts) end)
 local oldPull,oldTimer=os.pullEventRaw,os.startTimer
@@ -71,9 +71,9 @@ eq(state_().boot,nil,'NOTHING AT BOOT'); check(not fs.exists('/startup.lua'),'St
 key(keys.enter); eq(state_().boot,'pinearcade','MENU AT BOOT'); check(read('/startup.lua'):find('pinearcade.lua',1,true),'Startup runs the menu again')
 key(keys.backspace); check(text(19):find('NEXT',1,true),'Backspace leaves the card')
 -- Touch: the bar's thirds are the buttons; a game that errors is reported.
-key(keys.left); check(text(16):find('PINE DUNGEON',1,true),'Previous game')
+key(keys.left); check(text(16):find('PINE FACE',1,true),'Previous game')
 send('mouse_click',1,25,19); run(.6); send('mouse_click',1,25,19); run(.6)
-eq(launched[2],'pinedungeon','Clicked PLAY'); check(text(18):find('STOPPED',1,true),'Stop reported'); eq(paused,1,'Output held after a failed run')
+eq(launched[2],'pineface','Clicked PLAY'); check(text(18):find('STOPPED',1,true),'Stop reported'); eq(paused,1,'Output held after a failed run')
 send('terminate'); check(coroutine.status(co)=='dead','Terminate leaves the menu')
 os.pullEventRaw,os.startTimer=oldPull,oldTimer
 -- Screens at a monitor size, mid-turn and with a card open.

@@ -79,7 +79,7 @@
     },
     {
      "path": "pinearcade/emblems.lua",
-     "size": 9327
+     "size": 9758
     },
     {
      "path": "pinearcade/render.lua",
@@ -861,6 +861,69 @@
      "src": "computercraft_scripts/pine-dungeon/lib/world.lua"
     }
    ]
+  },
+  "pineface": {
+   "title": "Pine Face",
+   "entry": "pine-face/face.lua",
+   "description": "Faceball-style Smiley tag for four players over rednet",
+   "files": [
+    {
+     "path": "derby/vendor/LICENSE",
+     "size": 1062
+    },
+    {
+     "path": "derby/vendor/Pine3D.lua",
+     "size": 69417
+    },
+    {
+     "path": "derby/vendor/REVISION.txt",
+     "size": 422
+    },
+    {
+     "path": "derby/vendor/betterblittle.lua",
+     "size": 6135
+    },
+    {
+     "path": "pine-face/face.lua",
+     "size": 1551,
+     "src": "computercraft_scripts/pine-face/face.lua"
+    },
+    {
+     "path": "pine-face/lib/app.lua",
+     "size": 5599,
+     "src": "computercraft_scripts/pine-face/lib/app.lua"
+    },
+    {
+     "path": "pine-face/lib/bot.lua",
+     "size": 4109,
+     "src": "computercraft_scripts/pine-face/lib/bot.lua"
+    },
+    {
+     "path": "pine-face/lib/input.lua",
+     "size": 2870,
+     "src": "computercraft_scripts/pine-face/lib/input.lua"
+    },
+    {
+     "path": "pine-face/lib/net.lua",
+     "size": 8224,
+     "src": "computercraft_scripts/pine-face/lib/net.lua"
+    },
+    {
+     "path": "pine-face/lib/render.lua",
+     "size": 6981,
+     "src": "computercraft_scripts/pine-face/lib/render.lua"
+    },
+    {
+     "path": "pine-face/lib/ui.lua",
+     "size": 8887,
+     "src": "computercraft_scripts/pine-face/lib/ui.lua"
+    },
+    {
+     "path": "pine-face/lib/world.lua",
+     "size": 8508,
+     "src": "computercraft_scripts/pine-face/lib/world.lua"
+    }
+   ]
   }
  },
  "tools": [
@@ -878,6 +941,7 @@
   "pinelinks",
   "pinelanes",
   "pinedungeon",
+  "pineface",
   "house",
   "config"
  ]

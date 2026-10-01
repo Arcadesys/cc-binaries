@@ -1,6 +1,6 @@
 # ArcadeOS 1.00
 
-A Windows 1.0–style shell for [CC: Tweaked](https://tweaked.cc), with a launcher dedicated to **Pine Ball, Pine Dungeon, Pine Lanes, and Pine Links**. The four games use Pine3D and are the only programs shown in the icon menu. Other installed apps remain available through the file manager or API.
+A Windows 1.0–style shell for [CC: Tweaked](https://tweaked.cc), with a launcher dedicated to **Pine Ball, Pine Dungeon, Pine Face, Pine Lanes, and Pine Links**. These games use Pine3D and are the only programs shown in the icon menu. Other installed apps remain available through the file manager or API.
 
 ![Tiled desktop with the MS-DOS Executive, Clock, Calculator and Notepad](docs/desktop.png)
 
@@ -26,7 +26,7 @@ Setup lists the packages with their sizes and preselects whatever fits on the di
 | core | ~116K | ArcadeOS and the accessories (always installed) |
 | arcade | ~152K | Blackjack, Slots, Can't Stop, Horse Race, RPS Rogue, IdleCraft |
 | factory | ~95K | Minesweeper, Solitaire, Euchre, Schema Designer |
-| pine | ~518K | Pine Ball, Pine Links, Pine Lanes, Pine Dungeon |
+| pine | ~645K | Pine Ball, Pine Links, Pine Lanes, Pine Dungeon, Pine Face |
 | media | ~45K | Jukebox, MIDI Player, screen savers |
 | turtle | ~392K | Factory and TurtleOS (preselected only on turtles) |
 
@@ -70,7 +70,7 @@ Arcade games normally need credit floppy disks. Under ArcadeOS they run on **fre
 | Group | Apps |
 |---|---|
 | Accessories | Notepad, Clock, Calculator, Paint, Control Panel |
-| Games | Reversi, Blackjack, Slots, Can't Stop, Horse Race, RPS Rogue, IdleCraft, Minesweeper, Solitaire, Euchre, Pine Ball, Pine Links, Pine Lanes, Pine Dungeon |
+| Games | Reversi, Blackjack, Slots, Can't Stop, Horse Race, RPS Rogue, IdleCraft, Minesweeper, Solitaire, Euchre, Pine Ball, Pine Links, Pine Lanes, Pine Dungeon, Pine Face |
 | Media | Jukebox (needs a speaker), MIDI Player (reads `/midi/*.mid`) |
 | Turtle | Schema Designer, Factory and TurtleOS Roles (these two appear only on turtles) |
 | System | MS-DOS Executive, Terminal |
