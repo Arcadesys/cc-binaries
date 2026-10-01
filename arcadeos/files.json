@@ -5,7 +5,7 @@
    "description": "ArcadeOS shell and accessories",
    "required": true,
    "turtle": false,
-   "size": 119453,
+   "size": 119533,
    "files": [
     {
      "src": "arcadeos/boot.lua",
@@ -155,7 +155,7 @@
     {
      "src": "arcadeos/apps/race/app.lua",
      "dest": "/arcadeos/apps/race/app.lua",
-     "size": 134
+     "size": 214
     },
     {
      "src": "arcadeos/apps/reversi/app.lua",
@@ -253,7 +253,7 @@
    "description": "Arcade games: Blackjack, Slots, Can't Stop, Race, RPS Rogue, IdleCraft",
    "required": false,
    "turtle": false,
-   "size": 156026,
+   "size": 267792,
    "files": [
     {
      "src": "cc-arcade/audio.lua",
@@ -263,7 +263,7 @@
     {
      "src": "cc-arcade/blackjack.lua",
      "dest": "/pkg/arcade/blackjack.lua",
-     "size": 23912
+     "size": 24647
     },
     {
      "src": "cc-arcade/cant_stop.lua",
@@ -273,7 +273,12 @@
     {
      "src": "cc-arcade/credits.lua",
      "dest": "/pkg/arcade/credits.lua",
-     "size": 3744
+     "size": 4974
+    },
+    {
+     "src": "cc-arcade/house.lua",
+     "dest": "/pkg/arcade/house.lua",
+     "size": 92
     },
     {
      "src": "cc-arcade/idlecraft.lua",
@@ -288,22 +293,132 @@
     {
      "src": "cc-arcade/race.lua",
      "dest": "/pkg/arcade/race.lua",
-     "size": 13239
+     "size": 112
     },
     {
      "src": "cc-arcade/rps_rogue.lua",
      "dest": "/pkg/arcade/rps_rogue.lua",
-     "size": 8745
+     "size": 9232
     },
     {
      "src": "cc-arcade/slots.lua",
      "dest": "/pkg/arcade/slots.lua",
-     "size": 24269
+     "size": 24362
     },
     {
      "src": "cc-arcade/track.lua",
      "dest": "/pkg/arcade/track.lua",
-     "size": 18637
+     "size": 18826
+    },
+    {
+     "src": "cc-arcade/derby/app.lua",
+     "dest": "/pkg/arcade/derby/app.lua",
+     "size": 3420
+    },
+    {
+     "src": "cc-arcade/derby/cashier.lua",
+     "dest": "/pkg/arcade/derby/cashier.lua",
+     "size": 3577
+    },
+    {
+     "src": "cc-arcade/derby/client.lua",
+     "dest": "/pkg/arcade/derby/client.lua",
+     "size": 1855
+    },
+    {
+     "src": "cc-arcade/derby/config.lua",
+     "dest": "/pkg/arcade/derby/config.lua",
+     "size": 1820
+    },
+    {
+     "src": "cc-arcade/derby/house.lua",
+     "dest": "/pkg/arcade/derby/house.lua",
+     "size": 3649
+    },
+    {
+     "src": "cc-arcade/derby/inventory.lua",
+     "dest": "/pkg/arcade/derby/inventory.lua",
+     "size": 787
+    },
+    {
+     "src": "cc-arcade/derby/ledger.lua",
+     "dest": "/pkg/arcade/derby/ledger.lua",
+     "size": 5487
+    },
+    {
+     "src": "cc-arcade/derby/odds.json",
+     "dest": "/pkg/arcade/derby/odds.json",
+     "size": 217
+    },
+    {
+     "src": "cc-arcade/derby/odds.lua",
+     "dest": "/pkg/arcade/derby/odds.lua",
+     "size": 316
+    },
+    {
+     "src": "cc-arcade/derby/palette.lua",
+     "dest": "/pkg/arcade/derby/palette.lua",
+     "size": 432
+    },
+    {
+     "src": "cc-arcade/derby/render.lua",
+     "dest": "/pkg/arcade/derby/render.lua",
+     "size": 3499
+    },
+    {
+     "src": "cc-arcade/derby/scene.lua",
+     "dest": "/pkg/arcade/derby/scene.lua",
+     "size": 3678
+    },
+    {
+     "src": "cc-arcade/derby/server.lua",
+     "dest": "/pkg/arcade/derby/server.lua",
+     "size": 2570
+    },
+    {
+     "src": "cc-arcade/derby/service.lua",
+     "dest": "/pkg/arcade/derby/service.lua",
+     "size": 4529
+    },
+    {
+     "src": "cc-arcade/derby/sim.lua",
+     "dest": "/pkg/arcade/derby/sim.lua",
+     "size": 1763
+    },
+    {
+     "src": "cc-arcade/derby/station.lua",
+     "dest": "/pkg/arcade/derby/station.lua",
+     "size": 3852
+    },
+    {
+     "src": "cc-arcade/derby/store.lua",
+     "dest": "/pkg/arcade/derby/store.lua",
+     "size": 1705
+    },
+    {
+     "src": "cc-arcade/derby/ui.lua",
+     "dest": "/pkg/arcade/derby/ui.lua",
+     "size": 1875
+    },
+    {
+     "src": "cc-arcade/derby/vendor/LICENSE",
+     "dest": "/pkg/arcade/derby/vendor/LICENSE",
+     "size": 1062
+    },
+    {
+     "src": "cc-arcade/derby/vendor/Pine3D.lua",
+     "dest": "/pkg/arcade/derby/vendor/Pine3D.lua",
+     "size": 69417
+    },
+    {
+     "src": "cc-arcade/derby/vendor/REVISION.txt",
+     "dest": "/pkg/arcade/derby/vendor/REVISION.txt",
+     "size": 422
+    },
+    {
+     "src": "cc-arcade/derby/vendor/betterblittle.lua",
+     "dest": "/pkg/arcade/derby/vendor/betterblittle.lua",
+     "size": 6135
     },
     {
      "src": "cc-arcade/screensavers/bounce.lua",
