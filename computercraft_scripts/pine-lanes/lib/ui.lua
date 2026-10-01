@@ -31,6 +31,11 @@ function ui.layout(w,h,phase,camera)
     add(2,1,"help","HELP",2)
     add(2,3,"pause","MENU",2)
     add(3,1,"start","START",4)
+  elseif phase=="MASCOTS" then
+    add(1,1,"mascot_prev","< MASCOT",2)
+    add(1,3,"mascot_next","MASCOT >",2)
+    add(2,1,"help","HELP",2); add(2,3,"pause","MENU",2)
+    add(3,1,"mascot_confirm","LOCK IN",4)
   elseif phase=="RESULT" then
     add(1,1,"select_prev","PLAYER -",2)
     add(1,3,"select_next","PLAYER +",2)
@@ -117,6 +122,8 @@ function ui.draw(t,view,buttons)
   local title
   if phase=="SETUP" then
     title="PINE LANES  |  LOCAL BOWLING"
+  elseif phase=="MASCOTS" then
+    title=string.format("PINE LANES | PLAYER %d/%d | CHOOSE MASCOT",view.mascotPlayer or 1,view.playerCount or 1)
   elseif phase=="RESULT" and view.rollSummary then
     local rs=view.rollSummary
     title=string.format("PINE LANES | P%d/%d | F%d | B%d",rs.player or player,view.playerCount or 1,rs.frame or frame,rs.ballNumber or ballNumber)
@@ -150,6 +157,9 @@ function ui.draw(t,view,buttons)
   local stateLine=string.format("PINS %d UP %d DOWN",standing,down)
   if phase=="SETUP" then
     stateLine=string.format("%d PLAYERS | LEFT/RIGHT OR +/-",view.playerCount or 1)
+  elseif phase=="MASCOTS" then
+    local ms=require("lib.mascots"); local m=ms.get((view.mascots or {})[view.mascotPlayer or 1] or 1)
+    stateLine="MASCOT: "..m.name.." | LEFT/RIGHT TO CHANGE"
   elseif view.message then stateLine=stateLine.." | "..tostring(view.message) end
   put(t,1,3,stateLine,white,black,w)
   if phase=="RESULT" then
