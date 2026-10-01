@@ -4,7 +4,7 @@
 
 Implement the software portion of the 2026-10-01 branch-mining readiness plan. Completion requires current geometry, block-protection, fuel, inventory, recovery, packaging, and rendered-accessibility evidence. Minecraft survival acceptance and multi-turtle operation remain separate gates.
 
-The user subsequently authorized a self-organizing mining orchestration layer and verification using the turtle-tester. That extension is now in progress.
+The user subsequently authorized a self-organizing mining orchestration layer, verification using the turtle-tester, and PR creation and merge. The software implementation is complete; remaining verification limits are recorded below.
 
 ## Route
 
@@ -26,7 +26,9 @@ The verified single-turtle foundation is committed as `9ecb597`. The same three 
 
 Fleet integration now passes all 28 native shared-world cases, including two real mining engines, north/south successor jobs, per-action lease expiry, network correlation, persistence failures, and restart quarantine. Review corrected the runtime protocol, lease-clock handling, and small-terminal status details. All 53 current bundled modules passed both installer readbacks. Eighteen native fleet screen pages passed; six representative PNGs were visually inspected.
 
-The final single-turtle regression rerun is being split into four disjoint parts after whole-suite emulator runs hit the 240-second limit without assertion failures. The harness now binds each simulated turtle to its actual module environment and yields regularly; assertions and production code remain unchanged.
+The refreshed single-turtle regression run is incomplete: 77 unique cases passed, with seven not refreshed to completion. Parts 1/4 and 3/4 each passed all 21 cases; parts 2/4 and 4/4 were cancelled after 19 and 16 passes following the user's PR-and-merge request. Whole-suite emulator runs had hit the 240-second limit without assertion failures. The harness now binds each simulated turtle to its actual module environment and yields regularly; assertions and production code remain unchanged. The earlier 84-case foundation evidence is historical, not a claim that all 84 were freshly reverified after fleet integration.
+
+PR: https://github.com/Arcadesys/cc-binaries/pull/5. Integration incorporates upstream `ff58be6`, preserves its newer ArcadeOS/Pine3D changes, resolves the README by retaining both additions, and regenerates the manifest. Both native installer readbacks passed again after this integration. The earlier 53-case ArcadeOS run predates those upstream changes.
 
 ## Foundation evidence (before fleet extension)
 
@@ -38,6 +40,6 @@ The final single-turtle regression rerun is being split into four disjoint parts
 
 ## Remaining gates and next step
 
-Finish fleet integration, run actual mining workers in a shared simulated world with independent state/network failures, and refresh installer/readback and rendered evidence. Then review the implementation and run gate C from `SAFE_MINING.md` once a mining turtle and prepared area are available. Gate D requires separately proven non-overlapping turtle jobs, storage/fuel capacity, and chunk loading. Interrupted action intent deliberately requires manual reconciliation; it is not an automatic-recovery claim. Pack-specific unknown blocks stop until explicitly supported and tested.
+Finish the remaining single-turtle regression refresh before treating that full suite as current. Run gate C from `SAFE_MINING.md` once a mining turtle and prepared area are available. Gate D requires separately proven non-overlapping turtle jobs, storage/fuel capacity, and chunk loading. Interrupted action intent deliberately requires manual reconciliation; it is not an automatic-recovery claim. Pack-specific unknown blocks stop until explicitly supported and tested.
 
 No Minecraft world actions are part of these checks. A successful simulator run does not establish physical in-game safety, chunk-loading behavior, or pack-specific recipes.

@@ -69,11 +69,13 @@ python3 cc-factory/tests/run.py --fleet-screens
 python3 cc-factory/tools/verify_distribution.py
 ```
 
-The 84 single-turtle cases run in four disjoint ordinal parts, with 21 cases per part. This keeps each native emulator invocation within its 240-second harness budget; a whole-suite timeout is a harness limit, not evidence of product safety or failure.
+The 84 single-turtle cases run in four disjoint ordinal parts, with 21 cases per part. Each native emulator invocation has a 240-second harness budget; a whole-suite timeout is a harness limit, not evidence of product safety or failure.
 
 Set `CRAFTOS_BIN` if its executable is outside the default macOS application path. Every run uses an isolated emulator directory and prints its evidence directory. Failed assertions, missing reports, crashes and bounded emulator timeouts exit nonzero. These commands do not open Minecraft or connect to a live server.
 
 The fleet tests load actual coordinator, worker, adapter and safe-mining modules. Two workers have independent globals, module caches, sixteen-slot inventories and persisted disks while sharing a physical block map, fake network and clock. A test-owned action oracle checks owner, lease deadline, region and collision independently of the worker's progress flags. The tests cover north→south successor mining beside a second worker, protocol faults, lease loss during a scan and home turn, restarts, quarantine, receiver/fuel/block failures, serialized examples and actual native adapter protocol agreement.
+
+The current single-turtle refresh completed **77 unique cases** with no assertion failures; two disjoint parts passed and two were cancelled on the delivery instruction, leaving seven cases unrefreshed. [Baseline refresh receipt](tests/fleet-baseline-results.txt) preserves the partial results separately from the original84 receipt.
 
 Current native fleet integration: **28 passed, zero failures**, with exit status 0. Native rendering produced **18 checked screen pages** across the three display sizes. [Retained output](tests/fleet-validation-results.txt) records the commands and results; the coordinator also inspected the rendered images and verified both installers against all 53 packaged source modules.
 

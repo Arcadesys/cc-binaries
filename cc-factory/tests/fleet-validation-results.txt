@@ -38,3 +38,5 @@ PASS all 18 native fleet rendered screen pages at 39x13, 39x19, 51x19
 Coordinator reports native distribution/installer verification PASS for all 53 source modules.
 Original single-miner evidence remains preserved in validation-results.txt.
 No Minecraft world operations performed. Survival and fleet gates C/D remain unverified.
+
+Single-turtle refresh:77 unique completed PASS cases, no assertion failures; parts1 and3 exit0/21 each, parts2 and4 explicitly cancelled exit1 after19 and16 passes. Seven cases unrefreshed. See fleet-baseline-results.txt for exact current receipts; validation-results.txt preserves original84 evidence.
