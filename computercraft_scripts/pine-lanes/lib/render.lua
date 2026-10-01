@@ -1,5 +1,6 @@
 local ui = require("lib.ui")
 local lane = require("lib.lane")
+local mascots = require("lib.mascots")
 local pine = require("vendor.Pine3D")
 local render = {}
 
@@ -154,6 +155,11 @@ function render.new(target)
     cameraFor(view)
     t.setBackgroundColor(colors.black); t.setTextColor(colors.white); t.clear()
     frame:drawObjects(objects); frame:drawBuffer()
+    local mascotPlayer=view.phase=="MASCOTS" and (view.mascotPlayer or 1) or (view.currentPlayer or 1)
+    local mascotIndex=view.mascots and view.mascots[mascotPlayer]
+    if mascotIndex and view.phase~="SETUP" and view.phase~="HELP" and view.phase~="PAUSED" then
+      mascots.draw(t,mascotIndex,2,5,view.phase=="MASCOTS" and "P"..mascotPlayer or "READY")
+    end
     ui.draw(t,view,controls)
     if view.diagnostic then
       for _,lab in ipairs(axesLabels) do

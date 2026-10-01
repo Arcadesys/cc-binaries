@@ -521,6 +521,11 @@
      "size": 251
     },
     {
+     "src": "cc-arcade/pinebox/avatars.lua",
+     "dest": "/pkg/arcade/pinebox/avatars.lua",
+     "size": 2800
+    },
+    {
      "src": "cc-arcade/pinebox/dice.lua",
      "dest": "/pkg/arcade/pinebox/dice.lua",
      "size": 8450
@@ -528,12 +533,12 @@
     {
      "src": "cc-arcade/pinebox/game.lua",
      "dest": "/pkg/arcade/pinebox/game.lua",
-     "size": 13878
+     "size": 15361
     },
     {
      "src": "cc-arcade/pinebox/render.lua",
      "dest": "/pkg/arcade/pinebox/render.lua",
-     "size": 8556
+     "size": 8677
     },
     {
      "src": "cc-arcade/pinebox/rules.lua",
@@ -854,7 +859,7 @@
     {
      "src": "computercraft_scripts/pine-lanes/lib/app.lua",
      "dest": "/pkg/scripts/pine-lanes/lib/app.lua",
-     "size": 11312
+     "size": 12199
     },
     {
      "src": "computercraft_scripts/pine-lanes/lib/input.lua",
@@ -865,6 +870,11 @@
      "src": "computercraft_scripts/pine-lanes/lib/lane.lua",
      "dest": "/pkg/scripts/pine-lanes/lib/lane.lua",
      "size": 1079
+    },
+    {
+     "src": "computercraft_scripts/pine-lanes/lib/mascots.lua",
+     "dest": "/pkg/scripts/pine-lanes/lib/mascots.lua",
+     "size": 1939
     },
     {
      "src": "computercraft_scripts/pine-lanes/lib/physics.lua",
@@ -879,7 +889,7 @@
     {
      "src": "computercraft_scripts/pine-lanes/lib/render.lua",
      "dest": "/pkg/scripts/pine-lanes/lib/render.lua",
-     "size": 8257
+     "size": 8662
     },
     {
      "src": "computercraft_scripts/pine-lanes/lib/rng.lua",
@@ -894,7 +904,7 @@
     {
      "src": "computercraft_scripts/pine-lanes/lib/ui.lua",
      "dest": "/pkg/scripts/pine-lanes/lib/ui.lua",
-     "size": 10236
+     "size": 10784
     },
     {
      "src": "computercraft_scripts/pine-lanes/vendor/LICENSE",
@@ -924,7 +934,7 @@
     {
      "src": "computercraft_scripts/pine-links/lib/app.lua",
      "dest": "/pkg/scripts/pine-links/lib/app.lua",
-     "size": 11275
+     "size": 11566
     },
     {
      "src": "computercraft_scripts/pine-links/lib/course.lua",
@@ -942,6 +952,11 @@
      "size": 2077
     },
     {
+     "src": "computercraft_scripts/pine-links/lib/mascots.lua",
+     "dest": "/pkg/scripts/pine-links/lib/mascots.lua",
+     "size": 1939
+    },
+    {
      "src": "computercraft_scripts/pine-links/lib/physics.lua",
      "dest": "/pkg/scripts/pine-links/lib/physics.lua",
      "size": 2083
@@ -949,7 +964,7 @@
     {
      "src": "computercraft_scripts/pine-links/lib/render.lua",
      "dest": "/pkg/scripts/pine-links/lib/render.lua",
-     "size": 12254
+     "size": 12395
     },
     {
      "src": "computercraft_scripts/pine-links/lib/rules.lua",
@@ -959,7 +974,7 @@
     {
      "src": "computercraft_scripts/pine-links/lib/ui.lua",
      "dest": "/pkg/scripts/pine-links/lib/ui.lua",
-     "size": 5581
+     "size": 5942
     },
     {
      "src": "computercraft_scripts/pine-links/vendor/LICENSE",

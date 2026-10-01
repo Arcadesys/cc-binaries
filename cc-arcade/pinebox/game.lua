@@ -6,6 +6,7 @@
 local rules=require('pinebox.rules')
 local dice=require('pinebox.dice')
 local renderer=require('pinebox.render')
+local avatars=require('pinebox.avatars')
 local sounds=require('casino.sound')
 local M={}
 M.back=1.6 -- seconds the camera holds on the settled dice
@@ -22,7 +23,9 @@ function M.run(opts)
  local view=renderer.new(t)
  local betIndex=1
  local seats=2
- local players -- {list=scores, current=i} during a match
+ local players -- {list=scores, current=i, avatars=mascot indexes} during a match
+ local soloAvatar=1
+ local soloShowing=false
  local board=rules.full
  local tiles={}; for n=1,9 do tiles[n]={from=0,to=0,t0=0} end
  local selection=0
@@ -34,6 +37,7 @@ function M.run(opts)
  local function say(text,hi) message=text; highlight=hi or false end
  local function bet() return rules.bets[betIndex] end
  local function balance() local s=wallet:session(); return s and s.balance end
+ local function avatarName(i) local a=avatars.get(i); return a and a.name or 'MASCOT' end
  local function wait(s) coroutine.yield({wait=clock()+s}) end
  local function ask(options,card) return coroutine.yield({ask=options,card=card}) end
  local function boardText()
@@ -131,20 +135,46 @@ function M.run(opts)
  -- sharing a card share a round. Returns false if the table cancels (antes refunded).
  local function ante(n)
   local stake=bet(); local pot=stake*n
-  players={list={},names={},seat={},rounds={},current=1,pot=0}
-  for i=1,n do players.list[i]=false end
+  players={list={},names={},seat={},rounds={},avatars={},current=1,pot=0}
+  for i=1,n do players.list[i]=false; players.avatars[i]=(i-1)%#avatars.list+1 end
   while players.current<=n do
    local p=players.current; local s=wallet:session()
    info=('ANTE %d EACH. LOW SCORE TAKES THE POT OF %d'):format(stake,pot)
-   say(s and ('PLAYER %d: ANTE %d AS %s?'):format(p,stake,(s.name or 'PLAYER'):upper()) or ('PLAYER %d: INSERT YOUR HOUSE CARD'):format(p),true)
-   local a=ask({{name='cancel',label='CANCEL'},s and {name='ante',label='ANTE '..stake} or {name='',label=''},{name='',label=''}},'ante')
+   local mascot=avatarName(players.avatars[p])
+   say(s and ('PLAYER %d [%s]: ANTE %d AS %s?'):format(p,mascot,stake,(s.name or 'PLAYER'):upper()) or ('PLAYER %d [%s]: INSERT YOUR HOUSE CARD'):format(p,mascot),true)
+   local a=ask({{name='cancel',label='CANCEL'},s and {name='ante',label='ANTE '..stake} or {name='',label=''},{name='mascot',label=mascot..' >'}},'ante')
    if a=='cancel' then
     for _,r in pairs(players.rounds) do settle(r,0,'refund') end
     players=nil; say('MATCH CANCELLED: ANTES RETURNED'); wait(1.5); return false
+   elseif a=='mascot' then
+    players.avatars[p]=players.avatars[p]%#avatars.list+1
+    sound:play(clock(),'hat',.5,12+players.avatars[p])
    elseif a=='ante' and s then
     local key=s.account or s.name or 'card'
-    local r=players.rounds[key]; local ok,err
-    if r then ok,err=wallet:increase(r,stake,pot) else r,err=wallet:begin(stake,pot); ok=r~=nil end
+    local r=players.rounds[key]; local ok,err,context
+    if r then ok,err,context=wallet:increase(r,stake,pot)
+    else r,err,context=wallet:begin(stake,pot); ok=r~=nil end
+    -- Hold this exact seat/ante until its request is acknowledged. Passing the
+    -- card or pressing ANTE again must not charge or increment the pot twice.
+    while not ok and context and context.pending do
+     say('HOUSE OFFLINE: ANTE PENDING')
+     local action=ask({{name='retry',label='RETRY'},{name='retry',label='RETRY'},{name='retry',label='RETRY'}})
+     if action=='retry' then
+      ok,err,context=wallet:retry()
+      if context and context.matches==false then context.pending=true end
+      if ok and not r then
+       r=context and context.round
+       if not r then ok=false; err='Recovered ante needs cashier review'; context={pending=true} end
+      end
+     end
+    end
+    if context and context.status and context.status~='open' then
+     -- An operator closed this reservation while it was interrupted. Do not
+     -- seat it; refund any other account's collected ante before cancelling.
+     players.rounds[key]=nil
+     for _,other in pairs(players.rounds) do settle(other,0,'refund') end
+     players=nil; say('MATCH CANCELLED: ROUND CLOSED BY HOUSE'); wait(1.5); return false
+    end
     if ok then
      players.rounds[key]=r; players.seat[p]=key; players.names[p]=wallet.mode=='live' and s.name or nil; players.pot=players.pot+stake
      players.current=p+1; sound:play(clock(),'pling',.8,10+p*3)
@@ -176,6 +206,18 @@ function M.run(opts)
   players=nil
  end
  -- Before a match: LEFT/RIGHT set how many play, CENTER starts.
+ local function pickSoloMascot()
+  soloShowing=true
+  while true do
+   local mascot=avatarName(soloAvatar)
+   say(('YOUR MASCOT: %s'):format(mascot),true)
+   info='LEFT/RIGHT PICKS A CHARACTER. CENTER LOCKS IT IN'
+   local a=ask({{name='prevMascot',label='< MASCOT'},{name='mascotReady',label=mascot},{name='nextMascot',label='MASCOT >'}})
+   if a=='prevMascot' then soloAvatar=(soloAvatar-2)%#avatars.list+1; sound:play(clock(),'hat',.5,14)
+   elseif a=='nextMascot' then soloAvatar=soloAvatar%#avatars.list+1; sound:play(clock(),'hat',.5,18)
+   elseif a=='mascotReady' then return end
+  end
+ end
  local function seat()
   while true do
    if seats==1 then
@@ -211,8 +253,12 @@ function M.run(opts)
    elseif a=='play' then
     local n=seat()
     if n>1 then match(n)
-    elseif (balance() or 0)<bet() then say('NOT ENOUGH CREDITS: LOWER THE BET'); wait(1)
-    else round(1) end
+    else
+     pickSoloMascot()
+     if (balance() or 0)<bet() then say('NOT ENOUGH CREDITS: LOWER THE BET'); wait(1)
+     else round(1) end
+     soloShowing=false
+    end
     resetBoard()
    end
   end
@@ -221,7 +267,10 @@ function M.run(opts)
  local function resume(...)
   local ok,r=coroutine.resume(co,...)
   if not ok then error(r,0) end
-  request=r
+  -- The gameplay script also calls CC APIs, which yield nil/string event
+  -- filters. Keep those distinct from its own timed waits and choices.
+  if type(r)=='table' and (r.ask or r.wait) then request=r
+  else request={event=true,filter=r} end
  end
  local function choose(i,name)
   if not request or not request.ask then return end
@@ -232,7 +281,7 @@ function M.run(opts)
  local nextCard=0
  local function update(now)
   if request and request.wait and now>=request.wait then resume() end
-  if now>=nextCard then
+  if now>=nextCard and not (request and request.event) then
    nextCard=now+1
    if wallet:refresh() and request and request.card then resume('card') end
   end
@@ -264,8 +313,12 @@ function M.run(opts)
   end
   local party=now<celebrate
   local phase=math.floor(now*(party and 12 or 4))
+  local avatar=players and players.current and players.avatars and players.avatars[players.current] or (soloShowing and soloAvatar or nil)
+  local ready=false
+  if request and request.ask then for _,o in ipairs(request.ask) do if o.name=='roll' then ready=true break end end end
   view:draw({tiles=view_tiles,players=players,dice=d,camera=camera,credits=balance(),bet=bet(),title=wallet.title,info=info,
    message=message,highlight=highlight or (party and phase%2==0),options=request and request.ask,
+   avatar=avatar,avatarReady=ready,avatarPhase=math.floor(now*2),
    lamps=function(i) if party then return (i+phase)%2==0 end return (i+phase)%4==0 end})
  end
  wallet:refresh()
@@ -273,8 +326,12 @@ function M.run(opts)
  local timer=os.startTimer(0)
  while true do
   local e,a,b,c=os.pullEvent()
+  local forwarding=request and request.event
+  if forwarding and (not request.filter or request.filter==e) then resume(e,a,b,c) end
   if e=='timer' and a==timer then
    local now=clock(); update(now); draw(now); timer=os.startTimer(.05)
+  elseif forwarding then
+   if e=='disk' or e=='disk_eject' then nextCard=0 end
   elseif e=='key' then
    if a==keys.q or a==keys.backspace then
     if request and request.ask and request.card==true then return end

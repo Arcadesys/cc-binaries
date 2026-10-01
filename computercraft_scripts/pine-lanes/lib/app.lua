@@ -1,6 +1,7 @@
 local physics=require('lib.physics')
 local rules=require('lib.rules')
 local lane=require('lib.lane')
+local mascots=require('lib.mascots')
 local App={}; App.__index=App
 local parameters={'position','aim','power','hook'}
 -- Furball control units: position, aim (launch angle) and hook (spin) span -100..100; power 0..100.
@@ -24,7 +25,8 @@ function App:emit(kind,data)
 end
 function App:resetMatch(count)
   self.playerCount=count; self.match=assert(rules.new(count))
-  self.playerSettings={}; for i=1,count do self.playerSettings[i]=settings() end
+  self.playerSettings={}; self.playerMascots={}; for i=1,count do self.playerSettings[i]=settings(); self.playerMascots[i]=(i-1)%#mascots.list+1 end
+  self.mascotPlayer=1
   self.sim=nil; self.playback=nil; self.displaySnapshot=nil; self.rollSummary=nil; self.resumePhase=nil
   self.selected='position'; self.fine=false; self.camera='lane'; self.scorePlayer=1
 end
@@ -37,7 +39,7 @@ function App:view()
     snapshot=self.displaySnapshot or {ball={x=0,y=lane.ballRadius,z=physics.releaseZ(set.position),gutter=false},pins=self.match.rack},
     preview=(self.phase=='AIM' and not self.displaySnapshot) and physics.preview(set) or nil,
     scorecards=scores,rankings=self.match.complete and rules.rankings(self.match) or {},message=self.message,lastInput=self.lastInput,
-    rollSummary=self.rollSummary,diagnostic=self.options.diagnostic}
+    rollSummary=self.rollSummary,diagnostic=self.options.diagnostic,mascots=self.playerMascots,mascotPlayer=self.mascotPlayer}
 end
 function App:pause(message)
   if self.phase~='PAUSED' and self.phase~='HELP' then self.resumePhase=self.phase end
@@ -78,7 +80,7 @@ function App:action(action)
   if not action then return end
   self.lastInput=action; self:emit('input',action)
   if action=='primary' then
-    action=({SETUP='start',AIM='roll',SIMULATE='noop',PLAYBACK='noop',RESULT='continue',FINAL='noop',HELP='start',PAUSED='start'})[self.phase]
+    action=({SETUP='start',MASCOTS='mascot_confirm',AIM='roll',SIMULATE='noop',PLAYBACK='noop',RESULT='continue',FINAL='noop',HELP='start',PAUSED='start'})[self.phase]
   end
   if action=='quit' then
     if self.phase=='PAUSED' or self.phase=='HELP' or self.phase=='FINAL' or self.smallDisplay then self.running=false end
@@ -107,7 +109,16 @@ function App:action(action)
   if self.phase=='SETUP' then
     if action=='players_up' or action=='adjust_up' then self:resetMatch(math.min(4,self.playerCount+1))
     elseif action=='players_down' or action=='adjust_down' then self:resetMatch(math.max(1,self.playerCount-1))
-    elseif action=='start' then self.phase='AIM'; self.message='Player 1: position, aim, power, hook; ROLL.' end
+    elseif action=='start' then self.phase='MASCOTS'; self.mascotPlayer=1; self.message='Player 1: choose a mascot.' end
+    return
+  end
+  if self.phase=='MASCOTS' then
+    if action=='mascot_prev' or action=='adjust_down' then self.playerMascots[self.mascotPlayer]=(self.playerMascots[self.mascotPlayer]-2)%#mascots.list+1
+    elseif action=='mascot_next' or action=='adjust_up' then self.playerMascots[self.mascotPlayer]=self.playerMascots[self.mascotPlayer]%#mascots.list+1
+    elseif action=='mascot_confirm' or action=='start' then
+      if self.mascotPlayer<self.playerCount then self.mascotPlayer=self.mascotPlayer+1; self.message='Player '..self.mascotPlayer..': choose a mascot.'
+      else self.phase='AIM'; self.message='Player 1: position, aim, power, hook; ROLL.' end
+    end
     return
   end
   if self.phase=='RESULT' and action=='continue' then

@@ -2,6 +2,7 @@
 -- furball-simulator src/sports/golf/scene.ts in low-poly terminal form; it never decides outcomes.
 -- Furball metres (x right, z downrange) are drawn at Pine (X = z, Y = y, Z = x).
 local ui = require("lib.ui")
+local mascots = require("lib.mascots")
 local pine = require("vendor.Pine3D")
 local course = require("lib.course")
 local render = {}
@@ -196,6 +197,7 @@ function render.new(target)
     end
     frame:drawObjects(drawObjects)
     frame:drawBuffer()
+    if view.mascot then mascots.draw(t,view.mascot,2,5,view.phase=="TITLE" and "PICK" or "READY") end
     -- Readable HUD markers on top of the 3D scene; never collision geometry.
     marker(ball.x, (ball.y or 0) + 1.2, ball.z, "@", colors.black, colors.white)
     marker(course.cup.x, 4.6, course.cup.z, "!", colors.yellow, colors.black)
