@@ -125,18 +125,7 @@ local function INITIALIZE(ctx)
     logger.log(ctx, "info", "Initializing...")
     
     if ctx.config.mode == "mine" then
-        logger.log(ctx, "info", "Generating mining strategy...")
-        local length = tonumber(ctx.config.length) or 60
-        local branchInterval = tonumber(ctx.config.branchInterval) or 3
-        local branchLength = tonumber(ctx.config.branchLength) or 16
-        local torchInterval = tonumber(ctx.config.torchInterval) or 6
-        
-        ctx.strategy = strategyBranchMine.generate(length, branchInterval, branchLength, torchInterval)
-        ctx.pointer = 1
-        
-        logger.log(ctx, "info", string.format("Mining Plan: %d steps.", #ctx.strategy))
-        ctx.nextState = "MINE"
-        return "CHECK_REQUIREMENTS"
+        return require("lib_safe_miner").initialize(ctx)
     end
 
     if ctx.config.mode == "tunnel" then

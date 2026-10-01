@@ -14,6 +14,9 @@ Options (anywhere before SCRIPT; anywhere at all for `mine`):
   --fuel N|unlimited  starting fuel (overrides the world)
   --give ITEM[:N]     add items to the inventory (repeatable), e.g. --give coal:16
   --answer TEXT       answer for the next read() prompt (repeatable; default is Enter)
+  --key NAME          press a key (CC `keys` name, e.g. enter, q) once a second, in order;
+                      for programs that wait on key events (repeatable)
+  --idle SECONDS      stop if no turtle action or output for this long (default 10)
   --trace             print every turtle action as it happens
   --ui                open the CraftOS-PC window so you can watch and type
   --real-time         don't fast-forward sleep()
@@ -50,8 +53,8 @@ FACTORY = os.path.join(REPO, "cc-factory")
 CRAFTOS = os.environ.get("CRAFTOS_BIN", "/Applications/CraftOS-PC.app/Contents/MacOS/craftos")
 SKIP = {".git", "__pycache__", "node_modules", ".DS_Store", "dist"}
 
-VALUE_OPTS = {"--world", "--root", "--fuel", "--give", "--answer", "--timeout", "--facing",
-              "--seed", "--seeds", "--fleet", "--spacing", "-j"}
+VALUE_OPTS = {"--world", "--root", "--fuel", "--give", "--answer", "--key", "--idle", "--timeout",
+              "--facing", "--seed", "--seeds", "--fleet", "--spacing", "-j"}
 FLAG_OPTS = {"--trace", "--ui", "--real-time", "--keep"}
 
 
@@ -67,7 +70,7 @@ def parse(argv, passthrough=False):
     after belongs to the script. With passthrough, unknown options are kept
     for the script too (used by `mine`, which forwards to factory.lua).
     """
-    opts = {"give": [], "answers": [], "timeout": 300.0}
+    opts = {"give": [], "answers": [], "keys": [], "timeout": 300.0}
     rest = []
     i = 0
     while i < len(argv):
@@ -83,6 +86,8 @@ def parse(argv, passthrough=False):
                 opts["give"].append(v)
             elif a == "--answer":
                 opts["answers"].append(v)
+            elif a == "--key":
+                opts["keys"].append(v)
             elif a == "--timeout":
                 opts["timeout"] = float(v)
             else:
@@ -151,6 +156,8 @@ def run_one(script, args, opts, quiet=False):
         "facing": opts.get("facing"),
         "give": opts["give"],
         "answers": opts["answers"],
+        "keys": opts["keys"],
+        "idle": opts.get("idle"),
         "trace": bool(opts.get("trace")),
         "interactive": bool(opts.get("ui")),
         "realTime": bool(opts.get("real_time")),
@@ -287,13 +294,55 @@ def as_dict(value):
     return value if isinstance(value, dict) else {}
 
 
+# Home of the turtle in worlds/branchmine.lua.
+BRANCHMINE_HOME = (0, 11, 0)
+
+
+def branchmine_defaults(args, offset_x=0):
+    length = factory_arg(args, "--length", 60)
+    branch = factory_arg(args, "--branch-length", 16)
+    x, y, z = BRANCHMINE_HOME
+    x += offset_x
+    defaults = [
+        ("--job", ["sim"]),
+        ("--dimension", ["minecraft:overworld"]),
+        ("--home", [str(x), str(y), str(z)]),
+        ("--heading", ["north"]),
+        # Both route levels plus neighbour scans and lighting niches.
+        ("--bounds-min", [str(x - branch - 2), str(y - 1), str(z - length - 2)]),
+        ("--bounds-max", [str(x + branch + 2), str(y + 2), str(z)]),
+        ("--output-side", ["down"]),
+        ("--supply-side", ["up"]),
+    ]
+    out = list(args)
+    for flag, values in defaults:
+        if flag not in out:
+            out += [flag] + values
+    return out
+
+
+def shift_x(args, dx):
+    out = list(args)
+    for flag in ("--home", "--bounds-min", "--bounds-max"):
+        if flag in out:
+            i = out.index(flag) + 1
+            out[i] = str(int(out[i]) + dx)
+    return out
+
+
 def cmd_mine(argv):
     opts, args = parse(argv, passthrough=True)
     if not args or args[0] != "mine":
         args = ["mine"] + args
     opts["root"] = os.path.abspath(opts.get("root") or FACTORY)
-    opts.setdefault("world", "branchmine")
     factory = os.path.join(opts["root"], "factory.lua")
+    if not opts.get("world"):
+        # The miner insists on an explicit job, home and bounds; fill them in
+        # for the bundled world unless given. Press ENTER to start the job.
+        opts["world"] = "branchmine"
+        args = branchmine_defaults(args)
+        if not opts["keys"]:
+            opts["keys"] = ["enter"]
 
     runs = []  # (label, opts)
     if opts.get("seeds"):
@@ -316,7 +365,11 @@ def cmd_mine(argv):
     def go(run):
         label, o = run
         start = time.time()
-        ok, output, summary = run_one(factory, args, o, quiet=True)
+        run_args = args
+        if o.get("offset_x") and o.get("world") == "branchmine":
+            # Shift --home/--bounds by this turtle's offset.
+            run_args = shift_x(args, o["offset_x"])
+        ok, output, summary = run_one(factory, run_args, o, quiet=True)
         print("  finished %-16s %5.1fs %s" % (label, time.time() - start, "ok" if ok else "FAILED"))
         return label, ok, output, summary
 

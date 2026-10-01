@@ -8,6 +8,7 @@ local fuelLib = require("lib_fuel")
 local logger = require("lib_logger")
 
 local function REFUEL(ctx)
+    if ctx.config.mode == "mine" then return require("lib_safe_miner").step(ctx) end
     logger.log(ctx, "info", "Refueling...")
     
     -- Go home

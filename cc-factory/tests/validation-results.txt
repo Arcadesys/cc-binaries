@@ -1,0 +1,100 @@
+Native CraftOS-PC validation, 2026-10-01
+Command: python3 cc-factory/tests/run.py
+Exit status: 0
+PASS bilateral route geometry north
+PASS bilateral route geometry east
+PASS bilateral route geometry south
+PASS bilateral route geometry west
+PASS explicit policy rejects containers turtles unknown and fluids
+PASS prepareMove protects front minecraft:chest
+PASS mineAndFill protects front minecraft:chest
+PASS prepareMove protects front computercraft:turtle_normal
+PASS mineAndFill protects front computercraft:turtle_normal
+PASS prepareMove protects front mod:mystery_ore
+PASS mineAndFill protects front mod:mystery_ore
+PASS prepareMove protects front minecraft:lava
+PASS mineAndFill protects front minecraft:lava
+PASS prepareMove protects front minecraft:water
+PASS mineAndFill protects front minecraft:water
+PASS safe movement cannot bypass block policy front
+PASS unknown cave opening fails front
+PASS failed seal is surfaced front
+PASS prepareMove protects up minecraft:chest
+PASS mineAndFill protects up minecraft:chest
+PASS prepareMove protects up computercraft:turtle_normal
+PASS mineAndFill protects up computercraft:turtle_normal
+PASS prepareMove protects up mod:mystery_ore
+PASS mineAndFill protects up mod:mystery_ore
+PASS prepareMove protects up minecraft:lava
+PASS mineAndFill protects up minecraft:lava
+PASS prepareMove protects up minecraft:water
+PASS mineAndFill protects up minecraft:water
+PASS safe movement cannot bypass block policy up
+PASS unknown cave opening fails up
+PASS failed seal is surfaced up
+PASS prepareMove protects down minecraft:chest
+PASS mineAndFill protects down minecraft:chest
+PASS prepareMove protects down computercraft:turtle_normal
+PASS mineAndFill protects down computercraft:turtle_normal
+PASS prepareMove protects down mod:mystery_ore
+PASS mineAndFill protects down mod:mystery_ore
+PASS prepareMove protects down minecraft:lava
+PASS mineAndFill protects down minecraft:lava
+PASS prepareMove protects down minecraft:water
+PASS mineAndFill protects down minecraft:water
+PASS safe movement cannot bypass block policy down
+PASS unknown cave opening fails down
+PASS failed seal is surfaced down
+PASS falling material has bounded dig attempts
+PASS neighbor scan stops on horizontal protected block without digging
+PASS complete tiny mine physical cycle north
+PASS complete tiny mine physical cycle east
+PASS complete tiny mine physical cycle south
+PASS complete tiny mine physical cycle west
+PASS unlimited fuel runs complete operating cycle
+PASS low fuel without consumables stops before reserve loss
+PASS missing output receiver fails without drops
+PASS full output receiver fails without drops
+PASS failed turn preserves instruction and heading
+PASS failed torch placement stops instead of advancing
+PASS blocked home route stops without destructive shortcuts
+PASS inventory service restores exact work pose before next instruction
+PASS checkpoint readback and clean reload preserve pointer and pose
+PASS interrupted action refuses recovery without turtle actions
+PASS interrupted journal replacement refuses automatic recovery
+PASS corrupt checkpoint refuses recovery
+PASS checkpoint open failure prevents unjournaled action
+PASS checkpoint write failure prevents unjournaled action
+PASS checkpoint move failure prevents unjournaled action
+PASS checkpoint readback failure prevents unjournaled action
+PASS real termination after successful physical move fails closed on fresh load
+PASS partial receiver transfer is counted without world drops
+PASS rendered labelled keyboard UI 39x13
+PASS rendered labelled keyboard UI 39x19
+PASS rendered labelled keyboard UI 51x19
+PASS surplus cobblestone unload creates mining capacity and resumes
+PASS move orientation substep never skips target cell
+PASS clean restart after placed torches finishes complete cycle
+PASS factory READY Q stops with zero native turtle actions
+PASS factory keys and stale timers never mine before Enter
+PASS factory detail key and stale timer after Enter do not advance
+PASS manual return stops partial job and clean resume completes it
+PASS completion at home does not traverse the job a second time
+PASS every physical dig preserves capacity with distinct neighbour drops
+PASS setup valid tiny defaults generate complete explicit CLI arguments
+PASS setup malformed home reprompts rather than inferring pose
+PASS setup Q cancels without turtle actions
+PASS all 83 passed, 0 failed
+
+Additional factory R dispatch case added after full runner started.
+Command: python3 cc-factory/tests/run.py --filter "factory R"
+Exit status: 0
+PASS factory READY Q stops with zero native turtle actions
+PASS factory R retraces and unloads partial job without new excavation
+PASS all 2 passed, 0 failed
+
+Unique integrated cases verified: 84.
+Native screenshots: 16 rendered pages including setup at 39x13, 39x19, 51x19.
+Coordinator reports distribution/installer checks PASS for all 47 modules.
+Coordinator reports existing ArcadeOS regression suite PASS all 53.
+Minecraft survival and multi-turtle gates C/D remain unverified.

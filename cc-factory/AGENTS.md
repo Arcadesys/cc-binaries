@@ -229,20 +229,20 @@ Uploading dozens of files to a turtle is painful, so use the bundler to produce 
     node bundle.js
     ```
 
-2. Copy the generated `dist/factory.lua` file onto the turtle (via `pastebin`, `wget`, disk, etc.).
-3. Run `factory` once: it unpacks every module next to itself (replacing `factory.lua` with the real entry point).
-4. Launch the agent with `factory build <schema>` or `factory mine --length 80 --branch-interval 4`, or `turtle_os` for the menu.
+2. Copy the generated `dist/factory.lua` onto the turtle under a different name, such as `safe-mining-install.lua` (it is an unpacking installer; don't call it `factory.lua` in the folder it unpacks into).
+3. Run `safe-mining-install` to write the modules.
+4. Launch the agent with `factory build <schema>`, or `turtle_os` for the menu. Branch mining takes an explicit job, home and bounds; see [SAFE_MINING.md](SAFE_MINING.md).
 
 The source files remain modular for development, but the turtle only needs the bundled artifact.
 
 ## **9. Testing without Minecraft**
 
-[`../turtlesim`](../turtlesim/README.md) runs these sources against a simulated turtle in CraftOS-PC:
+`tests/run.py` is the safe-mining regression suite (see [SAFE_MINING.md](SAFE_MINING.md)). For trying the miner or any script against a seeded world, [`../turtlesim`](../turtlesim/README.md) runs these sources against a simulated turtle in CraftOS-PC:
 
 ```bash
-../turtlesim/turtle mine --length 64 --branch-interval 3   # one branch mine, with an ore report
-../turtlesim/turtle mine --seeds 1-8 --length 64           # compare 8 ore layouts in parallel
-../turtlesim/turtle harness                                # every harness_*.lua, headless
+../turtlesim/turtle mine --length 48 --branch-length 12   # one full job, with an ore report
+../turtlesim/turtle mine --seeds 1-8 --length 48          # compare 8 ore layouts in parallel
+../turtlesim/turtle harness                               # every harness_*.lua, headless
 ```
 
 ---

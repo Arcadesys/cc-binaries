@@ -35,6 +35,10 @@ turtlesim/turtle harness                        # all cc-factory harnesses, head
 | [`cc-jukebox`](./cc-jukebox) | [Arcadesys/cc-jukebox](https://github.com/Arcadesys/cc-jukebox) |
 | [`computercraft_scripts`](./computercraft_scripts) | [Arcadesys/computercraft_scripts](https://github.com/Arcadesys/computercraft_scripts) |
 
+For turtle branch mining, start with the [safe mining pilot guide](./cc-factory/SAFE_MINING.md). It covers bounded jobs, checked return/unload, restart recovery, installation, and the supervised in-world checks required before scaling.
+
+The [mining fleet guide](./cc-factory/FLEET_MINING.md) adds automatic assignment of pre-approved jobs, durable area reservations, and shared-world turtle-tester scenarios. A lost turtle's area remains quarantined until manually reconciled.
+
 ## Pine3D Derby and diamond house
 
 The [derby prototype](./cc-arcade/derby/README.md) adds a shared 3D horse race, separate betting stations, and a central diamond-backed arcade wallet. It includes the [venue concept](./cc-arcade/derby/docs/diamond-house-concept.png); live Minecraft acceptance remains pending.

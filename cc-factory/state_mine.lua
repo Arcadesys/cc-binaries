@@ -51,6 +51,7 @@ local function selectTorch(ctx)
 end
 
 local function MINE(ctx)
+    if ctx.config.mode == "mine" then return require("lib_safe_miner").step(ctx) end
     logger.log(ctx, "info", "State: MINE")
 
     if turtle.getFuelLevel and turtle.getFuelLevel() < 100 then
@@ -89,15 +90,6 @@ local function MINE(ctx)
             movement.turnRight(ctx)
         end
         
-    elseif step.type == "dig_up" then
-        -- Loop for gravel/sand falling into the gap; give up after a few.
-        for _ = 1, 10 do
-            if not turtle.detectUp() then
-                break
-            end
-            turtle.digUp()
-        end
-
     elseif step.type == "mine_neighbors" then
         mining.scanAndMineNeighbors(ctx)
         
@@ -107,9 +99,8 @@ local function MINE(ctx)
             ctx.resumeState = "MINE"
             return "RESTOCK"
         end
-        -- Head height in the two-tall spine; the floor is the fallback.
-        if not turtle.placeUp() then
-            turtle.placeDown()
+        if not turtle.placeDown() then
+            turtle.placeUp()
         end
         
     elseif step.type == "dump_trash" then

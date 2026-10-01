@@ -25,7 +25,9 @@ local pending = ""
 
 local sinceRead = ""  -- output since the last read(), for world prompt hooks
 
+local lastActivity
 local function logText(text)
+    lastActivity = os.clock()
     sinceRead = (sinceRead .. text):sub(-2000)
     pending = pending .. text
     while true do
@@ -138,16 +140,47 @@ if not cfg.interactive then
     end
 end
 
+local nativeStartTimer = os.startTimer
+lastActivity = os.clock()
+world.onAction = function()
+    lastActivity = os.clock()
+end
+
 if not cfg.realTime then
-    -- Fast-forward sleeps: yield once so events still flow, but don't wait.
-    local fake = 0
-    local function fastSleep(seconds)
-        fake = fake + (tonumber(seconds) or 0)
+    -- Fast-forward sleeps and timers: yield once so events still flow, but
+    -- don't wait. Timer ids start high so they never match real timers.
+    -- Unlike a real sleep, no time passes, so events that arrive meanwhile
+    -- (like a fast timer queued just before) must be put back, not dropped.
+    local function fastSleep()
         os.queueEvent("turtlesim_tick")
-        os.pullEvent("turtlesim_tick")
+        local held = {}
+        while true do
+            local event = table.pack(os.pullEventRaw())
+            if event[1] == "turtlesim_tick" then
+                break
+            elseif event[1] == "terminate" then
+                error("Terminated", 0)
+            end
+            held[#held + 1] = event
+        end
+        for _, event in ipairs(held) do
+            os.queueEvent(table.unpack(event, 1, event.n))
+        end
     end
     _G.sleep = fastSleep
     os.sleep = fastSleep
+    local nextTimer = 1000000
+    os.startTimer = function()
+        nextTimer = nextTimer + 1
+        os.queueEvent("timer", nextTimer)
+        return nextTimer
+    end
+    local nativeCancel = os.cancelTimer
+    os.cancelTimer = function(id)
+        if id < 1000000 then
+            nativeCancel(id)
+        end
+    end
 end
 
 -- Finish ----------------------------------------------------------------------
@@ -158,7 +191,34 @@ local function writeJSON(name, value)
     h.close()
 end
 
+-- The script draws into a window so its last screen can be printed with the
+-- report (full-screen UIs bypass print, so the log alone misses them).
+local nativeTerm = term.current()
+local w, h = nativeTerm.getSize()
+local screen = window.create(nativeTerm, 1, 1, w, h, true)
+
+local function screenLines()
+    local lines = {}
+    for y = 1, h do
+        lines[y] = (screen.getLine(y)):gsub("%s+$", "")
+    end
+    while #lines > 0 and lines[#lines] == "" do
+        lines[#lines] = nil
+    end
+    return lines
+end
+
 local function finish(status)
+    term.redirect(nativeTerm)
+    if cfg.showScreen ~= false then
+        local lines = screenLines()
+        if #lines > 0 then
+            logText("\n== last screen ==\n")
+            for _, line in ipairs(lines) do
+                logText("  |" .. line .. "\n")
+            end
+        end
+    end
     print("")
     for _, line in ipairs(world:report()) do
         say(line)
@@ -204,6 +264,7 @@ end
 -- Stop the run from anywhere. Scripts often pcall their main loop, so an
 -- error() would just be caught and retried; this ends the emulator instead.
 local function abort(reason)
+    term.redirect(nativeTerm)
     printError("turtlesim: " .. reason)
     finish({ ok = false, error = reason })
 end
@@ -216,8 +277,47 @@ local args = cfg.args or {}
 say(string.format("turtlesim: %s %s", script, table.concat(args, " ")))
 say(string.format("turtlesim: start %s fuel %s", world:pos(), tostring(turtle.getFuelLevel())))
 
+-- Headless helper running beside the script: presses --key values (one per
+-- second, for programs that wait on key events rather than read()), and
+-- stops the run if nothing happens for --idle seconds.
+local function keyboard()
+    local pending = {}
+    for _, name in ipairs(cfg.keys or {}) do
+        pending[#pending + 1] = name
+    end
+    local idle = tonumber(cfg.idle) or 10
+    while true do
+        local id = nativeStartTimer(1)
+        repeat
+            local _, fired = os.pullEvent("timer")
+        until fired == id
+        local name = table.remove(pending, 1)
+        if name then
+            local code = keys[name]
+            if not code then
+                world.abort("unknown key name for --key: " .. name)
+            end
+            say("> [key " .. name .. "]")
+            os.queueEvent("key", code, false)
+            os.queueEvent("key_up", code)
+            lastActivity = os.clock()
+        elseif os.clock() - lastActivity > idle then
+            world.abort(string.format("nothing happened for %ds; the script is probably waiting for a key. Pass --key NAME or run with --ui.", idle))
+        end
+    end
+end
+
 shell.setDir(fs.getDir(script))
-local ok, err = pcall(shell.execute, script, table.unpack(args))
+term.redirect(screen)
+local ok, err
+local function runScript()
+    ok, err = pcall(shell.execute, script, table.unpack(args))
+end
+if cfg.interactive then
+    runScript()
+else
+    parallel.waitForAny(runScript, keyboard)
+end
 local status = { ok = ok and err ~= false, error = (not ok) and tostring(err) or nil }
 if not ok then
     printError(tostring(err))

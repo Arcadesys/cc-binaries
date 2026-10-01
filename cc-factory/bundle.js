@@ -14,6 +14,7 @@ if (!fs.existsSync(OUTPUT_DIR)){
 // 2. turtle_os.lua (UI)
 // 3. state_*.lua (State machine states)
 // 4. lib_*.lua (Libraries)
+// 5. Fleet coordinator and worker entry points
 // We exclude:
 // 1. harness_*.lua (Test harnesses)
 // 2. main.lua (Legacy/Dev entry point)
@@ -35,6 +36,8 @@ const MODULE_FILES = allFiles.filter(file => {
     // Explicitly include specific categories to avoid bundling random scripts
     if (file === 'factory.lua' || 
         file === 'turtle_os.lua' || 
+        file === 'fleet_coordinator.lua' ||
+        file === 'fleet_worker.lua' ||
         file.startsWith('state_') || 
         file.startsWith('lib_')) {
         return true;
@@ -99,6 +102,7 @@ local function install()
     
     print("Installation complete.")
     print("Run 'turtle_os' to start.")
+    print("Fleet: fleet_coordinator or fleet_worker with a reviewed config file.")
 end
 
 install()
@@ -106,4 +110,3 @@ install()
 
 fs.writeFileSync(OUTPUT_FILE, bootstrapCode);
 console.log(`Successfully created ${OUTPUT_FILE}`);
-

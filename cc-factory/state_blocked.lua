@@ -6,6 +6,10 @@ Handles navigation failures.
 local logger = require("lib_logger")
 
 local function BLOCKED(ctx)
+    if ctx.config.mode == "mine" then
+        require("lib_mining_status").render(ctx)
+        return "EXIT"
+    end
     local resume = ctx.resumeState or "BUILD"
     logger.log(ctx, "warn", string.format("Movement blocked while executing %s. Retrying in 5 seconds...", resume))
     ---@diagnostic disable-next-line: undefined-global

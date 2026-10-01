@@ -1,4 +1,4 @@
--- Solid stone at y=11 with seeded ore veins and a supply chest behind the turtle
+-- Solid stone at y=11 with seeded ore veins; supply chest above, output chest below
 -- Change `seed` (or pass a different world) to get a different ore layout.
 local Y = 11
 return {
@@ -9,6 +9,7 @@ return {
         inventory = {
             [1] = "minecraft:coal:32",
             [2] = "minecraft:torch:64",
+            [3] = "minecraft:cobblestone:32",
         },
     },
     -- Everything at or below y=64 is stone unless an ore rolls there.
@@ -27,9 +28,21 @@ return {
         { "minecraft:gravel", chance = 0.010, vein = 3 },
         { "minecraft:andesite", chance = 0.015, vein = 3 },
     },
+    -- cc-factory's default bay: supply inventory above, output inventory below.
     blocks = {
         { 0, Y, 0, "air" },
-        { 0, Y + 1, 0, "air" },
-        { 0, Y, 1, { name = "minecraft:chest", items = { "minecraft:coal:64", "minecraft:torch:64" } } },
+        { 0, Y + 1, 0, { name = "minecraft:chest", items = (function()
+            -- A well-stocked bay: 9 stacks each of coal, torches and fill.
+            local items = {}
+            for i = 1, 9 do
+                items[#items + 1] = "minecraft:coal:64"
+                items[#items + 1] = "minecraft:torch:64"
+                items[#items + 1] = "minecraft:cobblestone:64"
+            end
+            return items
+        end)() } },
+        -- The miner keeps the cobblestone it digs, so the receiver needs room:
+        -- 108 slots, like a modded storage block (a plain chest fills mid-run).
+        { 0, Y - 1, 0, { name = "minecraft:chest", size = 108, items = {} } },
     },
 }

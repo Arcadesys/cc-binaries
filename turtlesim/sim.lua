@@ -1026,6 +1026,16 @@ function World:report()
         for _, d in ipairs(self.dropped) do n = n + d.count end
         lines[#lines + 1] = string.format("dropped   %d item(s) on the ground", n)
     end
+    for k, b in pairs(self.blocks) do
+        if type(b) == "table" and b.items and next(b.items) then
+            local counts = {}
+            for _, st in pairs(b.items) do
+                counts[st.name] = (counts[st.name] or 0) + st.count
+            end
+            local _, text = tally(counts)
+            lines[#lines + 1] = string.format("%s at %s: %s", b.name:gsub("^minecraft:", ""), k, text)
+        end
+    end
     lines[#lines + 1] = "map"
     for _, l in ipairs(self:mapLines()) do lines[#lines + 1] = l end
     return lines

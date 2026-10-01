@@ -10,13 +10,15 @@ The script's folder is copied onto the turtle as its disk, so `require` and rela
 
 ## Branch mining
 
-`turtle mine` runs cc-factory's branch miner (`factory.lua mine`) in the `branchmine` world: solid stone with seeded ore veins and a supply chest behind the turtle. Any extra arguments go to the factory.
+`turtle mine` runs cc-factory's safe branch miner (`factory.lua mine`) in the `branchmine` world. That world is solid stone with seeded ore veins and the miner's default bay: a supply chest above the turtle and an output chest below. Any extra arguments go to the factory. The miner's required `--job`, `--home`, `--heading`, `--dimension` and `--bounds-*` arguments are filled in to match the world (bounds sized from `--length` and `--branch-length`), and ENTER is pressed to confirm the start screen.
 
 ```bash
-turtlesim/turtle mine --length 64 --branch-interval 3 --branch-length 12
-turtlesim/turtle mine --seeds 1-8 --length 64     # 8 ore layouts in parallel, one table
-turtlesim/turtle mine --fleet 4 --length 64       # 4 turtles side by side; flags shared tunnels
+turtlesim/turtle mine --length 48 --branch-interval 3 --branch-length 12
+turtlesim/turtle mine --seeds 1-8 --length 48     # 8 ore layouts in parallel, one table
+turtlesim/turtle mine --fleet 4 --length 48       # 4 turtles side by side; flags shared tunnels
 ```
+
+The miner caps jobs at `--length 256` and `--branch-length 64`. If a run stops early, the report's **last screen** shows the miner's status page and its reason (for example `NEEDS HELP` with a supply or receiver problem).
 
 Key report lines:
 
@@ -24,6 +26,12 @@ Key report lines:
 - **missed**: ore still touching the tunnel afterwards. This should be 0.
 - **ores per 100 fuel**: the efficiency number to tune `--branch-interval` and `--branch-length`.
 - **failed actions**: placement, refuel and drop calls that returned false. Routine bumps and empty digs aren't counted.
+
+## Programs that wait for input
+
+Headless runs answer `read()` with Enter, or the `--answer` values in order. Programs that wait for key events instead get the `--key NAME` presses, one per second (CC `keys` names, e.g. `enter`, `q`). If nothing happens for `--idle` seconds (default 10), meaning no turtle action and no output, the run stops and says so. Use `--ui` to drive a program yourself in the CraftOS-PC window.
+
+Timers and `sleep()` are fast-forwarded, so a program pacing itself with `os.startTimer` runs at full speed. Pass `--real-time` if timing matters.
 
 ## Other commands
 
@@ -34,7 +42,11 @@ turtlesim/turtle worlds               # list bundled worlds
 turtlesim/turtle --world quarry --trace turtlesim/examples/stairs.lua 8
 ```
 
-Useful options: `--world NAME|FILE`, `--seed N`, `--fuel N|unlimited`, `--give coal:16`, `--answer TEXT`, `--trace` (log every turtle action), `--ui` (open the CraftOS-PC window to watch and type), `--keep` (keep the temp emulator folder). Run `turtlesim/turtle --help` for all of them.
+Useful options: `--world NAME|FILE`, `--seed N`, `--fuel N|unlimited`, `--give coal:16`, `--answer TEXT`, `--key NAME`, `--trace` (log every turtle action), `--ui` (open the CraftOS-PC window to watch and type), `--keep` (keep the temp emulator folder). Run `turtlesim/turtle --help` for all of them.
+
+The report also lists every container that holds items and the program's last screen.
+
+cc-factory also has its own regression suite with a purpose-built simulator, `cc-factory/tests/run.py` (see `cc-factory/SAFE_MINING.md`). turtlesim is the general-purpose runner: any script, editable worlds, and scale comparisons.
 
 ## Worlds
 

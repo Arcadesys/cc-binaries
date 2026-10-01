@@ -25,24 +25,10 @@ end
 
 -- --- ACTIONS ---
 
-local function runMining(form)
-    local length = 64
-    local interval = 3
-    local torch = 6
-    
-    for _, el in ipairs(form.elements) do
-        if el.id == "length" then length = tonumber(el.value) or 64 end
-        if el.id == "interval" then interval = tonumber(el.value) or 3 end
-        if el.id == "torch" then torch = tonumber(el.value) or 6 end
-    end
-    
-    ui.clear()
-    print("Starting Mining Operation...")
-    print(string.format("Length: %d, Interval: %d", length, interval))
-    sleep(1)
-    
-    factory.run({ "mine", "--length", tostring(length), "--branch-interval", tostring(interval), "--torch-interval", tostring(torch) })
-    
+local function runMining()
+    local argv = require("lib_mining_setup").collect()
+    if not argv then return "stay" end
+    factory.run(argv)
     return pauseAndReturn("stay")
 end
 
@@ -314,23 +300,7 @@ local function showEditMenu()
 end
 
 local function showMiningWizard()
-    local form = {
-        title = "Mining Wizard",
-        elements = {
-            { type = "label", x = 2, y = 2, text = "Tunnel Length:" },
-            { type = "input", x = 18, y = 2, width = 5, value = "64", id = "length" },
-            
-            { type = "label", x = 2, y = 4, text = "Branch Interval:" },
-            { type = "input", x = 18, y = 4, width = 5, value = "3", id = "interval" },
-            
-            { type = "label", x = 2, y = 6, text = "Torch Interval:" },
-            { type = "input", x = 18, y = 6, width = 5, value = "6", id = "torch" },
-            
-            { type = "button", x = 2, y = 9, text = "Start Mining", callback = runMining },
-            { type = "button", x = 18, y = 9, text = "Cancel", callback = function() return "back" end }
-        }
-    }
-    return ui.runForm(form)
+    return runMining()
 end
 
 local function showMineMenu()
