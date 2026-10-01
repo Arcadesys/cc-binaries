@@ -17,6 +17,7 @@ output produced by the current Lua renderer and betting-station event loop.
 | `tools/run.py derby.tests.rendered` | Race, betting, confirmation and input scenarios passed at 51×19 and 100×40 |
 | `arcadeos/tools/dev.py test apps smoke` | All 28 checks passed |
 | `arcadeos/tools/dev.py install-test` | Fresh ArcadeOS install passed; manifests and apps load |
+| Generated standalone installer | Runtime files install and derby/wallet modules load in a fresh emulator; interactive default-game menu skipped |
 | `git diff --check` | Passed |
 
 Core tests include a simulated deposit → winning wager → withdrawal, concurrent
