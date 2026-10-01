@@ -4,6 +4,10 @@
 
 The separate [`pine-dungeon`](pine-dungeon/README.md) program is a compact first-person Pine3D dungeon crawler with a persistent ASCII map, three floors, turn-based monsters, loot, keyboard controls, and Advanced Monitor tap targets.
 
+## Pine Face
+
+The separate [`pine-face`](pine-face/README.md) program is a Faceball 2000–style first-person tag game: four Smileys in one Pine3D maze, real-time movement, one shot in the air at a time, first to ten tags. Each player uses their own computer over rednet, and bots take any empty seat.
+
 ## Pine Ball
 
 The separate [`pine-ball`](pine-ball/README.md) program is Pine3D arcade baseball at Rogers Bark Municipal Field, running the furball-simulator baseball engine against a CPU pitcher or a second player.

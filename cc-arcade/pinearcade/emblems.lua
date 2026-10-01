@@ -190,6 +190,18 @@ function E.pinedungeon()
  quad(m,{x-.01,.8,-.4},{x-.01,.8,.4},{x-.01,.7,.35},{x-.01,.7,-.35},colors.yellow,{-1,0,0})
  return m
 end
+function E.pineface()
+ local m={}
+ -- A Smiley ball facing the camera, with a bullet on its way out.
+ ball(m,.95,0,1.3,0,colors.yellow,12)
+ box(m,-.99,1.45,-.42,.12,.38,.2,colors.black)
+ box(m,-.99,1.45,.22,.12,.38,.2,colors.black)
+ box(m,-.99,.86,-.42,.12,.12,.84,colors.black)
+ box(m,-.92,.96,-.58,.12,.14,.16,colors.black)
+ box(m,-.92,.96,.42,.12,.14,.16,colors.black)
+ box(m,-.5,.15,.75,.22,.22,.22,colors.white)
+ return m
+end
 -- The startup tile: a power symbol.
 function E.boot(lit)
  local m={}

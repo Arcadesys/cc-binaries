@@ -24,6 +24,7 @@ FURBALL = {
     'pinelinks': ('Pine Links', 'pine-links', 'golf.lua', 'Mini golf: a par 3 with a swing meter'),
     'pinelanes': ('Pine Lanes', 'pine-lanes', 'bowl.lua', 'Ten-frame bowling for one to four players'),
     'pinedungeon': ('Pine Dungeon', 'pine-dungeon', 'dungeon.lua', 'First-person dungeon crawler with a map'),
+    'pineface': ('Pine Face', 'pine-face', 'face.lua', 'Faceball-style Smiley tag for four players over rednet'),
 }
 TOOLS = ['house', 'config']
 LAUNCHER = 'pinearcade'

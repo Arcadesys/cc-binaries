@@ -32,6 +32,7 @@ wget run https://raw.githubusercontent.com/Arcadesys/cc-binaries/main/cc-arcade/
 | `pinelinks` | [Pine Links](./computercraft_scripts/pine-links/README.md): mini golf |
 | `pinelanes` | [Pine Lanes](./computercraft_scripts/pine-lanes/README.md): bowling |
 | `pinedungeon` | [Pine Dungeon](./computercraft_scripts/pine-dungeon/README.md): dungeon crawler |
+| `pineface` | [Pine Face](./computercraft_scripts/pine-face/README.md): Faceball-style Smiley tag for up to four networked players, bots filling empty seats |
 
 To put every Pine game on one computer and choose between them, install `all`:
 
@@ -39,7 +40,7 @@ To put every Pine game on one computer and choose between them, install `all`:
 wget run https://raw.githubusercontent.com/Arcadesys/cc-binaries/main/cc-arcade/get.lua all --startup
 ```
 
-That boots into [Pine Arcade](./cc-arcade/pinearcade/README.md), a Pine3D carousel of the installed games (about 450 KiB in all; the games share one copy of Pine3D). Pick a game to play it, or to make it what the computer starts into; the STARTUP tile switches back to the menu or turns autostart off.
+That boots into [Pine Arcade](./cc-arcade/pinearcade/README.md), a Pine3D carousel of the installed games (about 515 KiB in all; the games share one copy of Pine3D). Pick a game to play it, or to make it what the computer starts into; the STARTUP tile switches back to the menu or turns autostart off.
 
 Run it with no program name to choose from a menu. Every install also includes `house`, which joins the computer to the house bank (`house setup station <modem> <host-id>`), and `config`, which teaches the three cabinet buttons. Games run on a practice meter until the computer is a house station.
 
@@ -90,6 +91,7 @@ The standalone Pine3D games are in [`computercraft_scripts`](./computercraft_scr
 | [Pine Links](./computercraft_scripts/pine-links/README.md) | `/pine-links/golf.lua` | Furball's Marovitz-inspired Hole 3, par 3 |
 | [Pine Lanes](./computercraft_scripts/pine-lanes/README.md) | `/pine-lanes/bowl.lua` | Furball ten-frame bowling for 1–4 players |
 | [Pine Dungeon](./computercraft_scripts/pine-dungeon/README.md) | `/pine-dungeon/dungeon.lua` | First-person crawler with an ASCII map |
+| [Pine Face](./computercraft_scripts/pine-face/README.md) | `/pine-face/face.lua` | Faceball 2000–style maze tag: four Smileys over rednet, bots in empty seats |
 
 Pine Ball, Pine Links and Pine Lanes run Lua ports of the [furball-simulator](https://github.com/Arcadesys/furball-simulator) sport engines, checked against fixtures generated from the TypeScript. After tuning furball, run `computercraft_scripts/tools/furball-fixtures/update.sh` and then each game's `tools/test_craftos.sh`.
 

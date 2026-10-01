@@ -59,7 +59,7 @@ return {
             for y = 1, select(2, parent.getSize()) do lines[#lines + 1] = H.row(parent, y) end
             local screen = table.concat(lines, '\n')
             -- Page one at 51x19; End reaches the rest (checked below).
-            for _, name in ipairs({'Horse Race', 'Pine Ball', 'Pine Dungeon', 'Pine Jack', 'Pine Lanes', 'Pine Links'}) do
+            for _, name in ipairs({'Horse Race', 'Pine Ball', 'Pine Dungeon', 'Pine Face', 'Pine Jack', 'Pine Lanes'}) do
                 T.ok(screen:find(name, 1, true), name .. ' visible')
             end
             for _, name in ipairs({'Calculator', 'Blackjack', 'Terminal', 'Paint', 'Notepad'}) do

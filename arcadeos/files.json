@@ -5,7 +5,7 @@
    "description": "ArcadeOS shell and accessories",
    "required": true,
    "turtle": false,
-   "size": 128841,
+   "size": 129094,
    "files": [
     {
      "src": "arcadeos/boot.lua",
@@ -148,6 +148,11 @@
      "size": 262
     },
     {
+     "src": "arcadeos/apps/pineface/app.lua",
+     "dest": "/arcadeos/apps/pineface/app.lua",
+     "size": 253
+    },
+    {
      "src": "arcadeos/apps/pinejack/app.lua",
      "dest": "/arcadeos/apps/pinejack/app.lua",
      "size": 244
@@ -273,7 +278,7 @@
    "description": "Arcade games: Blackjack, Slots, Pine Slots, Pine Jack, Pine Shut the Box, Can't Stop, Race, RPS Rogue, IdleCraft",
    "required": false,
    "turtle": false,
-   "size": 383587,
+   "size": 393644,
    "files": [
     {
      "src": "cc-arcade/audio.lua",
@@ -378,7 +383,7 @@
     {
      "src": "cc-arcade/casino/wallet.lua",
      "dest": "/pkg/arcade/casino/wallet.lua",
-     "size": 3605
+     "size": 3980
     },
     {
      "src": "cc-arcade/derby/app.lua",
@@ -493,12 +498,12 @@
     {
      "src": "cc-arcade/pinearcade/app.lua",
      "dest": "/pkg/arcade/pinearcade/app.lua",
-     "size": 6845
+     "size": 7492
     },
     {
      "src": "cc-arcade/pinearcade/emblems.lua",
      "dest": "/pkg/arcade/pinearcade/emblems.lua",
-     "size": 9327
+     "size": 9758
     },
     {
      "src": "cc-arcade/pinearcade/render.lua",
@@ -508,7 +513,7 @@
     {
      "src": "cc-arcade/pinearcade/tests/run.lua",
      "dest": "/pkg/arcade/pinearcade/tests/run.lua",
-     "size": 6570
+     "size": 6702
     },
     {
      "src": "cc-arcade/pinebox/app.lua",
@@ -523,12 +528,12 @@
     {
      "src": "cc-arcade/pinebox/game.lua",
      "dest": "/pkg/arcade/pinebox/game.lua",
-     "size": 8891
+     "size": 13878
     },
     {
      "src": "cc-arcade/pinebox/render.lua",
      "dest": "/pkg/arcade/pinebox/render.lua",
-     "size": 5276
+     "size": 8556
     },
     {
      "src": "cc-arcade/pinebox/rules.lua",
@@ -538,7 +543,7 @@
     {
      "src": "cc-arcade/pinebox/scene.lua",
      "dest": "/pkg/arcade/pinebox/scene.lua",
-     "size": 3763
+     "size": 3968
     },
     {
      "src": "cc-arcade/pinejack/app.lua",
@@ -654,7 +659,7 @@
    "description": "Pine3D games: Pine Ball, Pine Links, Pine Lanes, Pine Dungeon",
    "required": false,
    "turtle": false,
-   "size": 536461,
+   "size": 660226,
    "files": [
     {
      "src": "computercraft_scripts/pine-ball/ball.lua",
@@ -774,6 +779,66 @@
     {
      "src": "computercraft_scripts/pine-dungeon/vendor/betterblittle.lua",
      "dest": "/pkg/scripts/pine-dungeon/vendor/betterblittle.lua",
+     "size": 6135
+    },
+    {
+     "src": "computercraft_scripts/pine-face/face.lua",
+     "dest": "/pkg/scripts/pine-face/face.lua",
+     "size": 1551
+    },
+    {
+     "src": "computercraft_scripts/pine-face/lib/app.lua",
+     "dest": "/pkg/scripts/pine-face/lib/app.lua",
+     "size": 5599
+    },
+    {
+     "src": "computercraft_scripts/pine-face/lib/bot.lua",
+     "dest": "/pkg/scripts/pine-face/lib/bot.lua",
+     "size": 4109
+    },
+    {
+     "src": "computercraft_scripts/pine-face/lib/input.lua",
+     "dest": "/pkg/scripts/pine-face/lib/input.lua",
+     "size": 2870
+    },
+    {
+     "src": "computercraft_scripts/pine-face/lib/net.lua",
+     "dest": "/pkg/scripts/pine-face/lib/net.lua",
+     "size": 8224
+    },
+    {
+     "src": "computercraft_scripts/pine-face/lib/render.lua",
+     "dest": "/pkg/scripts/pine-face/lib/render.lua",
+     "size": 6981
+    },
+    {
+     "src": "computercraft_scripts/pine-face/lib/ui.lua",
+     "dest": "/pkg/scripts/pine-face/lib/ui.lua",
+     "size": 8887
+    },
+    {
+     "src": "computercraft_scripts/pine-face/lib/world.lua",
+     "dest": "/pkg/scripts/pine-face/lib/world.lua",
+     "size": 8508
+    },
+    {
+     "src": "computercraft_scripts/pine-face/vendor/LICENSE",
+     "dest": "/pkg/scripts/pine-face/vendor/LICENSE",
+     "size": 1062
+    },
+    {
+     "src": "computercraft_scripts/pine-face/vendor/Pine3D.lua",
+     "dest": "/pkg/scripts/pine-face/vendor/Pine3D.lua",
+     "size": 69417
+    },
+    {
+     "src": "computercraft_scripts/pine-face/vendor/REVISION.txt",
+     "dest": "/pkg/scripts/pine-face/vendor/REVISION.txt",
+     "size": 422
+    },
+    {
+     "src": "computercraft_scripts/pine-face/vendor/betterblittle.lua",
+     "dest": "/pkg/scripts/pine-face/vendor/betterblittle.lua",
      "size": 6135
     },
     {
