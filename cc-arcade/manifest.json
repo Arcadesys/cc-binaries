@@ -363,16 +363,20 @@
      "size": 251
     },
     {
+     "path": "pinebox/avatars.lua",
+     "size": 2800
+    },
+    {
      "path": "pinebox/dice.lua",
      "size": 8450
     },
     {
      "path": "pinebox/game.lua",
-     "size": 13878
+     "size": 15361
     },
     {
      "path": "pinebox/render.lua",
-     "size": 8556
+     "size": 8677
     },
     {
      "path": "pinebox/rules.lua",
