@@ -402,6 +402,7 @@ local function runAttractMode()
 
         for _, p in ipairs(players) do
             local pScore = calculateHand(p.hand)
+            local returned = 0
             if p.status == "Bust!" then
                 p.status = "LOSE"
             elseif p.status == "Blackjack!" then
@@ -538,11 +539,22 @@ local function main()
             })
             if creditsAPI.get(card.path) < 10 then
                 drawCenter(h/2, card.name .. " needs 10 credits!", colors.red, colors.black)
-                creditsAPI.unlock(card.path)
+                for _, previous in ipairs(players) do
+                    if previous.houseRound then creditsAPI.refundRound(previous.houseRound) end
+                    creditsAPI.unlock(previous.mountPath)
+                end
                 sleep(2)
                 return -- Go back to lobby effectively (restarts main)
             end
-            creditsAPI.remove(10, card.path) -- Deduct bet immediately
+            local round, err = creditsAPI.beginRound("blackjack", 10, 25, card.path)
+            if not round then
+                for _, previous in ipairs(players) do
+                    if previous.houseRound then creditsAPI.refundRound(previous.houseRound) end
+                    creditsAPI.unlock(previous.mountPath)
+                end
+                error("HOUSE: " .. tostring(err), 0)
+            end
+            players[#players].houseRound = round
         end
         
         local deck = createDeck()
@@ -589,7 +601,8 @@ local function main()
                     
                     if advAction == "LEFT" then -- Double Down
                         if creditsAPI.get(p.mountPath) >= p.bet then
-                            creditsAPI.remove(p.bet, p.mountPath)
+                            local accepted, err = creditsAPI.increaseRound(p.houseRound, p.bet, p.bet * 4)
+                            if not accepted then error("HOUSE: " .. tostring(err), 0) end
                             p.bet = p.bet * 2
                             table.insert(p.hand, drawCardDeck(deck))
                             audio.playDeal()
@@ -628,27 +641,29 @@ local function main()
         
         for _, p in ipairs(players) do
             local pScore = calculateHand(p.hand)
+            local returned = 0
             if p.status == "Bust!" then
                 p.status = "LOSE"
             elseif p.status == "Surrender" then
                 p.status = "SURRENDER"
-                creditsAPI.add(math.floor(p.bet / 2), p.mountPath)
+                returned = math.floor(p.bet / 2)
             elseif p.status == "Blackjack!" then
                  p.status = "WIN!"
-                 creditsAPI.add(math.floor(p.bet * 2.5), p.mountPath) -- 3:2 payout usually, but let's do 2.5x return
+                 returned = math.floor(p.bet * 2.5) -- 3:2 payout usually, but let's do 2.5x return
             elseif dealerBust then
                 p.status = "WIN!"
-                creditsAPI.add(p.bet * 2, p.mountPath)
+                returned = p.bet * 2
             elseif pScore > dealerScore then
                 p.status = "WIN!"
-                creditsAPI.add(p.bet * 2, p.mountPath)
+                returned = p.bet * 2
             elseif pScore == dealerScore then
                 p.status = "PUSH"
-                creditsAPI.add(p.bet, p.mountPath)
+                returned = p.bet
             else
                 p.status = "LOSE"
             end
             
+            creditsAPI.settleRound(p.houseRound, returned)
             -- Unlock card
             creditsAPI.unlock(p.mountPath)
         end

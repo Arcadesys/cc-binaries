@@ -566,15 +566,17 @@ local function main()
                 
                 if currentCredits >= BET_COST then
                     -- Deduct bet
-                    creditsAPI.add(-BET_COST, card.path)
+                    local round, err = creditsAPI.beginRound("track", BET_COST, WIN_PRIZE, card.path)
+                    if not round then error("HOUSE: " .. tostring(err), 0) end
                     audio.play("bet")
                     
                     -- Run the race
                     local winner = runRace(cards)
                     
+                    creditsAPI.settleRound(round, winner and WIN_PRIZE or 0)
+                    creditsAPI.unlock(card.path)
                     if winner then
                         -- Award prize
-                        creditsAPI.add(WIN_PRIZE, card.path)
                         showWinScreen(winner, cards)
                     end
                 else
