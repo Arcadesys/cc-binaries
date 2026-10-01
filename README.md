@@ -28,10 +28,23 @@ wget run https://raw.githubusercontent.com/Arcadesys/cc-binaries/main/cc-arcade/
 | `pinejack` | [Pine Jack](./cc-arcade/pinejack/README.md): blackjack |
 | `pinebox` | [Pine Shut the Box](./cc-arcade/pinebox/README.md): High Rollers–style grand prize round with thrown dice |
 | `race` | Pine3D Derby: race display, betting station or exhibition |
+| `pineball` | [Pine Ball](./computercraft_scripts/pine-ball/README.md): baseball |
+| `pinelinks` | [Pine Links](./computercraft_scripts/pine-links/README.md): mini golf |
+| `pinelanes` | [Pine Lanes](./computercraft_scripts/pine-lanes/README.md): bowling |
+| `pinedungeon` | [Pine Dungeon](./computercraft_scripts/pine-dungeon/README.md): dungeon crawler |
+
+To put every Pine game on one computer and choose between them, install `all`:
+
+```
+wget run https://raw.githubusercontent.com/Arcadesys/cc-binaries/main/cc-arcade/get.lua all --startup
+```
+
+That boots into [Pine Arcade](./cc-arcade/pinearcade/README.md), a Pine3D carousel of the installed games (about 450 KiB in all; the games share one copy of Pine3D). Pick a game to play it, or to make it what the computer starts into; the STARTUP tile switches back to the menu or turns autostart off.
 
 Run it with no program name to choose from a menu. Every install also includes `house`, which joins the computer to the house bank (`house setup station <modem> <host-id>`), and `config`, which teaches the three cabinet buttons. Games run on a practice meter until the computer is a house station.
 
 - `get update`, run in `/arcade`, re-downloads everything for that cabinet from the same source.
+- `get boot <program|off>` changes what the computer starts into (the same thing the Pine Arcade menu does).
 - `get list` shows the programs.
 - `--monitor NAME` picks the screen.
 - `--base https://raw.githubusercontent.com/<owner>/cc-binaries/<branch>` installs from a fork or branch.

@@ -2,6 +2,8 @@ local args={...}
 local base=fs.getDir(shell.getRunningProgram())
 local env=setmetatable({}, {__index=_ENV})
 env.require,env.package=require("cc.require").make(env,base)
+-- The arcade installer (cc-arcade/get.lua) shares one Pine3D: use it when vendor/ is absent.
+env.package.path=env.package.path..";/"..fs.combine(base,"..","derby").."/?.lua"
 local require=env.require
 local options={}
 local i=1
