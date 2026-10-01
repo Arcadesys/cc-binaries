@@ -1,5 +1,6 @@
 local pine=require('derby.vendor.Pine3D')
 local scene=require('pinebox.scene')
+local avatars=require('pinebox.avatars')
 local mesh=require('casino.mesh')
 local M={}
 M.minW,M.minH=39,19
@@ -108,6 +109,7 @@ function M.new(t)
    if p then d:setModel(scene.dieModel(base,p.matrix)); d:setPos(p.pos[1],p.pos[2],p.pos[3]); objects[#objects+1]=d end
   end
   f:drawObjects(objects); f:drawBuffer()
+  if v.avatar then avatars.draw(t,v.avatar,2,3,v.avatarReady,v.avatarPhase) end
   local right=('CREDITS %s  BET %d '):format(tostring(v.credits or '--'),v.bet or 0)
   line(t,1,' '..(v.title or 'PINE SHUT THE BOX'),colors.yellow,colors.blue)
   t.setCursorPos(math.max(1,w-#right+1),1); t.setTextColor(colors.white); t.setBackgroundColor(colors.blue); t.write(right)

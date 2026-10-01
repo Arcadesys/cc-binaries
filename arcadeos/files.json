@@ -521,6 +521,11 @@
      "size": 251
     },
     {
+     "src": "cc-arcade/pinebox/avatars.lua",
+     "dest": "/pkg/arcade/pinebox/avatars.lua",
+     "size": 2800
+    },
+    {
      "src": "cc-arcade/pinebox/dice.lua",
      "dest": "/pkg/arcade/pinebox/dice.lua",
      "size": 8450
@@ -528,12 +533,12 @@
     {
      "src": "cc-arcade/pinebox/game.lua",
      "dest": "/pkg/arcade/pinebox/game.lua",
-     "size": 13878
+     "size": 15361
     },
     {
      "src": "cc-arcade/pinebox/render.lua",
      "dest": "/pkg/arcade/pinebox/render.lua",
-     "size": 8556
+     "size": 8677
     },
     {
      "src": "cc-arcade/pinebox/rules.lua",

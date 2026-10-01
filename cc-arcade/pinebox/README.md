@@ -12,6 +12,12 @@ The dice are thrown, not faked. Each roll runs a small rigid-body simulation: gr
 
 The values are drawn first (uniform 1–6 each). When physics leaves a face on top, the die's pips are turned with a rotation of the cube so that face shows the drawn value. The motion is real physics, the odds are exactly fair, and the die always lands flat on the right number.
 
+## Player mascots
+
+Every player gets a chunky pixel animal head: **Fox, Cat, Bunny, Wolf, Raccoon, Bear, Deer, or Otter**. In multiplayer, each seat starts with a different mascot and can cycle through all eight with the RIGHT button while they are at the ante screen. The portrait stays on screen during that player's turn, and flashes **READY / ROLL** while the dice are waiting for them. Two seats using the same house card can still choose different characters.
+
+Solo play gets a mascot picker after the seat screen: LEFT/RIGHT cycles the eight characters and CENTER locks one in for the round.
+
 ## Matches
 
 PLAY opens the seat screen: < FEWER and MORE > set 1–4 players (two by default), and START begins.
@@ -37,7 +43,8 @@ The arcade's three cabinet buttons (LEFT, CENTER, RIGHT from `.button_config`):
 |---|---|---|---|
 | Between rounds | BET (1 → 2 → 5 → 10) | PLAY | CASH OUT (eject card) |
 | Seat screen | < FEWER players | START | MORE > players |
-| Antes (match) | CANCEL (refund antes) | ANTE | |
+| Antes (match) | CANCEL (refund antes) | ANTE | NEXT MASCOT > |
+| Solo mascot picker | < MASCOT | LOCK MASCOT | MASCOT > |
 | Before a roll | | ROLL | |
 | After a roll | < OTHER way to make it | TAKE | OTHER > |
 
@@ -49,4 +56,4 @@ On a house station, a solo round reserves the stake plus the grand prize with th
 
 ## Development
 
-`python3 derby/tools/run.py pinebox.tests.run` checks the solver against the known 7.14% and plays a forced grand prize, a dead roll, an OTHER pick, a 2-card pot match, a split pot and a cancelled ante through the real event loop. `pinebox.tests.physics` throws 200 dice pairs and checks every one settles flat inside the tray showing the drawn value. `pinebox.tests.rendered` dumps the throw frame by frame for `casino/tools/screens.py`.
+`python3 derby/tools/run.py pinebox.tests.run` checks the eight mascot definitions, the solver against the known 7.14%, and plays a forced grand prize, a dead roll, an OTHER pick, a 2-card pot match, a split pot and a cancelled ante through the real event loop. `pinebox.tests.physics` throws 200 dice pairs and checks every one settles flat inside the tray showing the drawn value. `pinebox.tests.rendered` dumps the throw frame by frame for `casino/tools/screens.py`.
