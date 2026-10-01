@@ -1,0 +1,510 @@
+{
+ "programs": {
+  "pineslots": {
+   "title": "Pine Slots",
+   "entry": "pineslots.lua",
+   "description": "Pine3D slot machine for a cabinet with a pull arm and three buttons",
+   "files": [
+    {
+     "path": "casino/app.lua",
+     "size": 1362
+    },
+    {
+     "path": "casino/mesh.lua",
+     "size": 1551
+    },
+    {
+     "path": "casino/palette.lua",
+     "size": 642
+    },
+    {
+     "path": "casino/sound.lua",
+     "size": 564
+    },
+    {
+     "path": "casino/wallet.lua",
+     "size": 3605
+    },
+    {
+     "path": "credits.lua",
+     "size": 5501
+    },
+    {
+     "path": "derby/client.lua",
+     "size": 1855
+    },
+    {
+     "path": "derby/config.lua",
+     "size": 1820
+    },
+    {
+     "path": "derby/palette.lua",
+     "size": 432
+    },
+    {
+     "path": "derby/store.lua",
+     "size": 1705
+    },
+    {
+     "path": "derby/ui.lua",
+     "size": 1875
+    },
+    {
+     "path": "derby/vendor/LICENSE",
+     "size": 1062
+    },
+    {
+     "path": "derby/vendor/Pine3D.lua",
+     "size": 69417
+    },
+    {
+     "path": "derby/vendor/REVISION.txt",
+     "size": 422
+    },
+    {
+     "path": "derby/vendor/betterblittle.lua",
+     "size": 6135
+    },
+    {
+     "path": "pineslots.lua",
+     "size": 259
+    },
+    {
+     "path": "pineslots/app.lua",
+     "size": 347
+    },
+    {
+     "path": "pineslots/controls.lua",
+     "size": 3221
+    },
+    {
+     "path": "pineslots/machine.lua",
+     "size": 7976
+    },
+    {
+     "path": "pineslots/reels.lua",
+     "size": 2228
+    },
+    {
+     "path": "pineslots/render.lua",
+     "size": 3615
+    },
+    {
+     "path": "pineslots/scene.lua",
+     "size": 5461
+    }
+   ]
+  },
+  "pinejack": {
+   "title": "Pine Jack",
+   "entry": "pinejack.lua",
+   "description": "Pine3D blackjack on the three cabinet buttons",
+   "files": [
+    {
+     "path": "casino/app.lua",
+     "size": 1362
+    },
+    {
+     "path": "casino/font.lua",
+     "size": 1708
+    },
+    {
+     "path": "casino/mesh.lua",
+     "size": 1551
+    },
+    {
+     "path": "casino/palette.lua",
+     "size": 642
+    },
+    {
+     "path": "casino/sound.lua",
+     "size": 564
+    },
+    {
+     "path": "casino/wallet.lua",
+     "size": 3605
+    },
+    {
+     "path": "credits.lua",
+     "size": 5501
+    },
+    {
+     "path": "derby/client.lua",
+     "size": 1855
+    },
+    {
+     "path": "derby/config.lua",
+     "size": 1820
+    },
+    {
+     "path": "derby/palette.lua",
+     "size": 432
+    },
+    {
+     "path": "derby/store.lua",
+     "size": 1705
+    },
+    {
+     "path": "derby/ui.lua",
+     "size": 1875
+    },
+    {
+     "path": "derby/vendor/LICENSE",
+     "size": 1062
+    },
+    {
+     "path": "derby/vendor/Pine3D.lua",
+     "size": 69417
+    },
+    {
+     "path": "derby/vendor/REVISION.txt",
+     "size": 422
+    },
+    {
+     "path": "derby/vendor/betterblittle.lua",
+     "size": 6135
+    },
+    {
+     "path": "input.lua",
+     "size": 3606
+    },
+    {
+     "path": "pinejack.lua",
+     "size": 184
+    },
+    {
+     "path": "pinejack/app.lua",
+     "size": 246
+    },
+    {
+     "path": "pinejack/game.lua",
+     "size": 13059
+    },
+    {
+     "path": "pinejack/render.lua",
+     "size": 3514
+    },
+    {
+     "path": "pinejack/rules.lua",
+     "size": 2709
+    },
+    {
+     "path": "pinejack/scene.lua",
+     "size": 5051
+    }
+   ]
+  },
+  "pinebox": {
+   "title": "Pine Shut the Box",
+   "entry": "pinebox.lua",
+   "description": "Pine3D grand prize round with physically thrown dice",
+   "files": [
+    {
+     "path": "casino/app.lua",
+     "size": 1362
+    },
+    {
+     "path": "casino/font.lua",
+     "size": 1708
+    },
+    {
+     "path": "casino/mesh.lua",
+     "size": 1551
+    },
+    {
+     "path": "casino/palette.lua",
+     "size": 642
+    },
+    {
+     "path": "casino/sound.lua",
+     "size": 564
+    },
+    {
+     "path": "casino/wallet.lua",
+     "size": 3605
+    },
+    {
+     "path": "credits.lua",
+     "size": 5501
+    },
+    {
+     "path": "derby/client.lua",
+     "size": 1855
+    },
+    {
+     "path": "derby/config.lua",
+     "size": 1820
+    },
+    {
+     "path": "derby/palette.lua",
+     "size": 432
+    },
+    {
+     "path": "derby/store.lua",
+     "size": 1705
+    },
+    {
+     "path": "derby/ui.lua",
+     "size": 1875
+    },
+    {
+     "path": "derby/vendor/LICENSE",
+     "size": 1062
+    },
+    {
+     "path": "derby/vendor/Pine3D.lua",
+     "size": 69417
+    },
+    {
+     "path": "derby/vendor/REVISION.txt",
+     "size": 422
+    },
+    {
+     "path": "derby/vendor/betterblittle.lua",
+     "size": 6135
+    },
+    {
+     "path": "input.lua",
+     "size": 3606
+    },
+    {
+     "path": "pinebox.lua",
+     "size": 237
+    },
+    {
+     "path": "pinebox/app.lua",
+     "size": 251
+    },
+    {
+     "path": "pinebox/dice.lua",
+     "size": 8450
+    },
+    {
+     "path": "pinebox/game.lua",
+     "size": 8891
+    },
+    {
+     "path": "pinebox/render.lua",
+     "size": 5276
+    },
+    {
+     "path": "pinebox/rules.lua",
+     "size": 1945
+    },
+    {
+     "path": "pinebox/scene.lua",
+     "size": 3763
+    }
+   ]
+  },
+  "race": {
+   "title": "Pine3D Derby",
+   "entry": "race.lua",
+   "description": "House-run 3D horse race: display, betting station or exhibition",
+   "files": [
+    {
+     "path": "derby/app.lua",
+     "size": 3420
+    },
+    {
+     "path": "derby/cashier.lua",
+     "size": 3577
+    },
+    {
+     "path": "derby/client.lua",
+     "size": 1855
+    },
+    {
+     "path": "derby/config.lua",
+     "size": 1820
+    },
+    {
+     "path": "derby/house.lua",
+     "size": 3649
+    },
+    {
+     "path": "derby/inventory.lua",
+     "size": 787
+    },
+    {
+     "path": "derby/ledger.lua",
+     "size": 5487
+    },
+    {
+     "path": "derby/odds.json",
+     "size": 217
+    },
+    {
+     "path": "derby/odds.lua",
+     "size": 316
+    },
+    {
+     "path": "derby/palette.lua",
+     "size": 432
+    },
+    {
+     "path": "derby/render.lua",
+     "size": 3499
+    },
+    {
+     "path": "derby/scene.lua",
+     "size": 5152
+    },
+    {
+     "path": "derby/server.lua",
+     "size": 2570
+    },
+    {
+     "path": "derby/service.lua",
+     "size": 4529
+    },
+    {
+     "path": "derby/sim.lua",
+     "size": 1763
+    },
+    {
+     "path": "derby/station.lua",
+     "size": 3852
+    },
+    {
+     "path": "derby/store.lua",
+     "size": 1705
+    },
+    {
+     "path": "derby/ui.lua",
+     "size": 1875
+    },
+    {
+     "path": "derby/vendor/LICENSE",
+     "size": 1062
+    },
+    {
+     "path": "derby/vendor/Pine3D.lua",
+     "size": 69417
+    },
+    {
+     "path": "derby/vendor/REVISION.txt",
+     "size": 422
+    },
+    {
+     "path": "derby/vendor/betterblittle.lua",
+     "size": 6135
+    },
+    {
+     "path": "race.lua",
+     "size": 112
+    }
+   ]
+  },
+  "house": {
+   "title": "House setup",
+   "entry": "house.lua",
+   "description": "House host, station, cashier and display roles (house setup ...)",
+   "files": [
+    {
+     "path": "derby/app.lua",
+     "size": 3420
+    },
+    {
+     "path": "derby/cashier.lua",
+     "size": 3577
+    },
+    {
+     "path": "derby/client.lua",
+     "size": 1855
+    },
+    {
+     "path": "derby/config.lua",
+     "size": 1820
+    },
+    {
+     "path": "derby/house.lua",
+     "size": 3649
+    },
+    {
+     "path": "derby/inventory.lua",
+     "size": 787
+    },
+    {
+     "path": "derby/ledger.lua",
+     "size": 5487
+    },
+    {
+     "path": "derby/odds.lua",
+     "size": 316
+    },
+    {
+     "path": "derby/palette.lua",
+     "size": 432
+    },
+    {
+     "path": "derby/render.lua",
+     "size": 3499
+    },
+    {
+     "path": "derby/scene.lua",
+     "size": 5152
+    },
+    {
+     "path": "derby/server.lua",
+     "size": 2570
+    },
+    {
+     "path": "derby/service.lua",
+     "size": 4529
+    },
+    {
+     "path": "derby/sim.lua",
+     "size": 1763
+    },
+    {
+     "path": "derby/station.lua",
+     "size": 3852
+    },
+    {
+     "path": "derby/store.lua",
+     "size": 1705
+    },
+    {
+     "path": "derby/ui.lua",
+     "size": 1875
+    },
+    {
+     "path": "derby/vendor/LICENSE",
+     "size": 1062
+    },
+    {
+     "path": "derby/vendor/Pine3D.lua",
+     "size": 69417
+    },
+    {
+     "path": "derby/vendor/REVISION.txt",
+     "size": 422
+    },
+    {
+     "path": "derby/vendor/betterblittle.lua",
+     "size": 6135
+    },
+    {
+     "path": "house.lua",
+     "size": 92
+    }
+   ]
+  },
+  "config": {
+   "title": "Button setup",
+   "entry": "config.lua",
+   "description": "Teach the LEFT / CENTER / RIGHT cabinet buttons",
+   "files": [
+    {
+     "path": "config.lua",
+     "size": 1731
+    }
+   ]
+  }
+ },
+ "tools": [
+  "house",
+  "config"
+ ]
+}

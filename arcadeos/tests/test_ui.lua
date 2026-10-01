@@ -49,16 +49,17 @@ return {
             H.send(k, 'key', keys.home, false)
             H.send(k, 'key', keys.enter, false)
             H.pump(k, 0.1)
-            T.eq(k.focus.app.id, 'pineball')
+            T.eq(k.focus.app.id, 'race')
         end)
     end },
-    { 'executive offers only the four Pine3D games', function(T)
+    { 'executive offers only the Pine3D games', function(T)
         H.withKernel({ first='executive' }, function(k, parent)
             H.pump(k, 0.1)
             local lines = {}
             for y = 1, select(2, parent.getSize()) do lines[#lines + 1] = H.row(parent, y) end
             local screen = table.concat(lines, '\n')
-            for _, name in ipairs({'Pine Ball', 'Pine Dungeon', 'Pine Lanes', 'Pine Links'}) do
+            -- Page one at 51x19; End reaches the rest (checked below).
+            for _, name in ipairs({'Horse Race', 'Pine Ball', 'Pine Dungeon', 'Pine Jack', 'Pine Lanes', 'Pine Links'}) do
                 T.ok(screen:find(name, 1, true), name .. ' visible')
             end
             for _, name in ipairs({'Calculator', 'Blackjack', 'Terminal', 'Paint', 'Notepad'}) do
@@ -67,7 +68,7 @@ return {
             H.send(k, 'key', keys['end'], false)
             H.send(k, 'key', keys.enter, false)
             H.pump(k, 0.1)
-            T.eq(k.focus.app.id, 'pinelinks', 'last icon is Pine Links')
+            T.eq(k.focus.app.id, 'pineslots', 'last icon is Pine Slots')
         end)
     end },
     { 'empty gallery does not invent a launch target', function(T)
