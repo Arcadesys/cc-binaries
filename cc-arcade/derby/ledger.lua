@@ -1,5 +1,7 @@
--- All money is integer credits, backed one-for-one by diamonds in the bank.
+-- All balances are integer credits. Version 2 bank is classified item value.
 local M={}
+local currency=require('derby.currency')
+local copy=require('derby.store').copy
 local function canonical(v)
  if type(v)~='table' then return type(v)..':'..tostring(v) end
  local keys={}; for k in pairs(v) do keys[#keys+1]=k end
@@ -13,12 +15,13 @@ function M.liability(s)
  local n=0
  for _,a in pairs(s.accounts) do n=n+a.balance end
  for _,r in pairs(s.rounds) do if r.status=='open' then n=n+r.maximum end end
- for _,p in pairs(s.pending) do if p.kind=='withdraw' then n=n+p.amount end end
+ for _,p in pairs(s.pending) do if p.kind=='withdraw' then n=n+p.amount elseif p.kind=='redeem' then n=n+p.requestedUnits end end
  return n
 end
 function M.available(s) return s.bank-M.liability(s) end
 function M.apply(s,q)
  local function fail(message) return {ok=false,error=message} end
+ if s.version~=1 and s.version~=2 then return fail('Unsupported ledger version') end
  if type(q)~='table' or type(q.op)~='string' then return fail('Invalid request') end
  if q.op=='lookup' then
   local a=s.accounts[q.account]
@@ -31,7 +34,12 @@ function M.apply(s,q)
  elseif q.op=='status' then return s.transactions[q.id] and s.transactions[q.id].result or fail('Unknown transaction') end
  if type(q.id)~='string' or #q.id>160 then return fail('Transaction ID required') end
  -- The transport serialises a stable request and rejects reuse with different content.
- local fingerprint=canonical(q)
+ local fingerprint
+ if q.op=='exchange' then
+  local ok,value=pcall(currency.canonical,q)
+  if not ok then return fail('Invalid currency request encoding') end
+  fingerprint=value
+ else fingerprint=canonical(q) end
  if s.transactions[q.id] then
   if s.transactions[q.id].fingerprint~=fingerprint then return fail('Transaction ID reused with different request') end
   return s.transactions[q.id].result
@@ -72,7 +80,24 @@ function M.apply(s,q)
   if r.status~='open' then return fail('Round already settled') end
   r.status=q.op=='refund' and 'refunded' or 'settled'; r.paid=amount; a.balance=a.balance+amount
   result={ok=true,balance=a.balance,paid=amount}
+ elseif q.op=='exchange' then
+  if s.version~=2 or q.apiVersion~=2 then return fail('Currency API version 2 required') end
+  if q.policyId~=s.currency.policyId or q.policyRevision~=s.currency.revision then return fail('Currency policy changed; review a new quote') end
+  local entry=s.currency.entries[q.entryId]
+  if not entry or (q.direction~='deposit' and q.direction~='redeem') then return fail('Invalid item or direction') end
+  if not entry[q.direction=='deposit' and 'depositEnabled' or 'redeemEnabled'] then return fail('Item exchange is disabled') end
+  local ok,units=pcall(currency.quote,entry,q.requestedItems,s.currency)
+  if not ok or q.requestedItems<1 then return fail('Invalid whole item quantity') end
+  if q.direction=='redeem' and a.balance<units then return fail('Not enough credits') end
+  if q.direction=='redeem' and (s.stock[q.entryId] or 0)<q.requestedItems then return fail('Requested item stock unavailable; no substitution') end
+  if q.direction=='deposit' and (s.bank>1000000000-units or a.balance>1000000000-units) then return fail('Credit limit exceeded') end
+  if q.direction=='redeem' then a.balance=a.balance-units end
+  s.pending[q.id]={kind=q.direction,account=q.account,entryId=q.entryId,requestedItems=q.requestedItems,
+   requestedUnits=units,policyId=s.currency.policyId,policyRevision=s.currency.revision,
+   entry=copy(entry),beforeBank=s.bank,beforeStock=copy(s.stock)}
+  result={ok=true,pending=true,id=q.id}
  elseif q.op=='deposit' or q.op=='withdraw' then
+  if s.version~=1 then return fail('Legacy cashier disabled; upgrade cashier for currency API 2') end
   if not integer(q.amount) or q.amount<1 then return fail('Positive whole diamond amount required') end
   if q.op=='withdraw' and a.balance<q.amount then return fail('Not enough credits') end
   if q.op=='withdraw' then a.balance=a.balance-q.amount end
@@ -83,8 +108,24 @@ function M.apply(s,q)
  return result
 end
 function M.complete(s,id,moved)
+ assert(s.version==1 or s.version==2,'Unsupported ledger version')
  local p=s.pending[id]
  assert(p,'No pending transfer')
+ if s.version==2 then
+  assert(integer(moved) and moved<=p.requestedItems,'Invalid transferred count')
+  local units=currency.quote(p.entry,moved,s.currency)
+  local a=s.accounts[p.account]
+  local sign=p.kind=='deposit' and 1 or -1
+  s.stock[p.entryId]=(s.stock[p.entryId] or 0)+sign*moved
+  s.bank=s.bank+sign*units
+  if p.kind=='deposit' then a.balance=a.balance+units else a.balance=a.balance+p.requestedUnits-units end
+  local result={ok=true,id=id,account=p.account,entryId=p.entryId,itemId=p.entry.itemId,
+   policyId=p.policyId,policyRevision=p.policyRevision,direction=p.kind,requestedItems=p.requestedItems,
+   confirmedItems=moved,unitsPerItem=p.entry.unitsPerItem,unitsDelta=sign*units,balance=a.balance,completed=true}
+  s.transactions[id].result=result; s.pending[id]=nil
+  assert(M.available(s)>=0 and s.bank==currency.value(s.currency,s.stock),'Unbacked currency ledger')
+  return result
+ end
  assert(integer(moved) and moved<=p.amount,'Invalid transferred count')
  local a=s.accounts[p.account]
  if p.kind=='deposit' then s.bank=s.bank+moved; a.balance=a.balance+moved
@@ -93,5 +134,23 @@ function M.complete(s,id,moved)
  s.transactions[id].result=result; s.pending[id]=nil
  assert(M.available(s)>=0,'Unbacked ledger')
  return result
+end
+function M.changeCurrency(s,policy,stock)
+ assert(s.version==1 or s.version==2,'Unsupported source ledger version')
+ assert(s.paused,'Pause host before changing currency')
+ assert(not next(s.pending),'Reconcile transfers before changing currency')
+ currency.validate(policy)
+ assert(policy.creditScale==1,'Existing credits retain scale 1')
+ if s.version==2 then
+  assert(policy.policyId==s.currency.policyId and policy.revision>s.currency.revision,'Policy revision must increase')
+ end
+ local value=currency.value(policy,stock)
+ assert(value<=1000000000,'Bank value exceeds supported credit limit')
+ assert(value>=M.liability(s),'New policy cannot cover existing liabilities')
+ local n=copy(s)
+ n.version=2; n.currency=copy(policy); n.stock=copy(stock); n.bank=value
+ n.currencyHistory=n.currencyHistory or {}
+ n.currencyHistory[tostring(policy.revision)]=copy(policy)
+ return n
 end
 return M
