@@ -444,6 +444,30 @@ local function moveWithRetries(ctx, opts, moveFns, delta)
     end
 
     local maxRetries, allowDig, allowAttack, delay = getMoveConfig(ctx, opts)
+    -- Mining is opt-in: builders retain their existing clearing behavior.
+    if ctx.miningPolicy then
+        local policy = require("lib_mine_policy")
+        local mining = require("lib_mining")
+        local target = vecAdd(state.position, delta)
+        local ok, err = policy.checkTarget(ctx, target)
+        if not ok then return false, err end
+        local dir = delta.y == 1 and "up" or delta.y == -1 and "down" or "front"
+        if allowDig then
+            ok, err = mining.prepareMove(ctx, dir)
+            if not ok then return false, err end
+        else
+            local present = moveFns.inspect()
+            if present then return false, "cleared return path obstructed" end
+            if not ctx.miningPolicy.knownAir[policy.key(target)] then
+                return false, "return path is not known clear"
+            end
+        end
+        -- Never attack, soft-clear, or dig a newly arrived falling block unchecked.
+        if not moveFns.move() then return false, "safe mining movement failed" end
+        state.position = target
+        policy.markAir(ctx, target)
+        return true
+    end
     if type(maxRetries) ~= "number" or maxRetries < 1 then
         maxRetries = 1
     else

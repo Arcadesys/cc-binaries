@@ -51,6 +51,7 @@ local function selectTorch(ctx)
 end
 
 local function MINE(ctx)
+    if ctx.config.mode == "mine" then return require("lib_safe_miner").step(ctx) end
     logger.log(ctx, "info", "State: MINE")
 
     if turtle.getFuelLevel and turtle.getFuelLevel() < 100 then

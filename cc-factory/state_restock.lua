@@ -8,6 +8,7 @@ local inventory = require("lib_inventory")
 local logger = require("lib_logger")
 
 local function RESTOCK(ctx)
+    if ctx.config.mode == "mine" then return require("lib_safe_miner").step(ctx) end
     logger.log(ctx, "info", "Restocking " .. tostring(ctx.missingMaterial))
     
     -- Go home
