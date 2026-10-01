@@ -1826,6 +1826,7 @@ function M.exhibition(name)
   s.balance=s.balance-stake; round.stake=round.stake+stake; return true
  end
  function w:settle(_,amount) s.balance=s.balance+amount; return true,s.balance end
+ function w:refund(round) s.balance=s.balance+round.stake; return true end
  function w:retry() return true end
  function w:cashout() local had=s.balance; s.balance=STARTING; return had end
  return w
@@ -1836,7 +1837,7 @@ function M.live(game,name,credits,card)
  credits=credits or require('credits')
  card=card or require('derby.ui').card
  local w={mode='live',title=name or 'PINE CASINO'}
- local current,ejecting
+ local current,ejecting,waiting
  local function same(a,b) return a and b and a.path==b.path and a.account==b.account end
  -- Re-reads the drive. Returns true when the inserted card changed.
  function w:refresh()
@@ -1856,29 +1857,59 @@ function M.live(game,name,credits,card)
  function w:session() return current end
  function w:begin(stake,maximum)
   if not current then return nil,'Insert your house card' end
-  local round,err=credits.beginRound(game,stake,maximum,current.path)
-  if not round then return nil,err end
+  local round,err,context=credits.beginRound(game,stake,maximum,current.path)
+  if not round then waiting=context and context.request; return nil,err,context end
+  waiting=nil
   current.balance=current.balance-stake
   return round
  end
  -- Raise the stake mid-round (double down, split); maximum covers the new best case.
  function w:increase(round,stake,maximum)
-  local ok,err=credits.increaseRound(round,stake,maximum)
-  if not ok then return false,err end
+  local ok,err,context=credits.increaseRound(round,stake,maximum)
+  if not ok then
+   waiting=context and context.request or {op='increase',account=round.account,round=round.round,stake=stake,maximum=maximum}
+   return false,err,context
+  end
+  waiting=nil
   if current and current.account==round.account then current.balance=current.balance-stake end
   return true
  end
  -- Settles even if the card was pulled mid-spin: the round names its own account.
  function w:settle(round,amount)
   local ok,balance=pcall(credits.settleRound,round,amount)
-  if not ok then return false,tostring(balance) end
+  if not ok then waiting={op='settle',round=round.round,account=round.account,amount=amount}; return false,tostring(balance) end
+  waiting=nil
   if current and current.account==round.account then current.balance=balance end
   return true,balance
  end
+ -- Hands a round's whole stake back (a cancelled table).
+ function w:refund(round)
+  local ok,err=pcall(credits.refundRound,round)
+  if not ok then waiting={op='refund',round=round.round,account=round.account}; return false,tostring(err) end
+  waiting=nil
+  if current and current.account==round.account then current.balance=current.balance+round.stake end
+  return true
+ end
  function w:retry()
-  local ok,r=credits.retry()
-  if ok and current and r and r.balance then current.balance=r.balance end
-  return ok,r
+  local ok,r,account,context=credits.retry()
+  local request=context and context.request
+  local matches=true
+  if waiting then
+   matches=request~=nil
+   for key,value in pairs(waiting) do if not request or request[key]~=value then matches=false end end
+  end
+  context=context or {}; context.matches=matches
+  -- The durable request identifies this receipt's account, including retries
+  -- after a restart. The card currently in the drive may belong to someone else.
+  if current and current.account==account then
+   if context.balance~=nil then current.balance=context.balance
+   elseif ok and r and r.balance then current.balance=r.balance end
+  end
+  -- Its balance is valid for its own account, but a recovered increase is not
+  -- acknowledgement of a later blocked settlement. Keep that wait unresolved.
+  if not matches then return false,'Recovered a different operation; cashier review is required',context end
+  if ok or (context.status and context.status~='open' and not context.pending) then waiting=nil end
+  return ok,r,context
  end
  -- Hands the card back. The balance stays on the account for the cashier or another game.
  function w:cashout()
@@ -1974,6 +2005,19 @@ local ui=require('derby.ui')
 local M={}
 local client
 local bindings={}
+-- Captured handles are updated from authoritative terms after a recovered raise.
+local handles={}
+local function remember(round)
+ local refs=handles[round.round] or {}; handles[round.round]=refs; refs[round]=true
+end
+local function blocked(cli)
+ local recovery=cli:localState().recovery
+ if recovery then return {ok=false,pending=true,error='Round recovery must finish before another action',request=recovery.request} end
+end
+local function mutation(cli,q)
+ local r=blocked(cli) or cli:mutate(q)
+ return r,{pending=r.offline==true or r.pending==true,request=q}
+end
 local function demo()
  return not config.read() and (_G.ARCADE_DEV_MODE or (arcadeos and arcadeos.freeplay()))
 end
@@ -2041,43 +2085,84 @@ function M.beginRound(game,stake,maximum,path)
   if not status.ok or status.status=='open' then return nil,'Interrupted round '..old.round..': cashier must review/refund it' end
  end
  local id='arcade:'..os.getComputerID()..':'..(localState.counter+1)
- local r=cli:mutate({op='reserve',account=c.account,game=game,stake=stake,maximum=maximum,round=id})
- if not r.ok then return nil,r.error end
+ local q={op='reserve',account=c.account,game=game,stake=stake,maximum=maximum,round=id}
+ local r,context=mutation(cli,q)
+ if not r.ok then return nil,r.error,context end
  local round={account=c.account,round=id,game=game,stake=stake,maximum=maximum}
  localState=cli:localState(); localState.rounds[c.account]=round; cli:saveLocal(localState)
- bindings[path or 'default']=c.account
+ bindings[path or 'default']=c.account; remember(round)
  return round
 end
 function M.increaseRound(round,stake,maximum)
  if round.demo then round.stake=round.stake+stake; round.maximum=maximum; return true end
- local r=network():mutate({op='increase',round=round.round,account=round.account,stake=stake,maximum=maximum})
- if not r.ok then return false,r.error end
+ remember(round)
+ local r,context=mutation(network(),{op='increase',round=round.round,account=round.account,stake=stake,maximum=maximum})
+ if not r.ok then return false,r.error,context end
  round.stake=round.stake+stake; round.maximum=maximum
  local s=network():localState(); s.rounds[round.account]=round; network():saveLocal(s)
  return true
 end
 function M.settleRound(round,amount)
  if round.demo then return 999 end
- local r=checked(network():mutate({op='settle',round=round.round,account=round.account,amount=amount}))
- local s=network():localState(); s.rounds[round.account]=nil; network():saveLocal(s)
+ local r=checked((mutation(network(),{op='settle',round=round.round,account=round.account,amount=amount})))
+ local s=network():localState(); s.rounds[round.account]=nil; network():saveLocal(s); handles[round.round]=nil
  return r.balance
 end
 function M.refundRound(round)
  if round.demo then return true end
- checked(network():mutate({op='refund',round=round.round,account=round.account}))
- local s=network():localState(); s.rounds[round.account]=nil; network():saveLocal(s); return true
+ checked((mutation(network(),{op='refund',round=round.round,account=round.account})))
+ local s=network():localState(); s.rounds[round.account]=nil; network():saveLocal(s); handles[round.round]=nil; return true
 end
--- Resend the last unacknowledged request (for example a settlement lost while the house
--- was offline). Returns ok and the house result.
+-- Return the original receipt identity as well as its result. Reconciliation is
+-- persisted before its read can yield, so a missing status reply keeps all new
+-- mutations blocked until retry completes, including after client recreation.
 function M.retry()
  if demo() then return true,{ok=true} end
- local cli=network(); local r=cli:retry()
- if not r.ok then return false,r.error end
- local s=cli:localState(); local q=s.last and s.last.request
- if q and (q.op=='settle' or q.op=='refund') and s.rounds[q.account] and s.rounds[q.account].round==q.round then
-  s.rounds[q.account]=nil; cli:saveLocal(s)
+ local cli=network(); local s=cli:localState(); local r,q
+ if s.recovery then r,q=s.recovery.result,s.recovery.request
+ else
+  r=cli:retry(); s=cli:localState(); q=s.pending or (s.last and s.last.request)
  end
- return true,r
+ local context={request=q,pending=r.offline==true or r.pending==true}
+ if not r.ok then return false,r.error,q and q.account,context end
+ if q and (q.op=='reserve' or q.op=='increase') then
+  s.recovery={request=q,result=r}; cli:saveLocal(s)
+  local status=cli:read({op='roundStatus',round=q.round,account=q.account})
+  local function integer(n) return type(n)=='number' and n>=0 and n%1==0 and n<=1000000000 end
+  if not status.ok or not integer(status.stake) or not integer(status.maximum) or status.maximum<status.stake then
+   context.pending=true
+   return false,status.error or 'House did not return authoritative round terms',q.account,context
+  end
+  context.status=status.status
+  local saved=s.rounds[q.account]
+  if saved and saved.round~=q.round then
+   context.pending=true; return false,'A different account round requires cashier review',q.account,context
+  end
+  local game=(saved and saved.game) or q.game
+  local round={account=q.account,round=q.round,game=game,stake=status.stake,maximum=status.maximum}
+  for handle in pairs(handles[q.round] or {}) do
+   if handle.account==q.account then handle.stake=status.stake; handle.maximum=status.maximum end
+  end
+  context.round=round
+  if status.status=='open' then s.rounds[q.account]=round
+  elseif status.status=='settled' or status.status=='refunded' then
+   -- The increase receipt predates an operator refund/settlement. Read this
+   -- explicit account, never the card path or that stale receipt balance.
+   local balance=cli:read({op='lookup',account=q.account})
+   local amount=balance.balance
+   local validBalance=type(amount)=='number' and amount>=0 and amount<math.huge and amount%1==0
+   if not balance.ok or not validBalance then
+    context.pending=true; return false,balance.error or 'House balance unavailable',q.account,context
+   end
+   context.balance=balance.balance; s.rounds[q.account]=nil; handles[q.round]=nil
+  else context.pending=true; return false,'Unknown host round status',q.account,context end
+  s.recovery=nil; cli:saveLocal(s)
+  if status.status~='open' then return false,'Round '..status.status..'; the interrupted hand cannot continue',q.account,context end
+ elseif q and (q.op=='settle' or q.op=='refund') then
+  if s.rounds[q.account] and s.rounds[q.account].round==q.round then s.rounds[q.account]=nil; cli:saveLocal(s) end
+  handles[q.round]=nil
+ end
+ return true,r,q and q.account,context
 end
 -- Unchecked edits must fail loudly if a forgotten consumer tries the old API.
 function M.set() error('HOUSE: local balance editing is retired',0) end
@@ -2424,6 +2509,9 @@ function M.nextRace(s,seed)
  s.race={id='race-'..s.raceNumber,phase='OPEN',elapsed=0,seed=seed,tickets={},payouts=s.odds.payouts,oddsVersion=s.odds.version}
 end
 function M.bet(s,q)
+ -- A malformed registered-client request must not stop the host when building
+ -- the round ID below. Reject missing/non-string/unknown accounts before use.
+ if type(q.account)~='string' or not s.accounts[q.account] then return {ok=false,error='Unknown account'} end
  s.ticketReceipts=s.ticketReceipts or {}
  local receipt=s.ticketReceipts[q.id]
  if receipt then
@@ -2537,7 +2625,8 @@ function M.apply(s,q)
   return {ok=true,balance=a.balance,name=a.name,account=q.account}
  elseif q.op=='roundStatus' then
   local r=s.rounds[q.round]; if not r or r.account~=q.account then return fail('Unknown round') end
-  return {ok=true,status=r.status,paid=r.paid}
+  -- Additive v1 fields let interrupted clients recover the actual reserved terms.
+  return {ok=true,status=r.status,paid=r.paid,stake=r.stake,maximum=r.maximum}
  elseif q.op=='status' then return s.transactions[q.id] and s.transactions[q.id].result or fail('Unknown transaction') end
  if type(q.id)~='string' or #q.id>160 then return fail('Transaction ID required') end
  -- The transport serialises a stable request and rejects reuse with different content.
@@ -7495,6 +7584,524 @@ end
 main()
 ]])
 
+writeFile('pinearcade/app.lua', [[
+-- Pine Arcade: a Pine3D menu of the games get.lua installed beside it. LEFT and RIGHT
+-- turn the carousel, CENTER picks a game; a picked game can be played or made what this
+-- computer boots into. The last tile, STARTUP, boots into this menu or into nothing.
+-- Boot changes go through `get boot`, so the installer's saved state stays the truth.
+local render=require('pinearcade.render')
+local M={}
+local STATE='.get.json'
+local function readJSON(path)
+ if not fs.exists(path) then return nil end
+ local f=fs.open(path,'r'); local v=textutils.unserializeJSON(f.readAll()); f.close(); return v
+end
+-- Installed games in install order, then the STARTUP tile.
+function M.items(state)
+ local list={}
+ for _,n in ipairs(state.programs or {}) do
+  local p=state.catalog[n]
+  if p and p.kind=='game' then list[#list+1]={name=n,title=p.title,entry=p.entry,description=p.description,monitor=p.monitor} end
+ end
+ list[#list+1]={name='boot',title='Startup',description='Choose what this computer runs when it turns on'}
+ return list
+end
+local KEYS_BACK={[keys.backspace]=true}
+-- opts: dir (install folder holding .get.json), target, args (as given to pinearcade),
+-- clock(), button(event,p1), launch(item,args) -> ok[, problem], pause(item) (waits after a
+-- game stops, so its error can be read), setBoot(name|'off') -> ok
+function M.run(opts)
+ local dir=opts.dir
+ local state=readJSON(fs.combine(dir,STATE))
+ assert(state and state.catalog,'Pine Arcade lists what get.lua installed in '..dir..'. Install with: get all')
+ local items=M.items(state)
+ local t=opts.target
+ local args=opts.args or {}
+ local clock=opts.clock or function() return os.epoch('utc')/1000 end
+ local button=opts.button or require('input').getButton
+ local monitorName
+ for i,a in ipairs(args) do if a=='--monitor' then monitorName=args[i+1] end end
+ if not monitorName and peripheral.getName then local ok,name=pcall(peripheral.getName,t); if ok then monitorName=name end end
+ local launch=opts.launch or function(item,gameArgs)
+  local path='/'..fs.combine(dir,item.entry)
+  if not fs.exists(path) then return false,'NOT INSTALLED, RUN GET UPDATE' end
+  return shell.run(path,table.unpack(gameArgs))
+ end
+ local pause=opts.pause or function()
+  -- Whatever the game printed is still on screen; hold it until a key is pressed.
+  local w,h=term.getSize()
+  term.setCursorPos(1,h); term.setTextColor(colors.yellow); term.write('Press any key to return to the menu')
+  os.pullEventRaw('key')
+ end
+ local setBoot=opts.setBoot or function(name)
+  -- get.lua prints as it works; keep that off the menu.
+  local hidden=window.create(term.current(),1,1,51,19,false)
+  local old=term.redirect(hidden)
+  local ok=shell.run('/'..fs.combine(dir,'get.lua'),'boot',name,'--dir','/'..fs.combine(dir,''))
+  term.redirect(old)
+  return ok
+ end
+ local palette=require('casino.palette')
+ local restore=require('derby.palette').save(t)
+ palette.apply(t)
+ local view=render.new(t,items)
+ local n=#items
+ local index=1 -- unbounded, so the carousel always turns the short way
+ local pos,zoom,spin=0,0,0
+ local mode='browse'
+ local flash,flashUntil
+ local function selected() return (index-1)%n+1 end
+ local function item() return items[selected()] end
+ local function bootTitle()
+  local b=state.boot
+  if not b then return nil end
+  if state.catalog[b] and state.catalog[b].kind=='launcher' then return 'THIS MENU' end
+  return state.catalog[b] and state.catalog[b].title:upper() or b
+ end
+ local function launcher()
+  for name,p in pairs(state.catalog) do if p.kind=='launcher' then return name end end
+  return 'off'
+ end
+ local function say(text) flash=text; flashUntil=clock()+3 end
+ local function options()
+  local it=item()
+  if mode=='browse' then return {{label='< PREV'},{label=it.name=='boot' and 'STARTUP' or 'CHOOSE'},{label='NEXT >'}} end
+  if it.name=='boot' then return {{label='BACK'},{label='MENU AT BOOT'},{label='NOTHING AT BOOT'}} end
+  return {{label='BACK'},{label='PLAY'},{label=state.boot==it.name and 'MENU AT BOOT' or 'START AT BOOT'}}
+ end
+ local function status()
+  if flash and clock()<flashUntil then return flash,true end
+  local b=bootTitle()
+  return b and 'STARTS AT BOOT: '..b or 'NOTHING STARTS AT BOOT',false
+ end
+ local function draw()
+  local it=item()
+  local text,hi=status()
+  view:draw({angle=pos*2*math.pi/n,selected=selected(),spin=spin,zoom=zoom,bob=mode=='card' and math.sin(clock()*3)*.08 or 0,
+   boot=state.boot,title=it.title:upper(),subtitle=it.description,status=text,highlight=hi,options=options(),counter=selected()..'/'..n})
+ end
+ local function changeBoot(name)
+  if setBoot(name) then
+   state=readJSON(fs.combine(dir,STATE)) or state
+   local b=bootTitle()
+   say(b and b..' NOW STARTS AT BOOT' or 'NOTHING STARTS AT BOOT NOW')
+  else say('COULD NOT CHANGE THE STARTUP') end
+ end
+ local function play(it)
+  restore()
+  t.setBackgroundColor(colors.black); t.setTextColor(colors.white); t.clear(); t.setCursorPos(1,1)
+  -- The screen chosen for the menu carries over to games that take the same options.
+  local gameArgs={}
+  if it.monitor~=false then
+   for i,a in ipairs(args) do
+    if a=='--terminal' then gameArgs[#gameArgs+1]=a
+    elseif a=='--monitor' then gameArgs[#gameArgs+1]=a; gameArgs[#gameArgs+1]=args[i+1] end
+   end
+  end
+  local ok,problem=launch(it,gameArgs)
+  -- A failed run (a crash, or Ctrl+T) keeps its output up until a key is pressed.
+  if not ok and not problem then pause(it) end
+  palette.apply(t); t.setBackgroundColor(colors.black); t.clear()
+  mode='browse'
+  if problem then say(it.title:upper()..' '..problem)
+  elseif not ok then say(it.title:upper()..' STOPPED') end
+ end
+ local function press(b)
+  local it=item()
+  if mode=='browse' then
+   if b=='LEFT' then index=index-1; spin=0
+   elseif b=='RIGHT' then index=index+1; spin=0
+   elseif b=='CENTER' then mode='card' end
+  elseif b=='LEFT' then mode='browse'
+  elseif it.name=='boot' then
+   changeBoot(b=='CENTER' and launcher() or 'off')
+  elseif b=='CENTER' then play(it)
+  else changeBoot(state.boot==it.name and launcher() or it.name) end
+ end
+ local function pointer(x,y)
+  local w,h=t.getSize()
+  if y==h then
+   for i,s in ipairs(render.slots(w)) do if x>=s.x1 and x<=s.x2 then return ({'LEFT','CENTER','RIGHT'})[i] end end
+  elseif mode=='browse' and y>1 and y<h-3 then
+   return x<=w/3 and 'LEFT' or x>w*2/3 and 'RIGHT' or 'CENTER'
+  end
+ end
+ local last=clock()
+ local timer=os.startTimer(.05)
+ local ok,err=pcall(function()
+  while true do
+   local e,p1,p2,p3=os.pullEventRaw()
+   if e=='terminate' then return end
+   local b
+   if e=='timer' and p1==timer then
+    local now=clock(); local dt=math.min(.2,now-last); last=now
+    pos=pos+(index-1-pos)*math.min(1,dt*9)
+    if math.abs(index-1-pos)<.002 then pos=index-1 end
+    zoom=zoom+((mode=='card' and 1 or 0)-zoom)*math.min(1,dt*8)
+    spin=spin+dt*(mode=='card' and 2 or .8)
+    draw()
+    timer=os.startTimer(.05)
+   elseif e=='key' and KEYS_BACK[p1] and mode=='card' then b='LEFT'
+   elseif e=='mouse_click' and not monitorName then b=pointer(p2,p3)
+   elseif e=='monitor_touch' and p1==monitorName then b=pointer(p2,p3)
+   elseif e=='key' or e=='char' or e=='redstone' then b=button(e,p1) end
+   if b then
+    press(b); draw()
+    -- A game takes the screen and its own timers; start ours again afterwards.
+    timer=os.startTimer(.05); last=clock()
+   end
+  end
+ end)
+ restore()
+ t.setBackgroundColor(colors.black); t.setTextColor(colors.white); t.clear(); t.setCursorPos(1,1)
+ if not ok then error(err,0) end
+end
+return M
+]])
+
+writeFile('pinearcade/emblems.lua', [[
+-- Pine3D emblems for the Pine Arcade carousel, one per game, each standing on y=0 about
+-- 2.4 tall and 2 wide, its front toward -x (the camera); y is up and +z is screen right.
+local mesh=require('casino.mesh')
+local font=require('casino.font')
+local M={}
+local tri,quad,box=mesh.tri,mesh.quad,mesh.box
+-- A solid of revolution about the y axis through (cx, cz). profile runs from the bottom
+-- of the axis to the top as {radius, y} pairs; colors[i] paints band i (or one colour).
+local function lathe(m,profile,n,colors_,cx,cz)
+ cx,cz=cx or 0,cz or 0
+ for i=1,#profile-1 do
+  local r1,y1,r2,y2=profile[i][1],profile[i][2],profile[i+1][1],profile[i+1][2]
+  local c=type(colors_)=='table' and (colors_[i] or colors_[#colors_]) or colors_
+  -- Outward normal of the profile segment, in (radius, y).
+  local nr,ny=y2-y1,-(r2-r1)
+  for k=0,n-1 do
+   local a,b=k/n*2*math.pi,(k+1)/n*2*math.pi
+   local ca,sa,cb,sb=math.cos(a),math.sin(a),math.cos(b),math.sin(b)
+   local mid=(a+b)/2
+   local facing={math.cos(mid)*nr,ny,math.sin(mid)*nr}
+   local p1,p2={cx+ca*r1,y1,cz+sa*r1},{cx+cb*r1,y1,cz+sb*r1}
+   local p3,p4={cx+cb*r2,y2,cz+sb*r2},{cx+ca*r2,y2,cz+sa*r2}
+   if r1==0 then tri(m,p1,p3,p4,c,facing)
+   elseif r2==0 then tri(m,p1,p2,p3,c,facing)
+   else quad(m,p1,p2,p3,p4,c,facing) end
+  end
+ end
+end
+local function ball(m,r,cx,cy,cz,c,n)
+ local p={}
+ for k=0,6 do local a=math.pi*(k/6-1)*-1; p[#p+1]={math.sin(a)*r,cy-math.cos(a)*r} end
+ p[1][1],p[#p][1]=0,0
+ lathe(m,p,n or 10,c,cx,cz)
+end
+-- Pedestal under every emblem; the ring lights when the game is the boot choice.
+function M.pedestal(lit)
+ local m={}
+ lathe(m,{{0,-.35},{1.35,-.35},{1.35,-.05},{1.2,0},{0,0}},12,{colors.gray,lit and colors.lime or colors.gray,colors.lightGray,colors.lightGray})
+ return m
+end
+-- Text on the front plane x, centred on z=0 with its top at v0.
+local function front(m,x,text,v0,cell,color)
+ font.draw(m,text,-font.width(text)*cell/2,v0,cell,color,function(u,v) return {x,v,u} end,{-1,0,0})
+end
+local E={}
+function E.pineslots()
+ local m={}
+ box(m,-.6,0,-1,1.2,2.2,2,colors.red)
+ box(m,-.65,2.2,-1.05,1.3,.35,2.1,colors.yellow)
+ box(m,-.62,.95,-.85,.1,.95,1.7,colors.black)
+ local reel={colors.red,colors.yellow,colors.purple}
+ for k=1,3 do
+  local z=-.82+(k-1)*.56
+  box(m,-.66,1.0,z,.05,.85,.5,colors.white)
+  box(m,-.7,1.27,z+.13,.05,.28,.24,reel[k])
+ end
+ box(m,-.65,.35,-.7,.1,.25,1.4,colors.lightGray)
+ -- Pull arm on the right.
+ box(m,-.12,1.1,1,.24,.2,.2,colors.lightGray)
+ box(m,-.08,1.1,1.2,.16,1.15,.16,colors.lightGray)
+ ball(m,.2,0,2.35,1.28,colors.red,8)
+ return m
+end
+local function card(m,x,z,tilt,rank,suit,color)
+ -- A standing card, leaning back by tilt, face toward -x.
+ local W,H=.7,2.0
+ local function pt(u,v) return {x+v*tilt,v,z+u} end
+ quad(m,pt(-W,0),pt(W,0),pt(W,H),pt(-W,H),colors.white,{-1,0,tilt})
+ quad(m,{x+.03,0,z-W},{x+.03,0,z+W},{x+.03+H*tilt,H,z+W},{x+.03+H*tilt,H,z-W},colors.blue,{1,0,-tilt})
+ font.draw(m,rank,z-W+.12,H-.12,.17,color,function(u,v) return {x+v*tilt-.02,v,u} end,{-1,0,tilt})
+ local cz,cy,s=z+.12,.85,.32
+ local function p(u,v) return {x+(cy+v)*tilt-.02,cy+v,cz+u} end
+ if suit=='D' then quad(m,p(0,s),p(s*.75,0),p(0,-s),p(-s*.75,0),color,{-1,0,tilt})
+ else
+  tri(m,p(-s*.9,0),p(0,s),p(s*.9,0),color,{-1,0,tilt}); tri(m,p(-s*.9,0),p(s*.9,0),p(0,-s*.45),color,{-1,0,tilt})
+  quad(m,p(-.07,-.3),p(.07,-.3),p(.2,-s-.1),p(-.2,-s-.1),color,{-1,0,tilt})
+ end
+end
+function E.pinejack()
+ local m={}
+ card(m,.15,-.45,.12,'A','S',colors.black)
+ card(m,-.25,.4,.12,'K','D',colors.red)
+ for k=0,4 do lathe(m,{{0,k*.11},{.38,k*.11},{.38,k*.11+.1},{0,k*.11+.1}},8,k%2==0 and colors.red or colors.white,-.6,-1.15) end
+ return m
+end
+-- A die with pips on the faces toward the camera, the top and the right.
+local function die(m,x,y,z,s,faces)
+ box(m,x,y,z,s,s,s,colors.white)
+ local r=s*.11
+ local spots={[1]={{0,0}},[2]={{-1,-1},{1,1}},[3]={{-1,-1},{0,0},{1,1}},[4]={{-1,-1},{1,-1},{-1,1},{1,1}},
+  [5]={{-1,-1},{1,-1},{0,0},{-1,1},{1,1}},[6]={{-1,-1},{1,-1},{-1,0},{1,0},{-1,1},{1,1}}}
+ local h=s/2; local d=s*.27
+ local function pips(n,point,facing)
+  for _,q in ipairs(spots[n]) do
+   local u,v=q[1]*d,q[2]*d
+   quad(m,point(u-r,v-r),point(u+r,v-r),point(u+r,v+r),point(u-r,v+r),n==1 and colors.red or colors.black,facing)
+  end
+ end
+ pips(faces[1],function(u,v) return {x-.01,y+h+v,z+h+u} end,{-1,0,0})
+ pips(faces[2],function(u,v) return {x+h+v,y+s+.01,z+h+u} end,{0,1,0})
+ pips(faces[3],function(u,v) return {x+h+u,y+h+v,z+s+.01} end,{0,0,1})
+end
+function E.pinebox()
+ local m={}
+ die(m,-.5,0,-1.05,1.1,{5,1,3})
+ die(m,-.3,1.1,-.35,1,{6,4,2})
+ die(m,-.6,0,.25,1,{3,2,6})
+ return m
+end
+-- A horseshoe standing open end up, with nail holes.
+function E.race()
+ local m={}
+ local n=14; local R,r=1.05,.68
+ local prev
+ for k=0,n do
+  local a=math.pi*(-.15+k/n*1.3)
+  local p={math.cos(a),math.sin(a)}
+  if prev then
+   local function at(rad,q,x) return {x,1.2-q[2]*rad,q[1]*rad} end
+   local c=(k==4 or k==7 or k==10) and colors.orange or colors.yellow
+   quad(m,at(R,prev,-.12),at(R,p,-.12),at(r,p,-.12),at(r,prev,-.12),c,{-1,0,0})
+   quad(m,at(R,prev,.12),at(R,p,.12),at(r,p,.12),at(r,prev,.12),colors.orange,{1,0,0})
+   quad(m,at(R,prev,-.12),at(R,p,-.12),at(R,p,.12),at(R,prev,.12),colors.orange,{0,-(prev[2]+p[2]),(prev[1]+p[1])})
+   quad(m,at(r,prev,-.12),at(r,p,-.12),at(r,p,.12),at(r,prev,.12),colors.orange,{0,prev[2]+p[2],-(prev[1]+p[1])})
+  end
+  prev=p
+ end
+ for _,a in ipairs({.25,.75,1.05,1.55,1.85,2.3}) do
+  local q={math.cos(math.pi*(-.15+a/2.6*1.3)),math.sin(math.pi*(-.15+a/2.6*1.3))}
+  local cz,cy=q[1]*.87,1.2-q[2]*.87
+  quad(m,{-.13,cy-.06,cz-.06},{-.13,cy-.06,cz+.06},{-.13,cy+.06,cz+.06},{-.13,cy+.06,cz-.06},colors.brown,{-1,0,0})
+ end
+ return m
+end
+function E.pineball()
+ local m={}
+ -- Bat leaning across the back, then the ball in front with red stitching.
+ local function bat(y,z) return {.35,y,z} end
+ for k=0,5 do
+  local y1,y2=.1+k*.4,.1+(k+1)*.4
+  local w1,w2=.07+k*.03,.07+(k+1)*.03
+  local z1,z2=1.1-y1*.55,1.1-y2*.55
+  quad(m,bat(y1,z1-w1),bat(y1,z1+w1),bat(y2,z2+w2),bat(y2,z2-w2),colors.brown,nil)
+ end
+ ball(m,.8,-.2,.85,-.1,colors.white,10)
+ for k=0,7 do
+  local a=k/8*math.pi*2
+  local y,z=.85+math.cos(a)*.62,-.1+math.sin(a)*.62
+  local x=-.2-math.sqrt(math.max(0,.64-(y-.85)^2-(z+.1)^2))-.01
+  quad(m,{x,y-.05,z-.08},{x,y-.05,z+.08},{x,y+.05,z+.08},{x,y+.05,z-.08},colors.red,{-1,0,0})
+ end
+ return m
+end
+function E.pinelinks()
+ local m={}
+ lathe(m,{{0,0},{1.15,0},{1.15,.15},{0,.15}},10,colors.lime)
+ lathe(m,{{0,.12},{.22,.12},{.22,.16},{0,.16}},8,colors.black,.2,.3)
+ box(m,.17,.15,.27,.06,2.2,.06,colors.lightGray)
+ tri(m,{.2,2.35,.3},{.2,1.85,.3},{.2,2.1,-.55},colors.red,nil)
+ ball(m,.16,-.55,.31,-.4,colors.white,6)
+ return m
+end
+function E.pinelanes()
+ local m={}
+ -- A pin, then the ball beside it.
+ lathe(m,{{0,0},{.22,0},{.38,.4},{.42,.7},{.3,1.1},{.17,1.4},{.16,1.55},{.24,1.8},{.22,2.0},{.12,2.18},{0,2.22}},10,
+  {colors.white,colors.white,colors.white,colors.white,colors.red,colors.white,colors.red,colors.white,colors.white,colors.white},.2,-.35)
+ ball(m,.62,-.25,.62,.55,colors.blue,10)
+ for _,h in ipairs({{.85,.4},{.95,.6},{.75,.65}}) do
+  local y,z=h[1],h[2]+.15
+  quad(m,{-.86,y-.06,z-.06},{-.86,y-.06,z+.06},{-.86,y+.06,z+.06},{-.86,y+.06,z-.06},colors.black,{-1,0,0})
+ end
+ return m
+end
+function E.pinedungeon()
+ local m={}
+ -- Sword point up, then a shield leaning in front.
+ box(m,-.05,.95,-.12,.1,1.35,.24,colors.lightGray)
+ tri(m,{-.05,2.3,-.12},{-.05,2.3,.12},{-.05,2.55,0},colors.lightGray,{-1,0,0})
+ tri(m,{.05,2.3,-.12},{.05,2.3,.12},{.05,2.55,0},colors.lightGray,{1,0,0})
+ box(m,-.1,.82,-.55,.2,.13,1.1,colors.yellow)
+ box(m,-.06,.4,-.07,.12,.42,.14,colors.brown)
+ box(m,-.09,.26,-.1,.18,.15,.2,colors.yellow)
+ local s={}
+ for k=0,10 do local a=k/10*math.pi; s[#s+1]={math.cos(a)*.6,.95+math.sin(a)*.25} end
+ local x=-.4
+ for k=1,#s-1 do tri(m,{x,.15,0},{x,s[k][2],s[k][1]},{x,s[k+1][2],s[k+1][1]},colors.purple,{-1,0,0}) end
+ tri(m,{x,.95,-.6},{x,.95,.6},{x,.15,0},colors.purple,{-1,0,0})
+ tri(m,{x-.01,.95,-.1},{x-.01,.95,.1},{x-.01,.35,0},colors.yellow,{-1,0,0})
+ quad(m,{x-.01,.8,-.4},{x-.01,.8,.4},{x-.01,.7,.35},{x-.01,.7,-.35},colors.yellow,{-1,0,0})
+ return m
+end
+function E.pineface()
+ local m={}
+ -- A Smiley ball facing the camera, with a bullet on its way out.
+ ball(m,.95,0,1.3,0,colors.yellow,12)
+ box(m,-.99,1.45,-.42,.12,.38,.2,colors.black)
+ box(m,-.99,1.45,.22,.12,.38,.2,colors.black)
+ box(m,-.99,.86,-.42,.12,.12,.84,colors.black)
+ box(m,-.92,.96,-.58,.12,.14,.16,colors.black)
+ box(m,-.92,.96,.42,.12,.14,.16,colors.black)
+ box(m,-.5,.15,.75,.22,.22,.22,colors.white)
+ return m
+end
+-- The startup tile: a power symbol.
+function E.boot(lit)
+ local m={}
+ local c=lit and colors.lime or colors.lightGray
+ local n=16; local R,r,cy=.95,.68,1.2
+ local function at(rad,ang,x) return {x,cy+math.cos(ang)*rad,math.sin(ang)*rad} end
+ for k=0,n-1 do
+  local a,b=k/n*2*math.pi,(k+1)/n*2*math.pi
+  -- Leave a gap at the top for the bar.
+  if math.cos((a+b)/2)<.9 then
+   quad(m,at(R,a,-.1),at(R,b,-.1),at(r,b,-.1),at(r,a,-.1),c,{-1,0,0})
+   quad(m,at(R,a,.1),at(R,b,.1),at(r,b,.1),at(r,a,.1),colors.gray,{1,0,0})
+  end
+ end
+ box(m,-.12,1.05,-.14,.24,1.15,.28,c)
+ return m
+end
+-- Anything without an emblem gets a small cabinet with its initials.
+function E.default(name,title)
+ local m={}
+ box(m,-.6,0,-.9,1.2,2.3,1.8,colors.blue)
+ box(m,-.65,1.2,-.7,.1,.8,1.4,colors.black)
+ local text=(title or name or '?'):gsub('[^%u]',''):sub(1,2)
+ local ok=true
+ for ch in text:gmatch('.') do if not font.glyphs[ch] then ok=false end end
+ if ok and #text>0 then front(m,-.67,text,1.85,.12,colors.yellow) end
+ return m
+end
+function M.model(name,title,lit)
+ if name=='boot' then return E.boot(lit) end
+ return (E[name] or E.default)(name,title)
+end
+return M
+]])
+
+writeFile('pinearcade/render.lua', [[
+-- Pine Arcade screen: a Pine3D carousel of emblems on pedestals above three text rows and
+-- the LEFT / CENTER / RIGHT button bar. Camera on -x looking +x; +z is screen right.
+local pine=require('derby.vendor.Pine3D')
+local mesh=require('casino.mesh')
+local emblems=require('pinearcade.emblems')
+local M={}
+M.minW,M.minH=26,16
+M.spacing=3.3
+local function line(t,y,text,fg,bg,center)
+ local w,h=t.getSize(); if y>h or y<1 then return end
+ if center then text=string.rep(' ',math.max(0,math.floor((w-#text)/2)))..text end
+ t.setCursorPos(1,y); t.setBackgroundColor(bg or colors.black); t.setTextColor(fg or colors.white)
+ t.write((text..string.rep(' ',w)):sub(1,w))
+end
+function M.slots(w)
+ local third=math.floor(w/3)
+ return {{x1=1,x2=third},{x1=third+1,x2=2*third},{x1=2*third+1,x2=w}}
+end
+M.barColors={{colors.black,colors.white},{colors.black,colors.yellow},{colors.white,colors.red}}
+-- Ring radius that keeps neighbours M.spacing apart.
+function M.radius(n) return n<2 and 0 or M.spacing/(2*math.sin(math.pi/math.max(3,n))) end
+-- items: {name, title, ...}. Models are built once and swapped when the boot choice moves.
+function M.new(t,items)
+ assert(t.isColor(),'Pine Arcade needs an advanced colour computer or monitor')
+ local old=term.redirect(t)
+ local w,h=t.getSize()
+ local f=pine.newFrame(1,2,w,math.max(1,h-5)); f:setBackgroundColor(colors.black)
+ local floor={}
+ mesh.quad(floor,{-40,-.36,-40},{40,-.36,-40},{40,-.36,40},{-40,-.36,40},colors.black,{0,1,0})
+ local floorObj=f:newObject(floor,0,0,0)
+ local pedestals={plain=emblems.pedestal(false),lit=emblems.pedestal(true)}
+ local slots={}
+ for k,item in ipairs(items) do
+  slots[k]={item=item,model={},emblem=f:newObject(emblems.model(item.name,item.title,false),0,0,0),stand=f:newObject(pedestals.plain,0,0,0)}
+  if item.name=='boot' then slots[k].litModel=emblems.model('boot',nil,true); slots[k].plainModel=emblems.model('boot',nil,false) end
+ end
+ term.redirect(old)
+ local api={frame=f}
+ -- v: angle (ring rotation, radians), selected, spin, zoom 0..1, boot (name lit),
+ -- title, subtitle, status, highlight, options {{label}...}
+ function api:draw(v)
+  local previous=term.redirect(t)
+  local ww,hh=t.getSize()
+  if ww~=w or hh~=h then w,h=ww,hh; f:setSize(1,2,w,math.max(1,h-5)) end
+  if w<M.minW or h<M.minH then
+   t.setBackgroundColor(colors.black); t.clear(); line(t,2,' PINE ARCADE needs '..M.minW..' x '..M.minH); line(t,4,' Use a bigger screen.')
+   term.redirect(previous); return
+  end
+  local n=#slots; local R=M.radius(n)
+  -- Pull in closer when a game is chosen; wide, short frames get a wider lens.
+  local aspect=w/math.max(1,h-5)
+  f:setFoV(aspect>3 and 64 or aspect>2 and 56 or 50)
+  local zoom=v.zoom or 0
+  local d=7.2-zoom*1.5
+  mesh.look(f,-R-d,2.9-zoom*.7,0,-R,1.2,0)
+  local objects={floorObj}
+  for k,s in ipairs(slots) do
+   local a=math.pi+(v.angle or 0)-(k-1)*2*math.pi/n
+   local x,z=R*math.cos(a),R*math.sin(a)
+   -- Only the chosen emblem and its neighbours are drawn; the rest of the ring would
+   -- sit behind them and cost frames.
+   local off=math.abs((a-math.pi+math.pi)%(2*math.pi)-math.pi)
+   if n<2 or off<math.min(1.5*2*math.pi/n,math.rad(100)) then
+    local lit=v.boot==s.item.name
+    s.stand:setModel(lit and pedestals.lit or pedestals.plain)
+    if s.litModel then s.emblem:setModel(lit and s.litModel or s.plainModel) end
+    s.stand:setPos(x,0,z); s.emblem:setPos(x,0,z)
+    local chosen=k==v.selected
+    s.emblem:setRot(0,chosen and (v.spin or 0) or 0,0)
+    s.emblem:setPos(x,chosen and (v.bob or 0) or 0,z)
+    objects[#objects+1]=s.stand; objects[#objects+1]=s.emblem
+   end
+  end
+  f:drawObjects(objects); f:drawBuffer()
+  line(t,1,' PINE ARCADE',colors.yellow,colors.blue)
+  if v.counter then local c=v.counter..' '; t.setCursorPos(math.max(1,w-#c+1),1); t.setTextColor(colors.white); t.setBackgroundColor(colors.blue); t.write(c) end
+  line(t,h-3,v.title or '',colors.yellow,colors.black,true)
+  line(t,h-2,v.subtitle or '',colors.lightGray,colors.black,true)
+  line(t,h-1,v.status or '',v.highlight and colors.black or colors.lime,v.highlight and colors.yellow or colors.black,true)
+  for i,s in ipairs(M.slots(w)) do
+   local label=v.options and v.options[i] and v.options[i].label or ''
+   local width=s.x2-s.x1+1; local lp=math.max(0,math.floor((width-#label)/2))
+   local fg,bg=M.barColors[i][1],M.barColors[i][2]
+   if label=='' then fg,bg=colors.gray,colors.black end
+   t.setCursorPos(s.x1,h); t.setTextColor(fg); t.setBackgroundColor(bg)
+   t.write((string.rep(' ',lp)..label..string.rep(' ',width)):sub(1,width))
+  end
+  term.redirect(previous)
+ end
+ return api
+end
+return M
+]])
+
+writeFile('pinearcade.lua', [[
+-- Pine Arcade: a Pine3D menu of every game installed beside it (get all), and the place
+-- to choose what this computer boots into.
+-- pinearcade [--terminal | --monitor NAME]
+local args={...}
+require('pinearcade.app').run({dir=fs.getDir(shell.getRunningProgram()),target=require('casino.app').target(args),args=args})
+]])
+
 writeFile('pinebox/app.lua', [[
 -- Entry: pinebox [--demo] [--terminal | --monitor NAME]
 local M={}
@@ -7503,6 +8110,81 @@ function M.run(args)
   require('pinebox.game').run({target=t,wallet=wallet})
  end)
 end
+return M
+]])
+
+writeFile('pinebox/avatars.lua', [[
+-- Pixel mascot heads for Pine Shut the Box.
+-- Sprites are intentionally tiny: seven cells wide by five high, readable on the
+-- minimum 39x19 display and chunky enough to feel native to ComputerCraft.
+local M={}
+
+M.list={
+ {id='fox',name='FOX',primary=colors.orange,accent=colors.white,sprite={
+  'p     p','pp   pp','ppppppp','ppa app',' ppppp ',
+ }},
+ {id='cat',name='CAT',primary=colors.gray,accent=colors.pink,sprite={
+  'pp   pp','ppp ppp','ppppppp','ppk kpp',' ppaap ',
+ }},
+ {id='bunny',name='BUNNY',primary=colors.lightGray,accent=colors.pink,sprite={
+  ' pp pp ',' pp pp ','ppppppp','ppk kpp',' ppaap ',
+ }},
+ {id='wolf',name='WOLF',primary=colors.lightBlue,accent=colors.white,sprite={
+  'pp   pp','ppp ppp','ppppppp','ppk kpp',' ppaap ',
+ }},
+ {id='raccoon',name='RACCOON',primary=colors.gray,accent=colors.lightGray,sprite={
+  'pp   pp','ppppppp','paa aap','pkk kkp',' ppaap ',
+ }},
+ {id='bear',name='BEAR',primary=colors.brown,accent=colors.orange,sprite={
+  'pp   pp','ppppppp','ppppppp','ppk kpp',' ppaap ',
+ }},
+ {id='deer',name='DEER',primary=colors.brown,accent=colors.white,sprite={
+  'p p p p',' pp pp ','ppppppp','ppk kpp',' ppaap ',
+ }},
+ {id='otter',name='OTTER',primary=colors.brown,accent=colors.lightGray,sprite={
+  ' pp pp ','ppppppp','ppppppp','ppk kpp',' ppaap ',
+ }},
+}
+
+function M.get(i)
+ if type(i)=='table' then return i end
+ if not i then return nil end
+ return M.list[(i-1)%#M.list+1]
+end
+
+local function fill(t,x,y,w,h,bg)
+ t.setBackgroundColor(bg)
+ for r=0,h-1 do t.setCursorPos(x,y+r); t.write(string.rep(' ',w)) end
+end
+
+function M.draw(t,avatar,x,y,ready,phase,label)
+ local a=M.get(avatar); if not a then return end
+ local w,h=t.getSize()
+ if x+8>w or y+6>h then return end
+ local bob=ready and ((phase or 0)%2) or 0
+ fill(t,x,y,9,7,colors.black)
+ t.setTextColor(colors.lightGray); t.setBackgroundColor(colors.black)
+ t.setCursorPos(x,y); t.write(('+%s+'):format(string.rep('-',7)))
+ for r,row in ipairs(a.sprite) do
+  t.setCursorPos(x,y+r)
+  t.setBackgroundColor(colors.black); t.write('|')
+  for c=1,7 do
+   local ch=row:sub(c,c)
+   local col=colors.black
+   if ch=='p' then col=a.primary elseif ch=='a' then col=a.accent elseif ch=='k' then col=colors.black elseif ch=='w' then col=colors.white end
+   t.setBackgroundColor(col); t.write(' ')
+  end
+  t.setBackgroundColor(colors.black); t.setTextColor(colors.lightGray); t.write('|')
+ end
+ t.setCursorPos(x,y+6); t.setBackgroundColor(colors.black); t.setTextColor(ready and colors.yellow or colors.lightGray)
+ local text=ready and ' READY ' or (' '..a.name..' ')
+ if #text>7 then text=text:sub(1,7) end
+ t.write(('|%-7s|'):format(text))
+ if ready and bob==1 and y+7<=h then
+  t.setCursorPos(x+2,y+6); t.setTextColor(colors.black); t.setBackgroundColor(colors.yellow); t.write(' ROLL ')
+ end
+end
+
 return M
 ]])
 
@@ -7691,15 +8373,18 @@ return M
 writeFile('pinebox/game.lua', [[
 -- Pine Shut the Box: the grand prize round. Stake a bet, then roll two dice and knock
 -- down tiles that add up to each roll. Clear all nine for 13x; a roll no tiles can make
--- ends the round. The house reserves the grand prize up front and settles once.
+-- ends the turn. The house reserves the grand prize up front and settles once per turn.
+-- A match seats 2-4 players: each antes from their own card into a pot, then takes a
+-- turn on a fresh board scoring the tiles left standing. Lowest score takes the pot.
 local rules=require('pinebox.rules')
 local dice=require('pinebox.dice')
 local renderer=require('pinebox.render')
+local avatars=require('pinebox.avatars')
 local sounds=require('casino.sound')
 local M={}
 M.back=1.6 -- seconds the camera holds on the settled dice
 local KEYS={[keys.one]=1,[keys.two]=2,[keys.three]=3,[keys.left]=1,[keys.up]=2,[keys.right]=3,[keys.space]=2,[keys.enter]=2}
-local HOTKEYS={[keys.r]='roll',[keys.t]='take',[keys.b]='bet',[keys.c]='cash'}
+local HOTKEYS={[keys.r]='roll',[keys.t]='take',[keys.b]='bet',[keys.c]='cash',[keys.s]='start'}
 -- opts: target, wallet, clock(), random(lo,hi), button(event,p1), sound
 function M.run(opts)
  local t=opts.target
@@ -7710,6 +8395,10 @@ function M.run(opts)
  local sound=opts.sound or sounds()
  local view=renderer.new(t)
  local betIndex=1
+ local seats=2
+ local players -- {list=scores, current=i, avatars=mascot indexes} during a match
+ local soloAvatar=1
+ local soloShowing=false
  local board=rules.full
  local tiles={}; for n=1,9 do tiles[n]={from=0,to=0,t0=0} end
  local selection=0
@@ -7721,6 +8410,7 @@ function M.run(opts)
  local function say(text,hi) message=text; highlight=hi or false end
  local function bet() return rules.bets[betIndex] end
  local function balance() local s=wallet:session(); return s and s.balance end
+ local function avatarName(i) local a=avatars.get(i); return a and a.name or 'MASCOT' end
  local function wait(s) coroutine.yield({wait=clock()+s}) end
  local function ask(options,card) return coroutine.yield({ask=options,card=card}) end
  local function boardText()
@@ -7741,30 +8431,49 @@ function M.run(opts)
   wait(throw.duration+M.back)
   return values
  end
- local function settle(r,amount)
-  local ok=wallet:settle(r,amount)
+ -- Keep asking until the house acknowledges: op is 'settle' or 'refund'.
+ local function settle(r,amount,op)
+  local ok
+  if op=='refund' then ok=wallet:refund(r) else ok=wallet:settle(r,amount) end
   while not ok do
    say('HOUSE OFFLINE: PAYOUT PENDING')
    if ask({{name='retry',label='RETRY'},{name='retry',label='RETRY'},{name='retry',label='RETRY'}})=='retry' then ok=wallet:retry() end
   end
  end
- local function round()
+ -- A player's card name, or PLAYER n when there is none or two seats share it.
+ local function who(p)
+  local n=players and players.names[p]
+  if n then for q,m in pairs(players.names) do if q~=p and m==n then n=nil break end end end
+  return n and n:upper() or ('PLAYER '..p)
+ end
+ -- One turn on a fresh board. Returns the score: the tiles left standing, 0 for a
+ -- shut box. Solo turns stake the bet against the grand prize; match turns play for
+ -- the pot, so they touch no money. Solo returns nil if the house refused the stake.
+ local function round(p)
+  local solo=not players
   local stake=bet(); local prize=stake*rules.prize
-  local r,err=wallet:begin(stake,prize)
-  if not r then say(tostring(err):upper()); return end
+  local r
+  if solo then
+   local err; r,err=wallet:begin(stake,prize)
+   if not r then say(tostring(err):upper()); wait(1.5); return end
+  end
+  local tag=solo and '' or who(p)..': '
   resetBoard(); wait(.4)
   while true do
-   info=('BOARD %s   CHANCE TO CLEAR %.1f%%'):format(boardText(),rules.chance(board)*100)
-   say('ROLL THE DICE')
+   -- The score tags fill the info row in a match; the chips already show the board.
+   info=solo and ('BOARD %s   CHANCE TO CLEAR %.1f%%'):format(boardText(),rules.chance(board)*100) or ('POT %d   CLEAR %.1f%%'):format(players.pot,rules.chance(board)*100)
+   say(tag..'ROLL THE DICE',not solo)
    ask({{name='',label=''},{name='roll',label='ROLL'},{name='',label=''}})
    local values=roll()
    local total=values[1]+values[2]
    local moves=rules.moves(board,total)
-   info=('ROLLED %d + %d = %d   BOARD %s'):format(values[1],values[2],total,boardText())
+   info=('ROLLED %d + %d = %d'):format(values[1],values[2],total)..(solo and '   BOARD '..boardText() or '')
    if #moves==0 then
-    say(('NO WAY TO MAKE %d. ROUND OVER'):format(total))
+    local left=rules.sum(board)
+    say(solo and ('NO WAY TO MAKE %d. ROUND OVER'):format(total) or ('NO %d. %s SCORES %d'):format(total,who(p),left))
     sound:play(clock(),'didgeridoo',1,4); sound:play(clock()+.35,'didgeridoo',1,1)
-    settle(r,0); wait(1.8); return
+    if r then settle(r,0) end
+    wait(1.8); return left
    end
    -- Start on the best play; LEFT/RIGHT step through the others.
    local best=rules.best(board,total); local pick=1
@@ -7785,12 +8494,116 @@ function M.run(opts)
    wait(.6)
    if board==0 then
     info='BOARD CLEARED!'
-    say(('GRAND PRIZE! YOU WIN %d CREDITS'):format(prize),true)
+    say(solo and ('GRAND PRIZE! YOU WIN %d CREDITS'):format(prize) or tag..'SHUT THE BOX!',true)
     celebrate=clock()+4
     local tune={12,16,19,24,19,24,28,31,24,28,31,36}
-    for i,p in ipairs(tune) do sound:play(clock()+i*.12,'bell',1,math.min(24,p)) ; sound:play(clock()+i*.12,'pling',.6,math.min(24,p-12)) end
-    settle(r,prize); wait(3); return
+    for i,q in ipairs(tune) do sound:play(clock()+i*.12,'bell',1,math.min(24,q)) ; sound:play(clock()+i*.12,'pling',.6,math.min(24,q-12)) end
+    if r then settle(r,prize) end
+    wait(3); return 0
    end
+  end
+ end
+ -- Every player antes the bet from their own card: insert it, press ANTE, pass the
+ -- slot on. Each account holds one house round reserving the whole pot, so seats
+ -- sharing a card share a round. Returns false if the table cancels (antes refunded).
+ local function ante(n)
+  local stake=bet(); local pot=stake*n
+  players={list={},names={},seat={},rounds={},avatars={},current=1,pot=0}
+  for i=1,n do players.list[i]=false; players.avatars[i]=(i-1)%#avatars.list+1 end
+  while players.current<=n do
+   local p=players.current; local s=wallet:session()
+   info=('ANTE %d EACH. LOW SCORE TAKES THE POT OF %d'):format(stake,pot)
+   local mascot=avatarName(players.avatars[p])
+   say(s and ('PLAYER %d [%s]: ANTE %d AS %s?'):format(p,mascot,stake,(s.name or 'PLAYER'):upper()) or ('PLAYER %d [%s]: INSERT YOUR HOUSE CARD'):format(p,mascot),true)
+   local a=ask({{name='cancel',label='CANCEL'},s and {name='ante',label='ANTE '..stake} or {name='',label=''},{name='mascot',label=mascot..' >'}},'ante')
+   if a=='cancel' then
+    for _,r in pairs(players.rounds) do settle(r,0,'refund') end
+    players=nil; say('MATCH CANCELLED: ANTES RETURNED'); wait(1.5); return false
+   elseif a=='mascot' then
+    players.avatars[p]=players.avatars[p]%#avatars.list+1
+    sound:play(clock(),'hat',.5,12+players.avatars[p])
+   elseif a=='ante' and s then
+    local key=s.account or s.name or 'card'
+    local r=players.rounds[key]; local ok,err,context
+    if r then ok,err,context=wallet:increase(r,stake,pot)
+    else r,err,context=wallet:begin(stake,pot); ok=r~=nil end
+    -- Hold this exact seat/ante until its request is acknowledged. Passing the
+    -- card or pressing ANTE again must not charge or increment the pot twice.
+    while not ok and context and context.pending do
+     say('HOUSE OFFLINE: ANTE PENDING')
+     local action=ask({{name='retry',label='RETRY'},{name='retry',label='RETRY'},{name='retry',label='RETRY'}})
+     if action=='retry' then
+      ok,err,context=wallet:retry()
+      if context and context.matches==false then context.pending=true end
+      if ok and not r then
+       r=context and context.round
+       if not r then ok=false; err='Recovered ante needs cashier review'; context={pending=true} end
+      end
+     end
+    end
+    if context and context.status and context.status~='open' then
+     -- An operator closed this reservation while it was interrupted. Do not
+     -- seat it; refund any other account's collected ante before cancelling.
+     players.rounds[key]=nil
+     for _,other in pairs(players.rounds) do settle(other,0,'refund') end
+     players=nil; say('MATCH CANCELLED: ROUND CLOSED BY HOUSE'); wait(1.5); return false
+    end
+    if ok then
+     players.rounds[key]=r; players.seat[p]=key; players.names[p]=wallet.mode=='live' and s.name or nil; players.pot=players.pot+stake
+     players.current=p+1; sound:play(clock(),'pling',.8,10+p*3)
+    else say(tostring(err):upper()); wait(1.5) end
+   end
+  end
+  players.current=1
+  return true
+ end
+ -- Everyone takes a turn, then the lowest score takes the pot; a tie splits it (any odd
+ -- credit to the first tied seat). Every account's round settles with its share.
+ local function match(n)
+  if not ante(n) then return end
+  for p=1,n do players.current=p; players.list[p]=round(p) end
+  local low=math.huge; for _,sc in ipairs(players.list) do low=math.min(low,sc) end
+  local won={}; for p,sc in ipairs(players.list) do if sc==low then won[#won+1]=p end end
+  local pot=players.pot; local share=math.floor(pot/#won)
+  local paid={}
+  for i,p in ipairs(won) do local key=players.seat[p]; paid[key]=(paid[key] or 0)+share+(i==1 and pot-share*#won or 0) end
+  players.current=nil; info=('FINAL SCORES: POT %d'):format(pot)
+  if #won>1 then
+   local names={}; for _,p in ipairs(won) do names[#names+1]=who(p) end
+   say(('TIE AT %d: %s SPLIT %d'):format(low,table.concat(names,' & '),pot),true)
+  else say(('%s WINS WITH %d: +%d CREDITS'):format(who(won[1]),low,pot),true) end
+  for key,r in pairs(players.rounds) do settle(r,paid[key] or 0) end
+  celebrate=clock()+3
+  for i,q in ipairs({12,16,19,24}) do sound:play(clock()+i*.12,'bell',1,q) end
+  wait(4)
+  players=nil
+ end
+ -- Before a match: LEFT/RIGHT set how many play, CENTER starts.
+ local function pickSoloMascot()
+  soloShowing=true
+  while true do
+   local mascot=avatarName(soloAvatar)
+   say(('YOUR MASCOT: %s'):format(mascot),true)
+   info='LEFT/RIGHT PICKS A CHARACTER. CENTER LOCKS IT IN'
+   local a=ask({{name='prevMascot',label='< MASCOT'},{name='mascotReady',label=mascot},{name='nextMascot',label='MASCOT >'}})
+   if a=='prevMascot' then soloAvatar=(soloAvatar-2)%#avatars.list+1; sound:play(clock(),'hat',.5,14)
+   elseif a=='nextMascot' then soloAvatar=soloAvatar%#avatars.list+1; sound:play(clock(),'hat',.5,18)
+   elseif a=='mascotReady' then return end
+  end
+ end
+ local function seat()
+  while true do
+   if seats==1 then
+    say(('SOLO: BET %d, CLEAR ALL NINE FOR %d'):format(bet(),bet()*rules.prize))
+    info='ONE PLAYER PLAYS FOR THE GRAND PRIZE'
+   else
+    say(('%d PLAYERS: ANTE %d EACH, POT %d'):format(seats,bet(),bet()*seats))
+    info='EVERYONE ANTES FROM THEIR CARD. LOW SCORE TAKES THE POT'
+   end
+   local a=ask({{name='fewer',label='< FEWER'},{name='start',label=('START %dP'):format(seats)},{name='more',label='MORE >'}})
+   if a=='fewer' then seats=(seats-2)%4+1; sound:play(clock(),'hat',.5,14)
+   elseif a=='more' then seats=seats%4+1; sound:play(clock(),'hat',.5,18)
+   elseif a=='start' then return seats end
   end
  end
  local function script()
@@ -7811,8 +8624,15 @@ function M.run(opts)
     else wallet:cashout(); say('PRACTICE METER RESET TO 100') end
     wait(1.5)
    elseif a=='play' then
-    if (balance() or 0)<bet() then say('NOT ENOUGH CREDITS: LOWER THE BET'); wait(1)
-    else round(); resetBoard() end
+    local n=seat()
+    if n>1 then match(n)
+    else
+     pickSoloMascot()
+     if (balance() or 0)<bet() then say('NOT ENOUGH CREDITS: LOWER THE BET'); wait(1)
+     else round(1) end
+     soloShowing=false
+    end
+    resetBoard()
    end
   end
  end
@@ -7820,7 +8640,10 @@ function M.run(opts)
  local function resume(...)
   local ok,r=coroutine.resume(co,...)
   if not ok then error(r,0) end
-  request=r
+  -- The gameplay script also calls CC APIs, which yield nil/string event
+  -- filters. Keep those distinct from its own timed waits and choices.
+  if type(r)=='table' and (r.ask or r.wait) then request=r
+  else request={event=true,filter=r} end
  end
  local function choose(i,name)
   if not request or not request.ask then return end
@@ -7831,7 +8654,7 @@ function M.run(opts)
  local nextCard=0
  local function update(now)
   if request and request.wait and now>=request.wait then resume() end
-  if now>=nextCard then
+  if now>=nextCard and not (request and request.event) then
    nextCard=now+1
    if wallet:refresh() and request and request.card then resume('card') end
   end
@@ -7863,8 +8686,12 @@ function M.run(opts)
   end
   local party=now<celebrate
   local phase=math.floor(now*(party and 12 or 4))
-  view:draw({tiles=view_tiles,dice=d,camera=camera,credits=balance(),bet=bet(),title=wallet.title,info=info,
+  local avatar=players and players.current and players.avatars and players.avatars[players.current] or (soloShowing and soloAvatar or nil)
+  local ready=false
+  if request and request.ask then for _,o in ipairs(request.ask) do if o.name=='roll' then ready=true break end end end
+  view:draw({tiles=view_tiles,players=players,dice=d,camera=camera,credits=balance(),bet=bet(),title=wallet.title,info=info,
    message=message,highlight=highlight or (party and phase%2==0),options=request and request.ask,
+   avatar=avatar,avatarReady=ready,avatarPhase=math.floor(now*2),
    lamps=function(i) if party then return (i+phase)%2==0 end return (i+phase)%4==0 end})
  end
  wallet:refresh()
@@ -7872,11 +8699,15 @@ function M.run(opts)
  local timer=os.startTimer(0)
  while true do
   local e,a,b,c=os.pullEvent()
+  local forwarding=request and request.event
+  if forwarding and (not request.filter or request.filter==e) then resume(e,a,b,c) end
   if e=='timer' and a==timer then
    local now=clock(); update(now); draw(now); timer=os.startTimer(.05)
+  elseif forwarding then
+   if e=='disk' or e=='disk_eject' then nextCard=0 end
   elseif e=='key' then
    if a==keys.q or a==keys.backspace then
-    if request and request.ask and request.card then return end
+    if request and request.ask and request.card==true then return end
    elseif HOTKEYS[a] then choose(nil,HOTKEYS[a])
    elseif KEYS[a] then choose(KEYS[a]) end
   elseif e=='monitor_touch' or e=='mouse_click' then
@@ -7896,11 +8727,12 @@ return M
 writeFile('pinebox/render.lua', [[
 local pine=require('derby.vendor.Pine3D')
 local scene=require('pinebox.scene')
+local avatars=require('pinebox.avatars')
 local mesh=require('casino.mesh')
 local M={}
 M.minW,M.minH=39,19
 -- The wide shot frames the tray and the board; throws push in on the dice.
-M.wide={-12.5,8.5,0,1.2,.6,0}
+M.wide={-13.5,8.2,0,1.6,1.5,0}
 local function line(t,y,text,fg,bg)
  local w,h=t.getSize(); if y>h or y<1 then return end
  t.setCursorPos(1,y); t.setBackgroundColor(bg or colors.black); t.setTextColor(fg or colors.white)
@@ -7911,17 +8743,62 @@ function M.slots(w)
  return {{x1=1,x2=third},{x1=third+1,x2=2*third},{x1=2*third+1,x2=w}}
 end
 M.barColors={{colors.black,colors.white},{colors.black,colors.yellow},{colors.white,colors.red}}
+M.playerColors={colors.cyan,colors.orange,colors.lime,colors.pink}
+-- Rows under the 3D view for the tile strip: big teletext digits when there is room.
+function M.strip(h) if h>=34 then return 4,2 elseif h>=24 then return 2,1 end return 1,0 end
+-- The 3D view sits between the title row and the strip.
+function M.view(w,h) local rows=M.strip(h); return 1,2,w,math.max(1,h-4-rows) end
+-- Nine chips centred across the width, one blank column between them.
+function M.chips(w)
+ local cw=math.max(1,math.floor((w+1)/9)-1); local left=math.floor((w-(9*cw+8))/2)+1
+ local out={}; for n=1,9 do out[n]={x1=left+(n-1)*(cw+1),x2=left+(n-1)*(cw+1)+cw-1} end
+ return out
+end
+local font=require('casino.font')
+local hex='0123456789abcdef'
+local function code(c) local i=math.floor(math.log(c,2)+.5)+1; return hex:sub(i,i) end
+-- One chip: digit in fg on bg, drawn with 2x3 teletext subpixels at the given scale
+-- (scale 0 writes the plain character on the middle row).
+local function chip(t,x,y,cw,rows,scale,text,fg,bg)
+ local F,B=code(fg),code(bg)
+ if scale==0 then
+  local lp=math.floor((cw-#text)/2)
+  for r=0,rows-1 do
+   local s=r==math.floor((rows-1)/2) and (string.rep(' ',lp)..text..string.rep(' ',cw)):sub(1,cw) or string.rep(' ',cw)
+   t.setCursorPos(x,y+r); t.blit(s,F:rep(cw),B:rep(cw))
+  end
+  return
+ end
+ local g=font.glyphs[text]; local gw,gh=#g[1]*scale,#g*scale
+ local W,H=cw*2,rows*3
+ local ox,oy=math.floor((W-gw)/2),math.floor((H-gh)/2)
+ local function on(px,py)
+  local gx,gy=math.floor((px-ox)/scale),math.floor((py-oy)/scale)
+  if px<ox or py<oy or gx>=#g[1] or gy>=#g then return false end
+  return g[gy+1]:sub(gx+1,gx+1)=='#'
+ end
+ for r=0,rows-1 do
+  local chars,fgs,bgs={},{},{}
+  for c=0,cw-1 do
+   local bits=0
+   for k=0,5 do if on(c*2+k%2,r*3+math.floor(k/2)) then bits=bits+2^k end end
+   if bits>=32 then chars[#chars+1]=string.char(128+(63-bits)); fgs[#fgs+1]=B; bgs[#bgs+1]=F
+   else chars[#chars+1]=string.char(128+bits); fgs[#fgs+1]=F; bgs[#bgs+1]=B end
+  end
+  t.setCursorPos(x,y+r); t.blit(table.concat(chars),table.concat(fgs),table.concat(bgs))
+ end
+end
 function M.new(t)
  assert(t.isColor(),'Pine Shut the Box requires an advanced colour computer or monitor')
  require('casino.palette').apply(t)
  local old=term.redirect(t)
  local w,h=t.getSize()
- local f=pine.newFrame(1,2,w,math.max(1,h-4)); f:setBackgroundColor(colors.black)
+ local f=pine.newFrame(M.view(w,h)); f:setBackgroundColor(colors.black)
  local stage=f:newObject(scene.stage(),0,0,0)
  local tiles={}
  for n=1,9 do
   tiles[n]={plain=scene.tileModel(n,false),lit=scene.tileModel(n,true)}
-  tiles[n].obj=f:newObject(tiles[n].plain,scene.tile.x,0,scene.tileZ(n)); tiles[n].shown='plain'
+  tiles[n].obj=f:newObject(tiles[n].plain,scene.tile.x,scene.tile.y,scene.tileZ(n)); tiles[n].shown='plain'
  end
  local lampOn,lampOff=scene.lamp(colors.yellow),scene.lamp(colors.gray)
  local lamps={}
@@ -7929,7 +8806,7 @@ function M.new(t)
  local base=scene.dieTriangles()
  local dice={f:newObject(base,0,-5,0),f:newObject(base,0,-5,0)}
  local cam=M.wide
- local function aim() f:setFoV(w/math.max(1,h-4)>3 and 66 or 56); mesh.look(f,table.unpack(cam)) end
+ local function aim() local _,_,vw,vh=M.view(w,h); f:setFoV(vw/vh>3 and 66 or 56); mesh.look(f,table.unpack(cam)) end
  aim()
  term.redirect(old)
  local api={frame=f}
@@ -7938,7 +8815,7 @@ function M.new(t)
  function api:draw(v)
   local previous=term.redirect(t)
   local ww,hh=t.getSize()
-  if ww~=w or hh~=h then w,h=ww,hh; f:setSize(1,2,w,math.max(1,h-4)); aim() end
+  if ww~=w or hh~=h then w,h=ww,hh; f:setSize(M.view(w,h)); aim() end
   if w<M.minW or h<M.minH then
    t.setBackgroundColor(colors.black); t.clear(); line(t,2,'SHUT THE BOX: display needs 39 x 19'); line(t,4,'Resize or use a larger monitor.')
    term.redirect(previous); return
@@ -7950,7 +8827,7 @@ function M.new(t)
    local s=v.tiles and v.tiles[n] or {}
    local want=s.lit and 'lit' or 'plain'
    if tile.shown~=want then tile.obj:setModel(tile[want]); tile.shown=want end
-   tile.obj:setPos(scene.tile.x,s.lift or 0,scene.tileZ(n)); tile.obj:setRot(0,0,(s.down or 0)*1.5)
+   tile.obj:setPos(scene.tile.x,scene.tile.y+(s.lift or 0),scene.tileZ(n)); tile.obj:setRot(0,0,(s.down or 0)*1.5)
    objects[#objects+1]=tile.obj
   end
   for i,l in ipairs(lamps) do objects[#objects+1]=(v.lamps and v.lamps(i)) and l.on or l.off end
@@ -7959,10 +8836,32 @@ function M.new(t)
    if p then d:setModel(scene.dieModel(base,p.matrix)); d:setPos(p.pos[1],p.pos[2],p.pos[3]); objects[#objects+1]=d end
   end
   f:drawObjects(objects); f:drawBuffer()
+  if v.avatar then avatars.draw(t,v.avatar,2,3,v.avatarReady,v.avatarPhase) end
   local right=('CREDITS %s  BET %d '):format(tostring(v.credits or '--'),v.bet or 0)
   line(t,1,' '..(v.title or 'PINE SHUT THE BOX'),colors.yellow,colors.blue)
   t.setCursorPos(math.max(1,w-#right+1),1); t.setTextColor(colors.white); t.setBackgroundColor(colors.blue); t.write(right)
-  line(t,h-2,' '..(v.info or ''),colors.white,colors.gray)
+  -- Tile strip: standing tiles white, the chosen tiles gold, shut tiles dark.
+  local rows,scale=M.strip(h)
+  t.setBackgroundColor(colors.black)
+  for y=h-2-rows,h-3 do t.setCursorPos(1,y); t.clearLine() end
+  for n,c in ipairs(M.chips(w)) do
+   local s=v.tiles and v.tiles[n] or {}
+   local fg,bg=colors.red,colors.white
+   if s.lit then fg,bg=colors.black,colors.yellow elseif (s.down or 0)>.5 then fg,bg=colors.gray,colors.black end
+   chip(t,c.x1,h-2-rows,c.x2-c.x1+1,rows,scale,tostring(n),fg,bg)
+  end
+  -- Info row: the players' scores, the one to play lit in their colour, then the info.
+  line(t,h-2,'',colors.white,colors.gray); t.setCursorPos(1,h-2)
+  local players=v.players
+  if players and #players.list>1 then
+   for i,score in ipairs(players.list) do
+    local pc=M.playerColors[i]
+    local tag=(' P%d %s '):format(i,score and tostring(score) or (i==players.current and 'UP' or '--'))
+    if i==players.current then t.setTextColor(colors.black); t.setBackgroundColor(pc) else t.setTextColor(pc); t.setBackgroundColor(colors.black) end
+    t.write(tag); t.setBackgroundColor(colors.gray); t.write(' ')
+   end
+  end
+  t.setTextColor(colors.white); t.setBackgroundColor(colors.gray); t.write(' '..(v.info or ''))
   local msg=v.message or ''; local pad=math.max(0,math.floor((w-#msg)/2))
   line(t,h-1,string.rep(' ',pad)..msg,v.highlight and colors.black or colors.yellow,v.highlight and colors.yellow or colors.black)
   for i,s in ipairs(M.slots(w)) do
@@ -8064,7 +8963,10 @@ local font=require('casino.font')
 local dice=require('pinebox.dice')
 local M={}
 local tri,quad,box=mesh.tri,mesh.quad,mesh.box
-M.tile={width=1.15,height=1.8,gap=.12,x=5.6}
+-- Big tiles standing on a ledge (y) above the back rail, so every number reads from
+-- across the room. The marquee sits on top (M.header).
+M.tile={width=1.45,height=2.4,gap=.2,x=5.8,y=.5}
+M.header=M.tile.y+M.tile.height+.55
 function M.tileZ(n) return (n-5)*(M.tile.width+M.tile.gap) end
 function M.stage()
  local m={}; local T=dice.tray
@@ -8077,11 +8979,11 @@ function M.stage()
  box(m,T.xmin,-.2,T.zmax,T.xmax-T.xmin,.8,.5,colors.red)
  box(m,T.xmin-.55,.33,T.zmin-.55,.6,.08,T.zmax-T.zmin+1.1,colors.yellow)
  -- Number board: a dark panel with a gold frame and a marquee header.
- local half=4.5*(M.tile.width+M.tile.gap)+.35
- box(m,M.tile.x+.25,-.2,-half,.5,2.6,2*half,colors.black)
- box(m,M.tile.x+.15,2.35,-half-.2,.6,.25,2*half+.4,colors.yellow)
- box(m,M.tile.x+.25,2.6,-half,.5,1.3,2*half,colors.purple)
- box(m,M.tile.x+.15,3.9,-half-.2,.6,.2,2*half+.4,colors.yellow)
+ local half=4.5*(M.tile.width+M.tile.gap)+.35; local H=M.header
+ box(m,M.tile.x+.25,-.2,-half,.5,H,2*half,colors.black)
+ box(m,M.tile.x+.15,H-.25,-half-.2,.6,.25,2*half+.4,colors.yellow)
+ box(m,M.tile.x+.25,H,-half,.5,1.2,2*half,colors.purple)
+ box(m,M.tile.x+.15,H+1.2,-half-.2,.6,.2,2*half+.4,colors.yellow)
  return m
 end
 -- A number tile standing on its bottom edge (origin), face toward the camera.
@@ -8089,7 +8991,7 @@ function M.tileModel(n,lit)
  local m={}; local w,h=M.tile.width/2,M.tile.height
  local face=lit and colors.yellow or colors.white
  box(m,-.08,0,-w,.16,h,2*w,face)
- local cell=.26; local text=tostring(n)
+ local cell=.38; local text=tostring(n)
  local u0=-font.width(text)*cell/2
  font.draw(m,text,u0,h/2+2.5*cell,cell,colors.red,function(u,vv) return {-.1,vv,u} end,{-1,0,0})
  return m
@@ -8137,7 +9039,7 @@ end
 function M.lamp(color) local m={}; box(m,-.15,-.15,-.15,.3,.3,.3,color); return m end
 function M.lamps()
  local out={}; local half=4.5*(M.tile.width+M.tile.gap)
- for n=0,16 do out[#out+1]={M.tile.x+.1,3.25,-half+n*(2*half/16)} end
+ for n=0,16 do out[#out+1]={M.tile.x+.1,M.header+.6,-half+n*(2*half/16)} end
  return out
 end
 return M
@@ -8286,6 +9188,20 @@ function M.run(opts)
    if a=='retry' then ok,err=wallet:retry() end
   end
  end
+ -- Keep the tentative double/split intact while its exact raise is uncertain.
+ -- A definite refusal rolls it back; a recovered receipt resumes it once.
+ local function increase(round,stake,maximum)
+  local ok,err,context=wallet:increase(round,stake,maximum)
+  while not ok and context and context.pending do
+   say('HOUSE OFFLINE: RAISE PENDING')
+   local a=ask({{name='retry',label='RETRY'},{name='retry',label='RETRY'},{name='retry',label='RETRY'}})
+   if a=='retry' then
+    ok,err,context=wallet:retry()
+    if context and context.matches==false then context.pending=true end
+   end
+  end
+  return ok,err,context and context.status and context.status~='open'
+ end
  local function decide(h)
   local hand=hands[h]
   while rules.total(hand.cards)<21 and not hand.done do
@@ -8304,13 +9220,15 @@ function M.run(opts)
    elseif a=='double' and rules.canDouble(hand) then
     local stake=hand.stake
     hand.doubled=true; hand.stake=stake*2
-    local ok,err=wallet:increase(hands.round,stake,rules.maximum(hands))
+    local ok,err,closed=increase(hands.round,stake,rules.maximum(hands))
+    if closed then hands.aborted=true; return end
     if not ok then hand.doubled=false; hand.stake=stake; say(tostring(err):upper()); wait(1)
     else placeBet(h); sound:play(clock(),'snare',.7,10); dealPlayer(h); hand.done=true end
    elseif a=='split' and rules.canSplit(hands,hand) then
     local second={cards={table.remove(hand.cards)},actors={table.remove(hand.actors)},stake=hand.stake,split=true}
     hand.split=true; hands[2]=second
-    local ok,err=wallet:increase(hands.round,hand.stake,rules.maximum(hands))
+    local ok,err,closed=increase(hands.round,hand.stake,rules.maximum(hands))
+    if closed then hands.aborted=true; return end
     if not ok then
      hands[2]=nil; hand.split=false; hand.cards[2]=second.cards[1]; hand.actors[2]=second.actors[1]
      say(tostring(err):upper()); wait(1)
@@ -8341,7 +9259,10 @@ function M.run(opts)
   if (up==1 or up==10) and dealerBJ or playerBJ then
    revealHole()
   else
-   for h=1,2 do if hands[h] then active=h; decide(h) end end
+   for h=1,2 do if hands[h] then active=h; decide(h); if hands.aborted then break end end end
+   if hands.aborted then
+    say('ROUND CLOSED BY HOUSE: HAND CANCELLED'); wait(1.5); act:clear(); hands,dealer,results={},{},nil; return
+   end
    active=0
    revealHole()
    local live=false
@@ -8395,7 +9316,10 @@ function M.run(opts)
  local function resume(...)
   local ok,r=coroutine.resume(co,...)
   if not ok then error(r,0) end
-  request=r
+  -- CC APIs yield an event filter (often nil), whereas this script's own
+  -- waits/choices yield request tables. Forward raw events only to API waits.
+  if type(r)=='table' and (r.ask or r.wait) then request=r
+  else request={event=true,filter=r} end
  end
  local function choose(i,name)
   if not request or not request.ask then return end
@@ -8406,7 +9330,7 @@ function M.run(opts)
  local nextCard=0
  local function update(now)
   if request and request.wait and now>=request.wait then resume() end
-  if now>=nextCard then
+  if now>=nextCard and not (request and request.event) then
    nextCard=now+1
    if wallet:refresh() and request and request.card then resume('card') end
   end
@@ -8430,8 +9354,13 @@ function M.run(opts)
  local timer=os.startTimer(0)
  while true do
   local e,a,b,c=os.pullEvent()
+  local forwarding=request and request.event
+  if forwarding and (not request.filter or request.filter==e) then resume(e,a,b,c) end
   if e=='timer' and a==timer then
    local now=clock(); update(now); draw(now); timer=os.startTimer(.05)
+  elseif forwarding then
+   -- Transport owns this event; do not turn the same key into a table action.
+   if e=='disk' or e=='disk_eject' then nextCard=0 end
   elseif e=='key' then
    if a==keys.q or a==keys.backspace then
     if #hands==0 or (request and request.ask and request.card) then return end

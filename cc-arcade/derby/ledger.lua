@@ -26,7 +26,8 @@ function M.apply(s,q)
   return {ok=true,balance=a.balance,name=a.name,account=q.account}
  elseif q.op=='roundStatus' then
   local r=s.rounds[q.round]; if not r or r.account~=q.account then return fail('Unknown round') end
-  return {ok=true,status=r.status,paid=r.paid}
+  -- Additive v1 fields let interrupted clients recover the actual reserved terms.
+  return {ok=true,status=r.status,paid=r.paid,stake=r.stake,maximum=r.maximum}
  elseif q.op=='status' then return s.transactions[q.id] and s.transactions[q.id].result or fail('Unknown transaction') end
  if type(q.id)~='string' or #q.id>160 then return fail('Transaction ID required') end
  -- The transport serialises a stable request and rejects reuse with different content.

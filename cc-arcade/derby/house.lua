@@ -10,6 +10,9 @@ function M.nextRace(s,seed)
  s.race={id='race-'..s.raceNumber,phase='OPEN',elapsed=0,seed=seed,tickets={},payouts=s.odds.payouts,oddsVersion=s.odds.version}
 end
 function M.bet(s,q)
+ -- A malformed registered-client request must not stop the host when building
+ -- the round ID below. Reject missing/non-string/unknown accounts before use.
+ if type(q.account)~='string' or not s.accounts[q.account] then return {ok=false,error='Unknown account'} end
  s.ticketReceipts=s.ticketReceipts or {}
  local receipt=s.ticketReceipts[q.id]
  if receipt then

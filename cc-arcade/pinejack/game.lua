@@ -122,6 +122,20 @@ function M.run(opts)
    if a=='retry' then ok,err=wallet:retry() end
   end
  end
+ -- Keep the tentative double/split intact while its exact raise is uncertain.
+ -- A definite refusal rolls it back; a recovered receipt resumes it once.
+ local function increase(round,stake,maximum)
+  local ok,err,context=wallet:increase(round,stake,maximum)
+  while not ok and context and context.pending do
+   say('HOUSE OFFLINE: RAISE PENDING')
+   local a=ask({{name='retry',label='RETRY'},{name='retry',label='RETRY'},{name='retry',label='RETRY'}})
+   if a=='retry' then
+    ok,err,context=wallet:retry()
+    if context and context.matches==false then context.pending=true end
+   end
+  end
+  return ok,err,context and context.status and context.status~='open'
+ end
  local function decide(h)
   local hand=hands[h]
   while rules.total(hand.cards)<21 and not hand.done do
@@ -140,13 +154,15 @@ function M.run(opts)
    elseif a=='double' and rules.canDouble(hand) then
     local stake=hand.stake
     hand.doubled=true; hand.stake=stake*2
-    local ok,err=wallet:increase(hands.round,stake,rules.maximum(hands))
+    local ok,err,closed=increase(hands.round,stake,rules.maximum(hands))
+    if closed then hands.aborted=true; return end
     if not ok then hand.doubled=false; hand.stake=stake; say(tostring(err):upper()); wait(1)
     else placeBet(h); sound:play(clock(),'snare',.7,10); dealPlayer(h); hand.done=true end
    elseif a=='split' and rules.canSplit(hands,hand) then
     local second={cards={table.remove(hand.cards)},actors={table.remove(hand.actors)},stake=hand.stake,split=true}
     hand.split=true; hands[2]=second
-    local ok,err=wallet:increase(hands.round,hand.stake,rules.maximum(hands))
+    local ok,err,closed=increase(hands.round,hand.stake,rules.maximum(hands))
+    if closed then hands.aborted=true; return end
     if not ok then
      hands[2]=nil; hand.split=false; hand.cards[2]=second.cards[1]; hand.actors[2]=second.actors[1]
      say(tostring(err):upper()); wait(1)
@@ -177,7 +193,10 @@ function M.run(opts)
   if (up==1 or up==10) and dealerBJ or playerBJ then
    revealHole()
   else
-   for h=1,2 do if hands[h] then active=h; decide(h) end end
+   for h=1,2 do if hands[h] then active=h; decide(h); if hands.aborted then break end end end
+   if hands.aborted then
+    say('ROUND CLOSED BY HOUSE: HAND CANCELLED'); wait(1.5); act:clear(); hands,dealer,results={},{},nil; return
+   end
    active=0
    revealHole()
    local live=false
@@ -231,7 +250,10 @@ function M.run(opts)
  local function resume(...)
   local ok,r=coroutine.resume(co,...)
   if not ok then error(r,0) end
-  request=r
+  -- CC APIs yield an event filter (often nil), whereas this script's own
+  -- waits/choices yield request tables. Forward raw events only to API waits.
+  if type(r)=='table' and (r.ask or r.wait) then request=r
+  else request={event=true,filter=r} end
  end
  local function choose(i,name)
   if not request or not request.ask then return end
@@ -242,7 +264,7 @@ function M.run(opts)
  local nextCard=0
  local function update(now)
   if request and request.wait and now>=request.wait then resume() end
-  if now>=nextCard then
+  if now>=nextCard and not (request and request.event) then
    nextCard=now+1
    if wallet:refresh() and request and request.card then resume('card') end
   end
@@ -266,8 +288,13 @@ function M.run(opts)
  local timer=os.startTimer(0)
  while true do
   local e,a,b,c=os.pullEvent()
+  local forwarding=request and request.event
+  if forwarding and (not request.filter or request.filter==e) then resume(e,a,b,c) end
   if e=='timer' and a==timer then
    local now=clock(); update(now); draw(now); timer=os.startTimer(.05)
+  elseif forwarding then
+   -- Transport owns this event; do not turn the same key into a table action.
+   if e=='disk' or e=='disk_eject' then nextCard=0 end
   elseif e=='key' then
    if a==keys.q or a==keys.backspace then
     if #hands==0 or (request and request.ask and request.card) then return end
