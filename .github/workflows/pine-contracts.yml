@@ -1,0 +1,52 @@
+name: PineArcade contracts
+
+on:
+  push:
+    paths:
+      - 'cc-arcade/**'
+      - 'computercraft_scripts/pine-*/**'
+      - '.github/workflows/pine-contracts.yml'
+  pull_request:
+    paths:
+      - 'cc-arcade/**'
+      - 'computercraft_scripts/pine-*/**'
+      - '.github/workflows/pine-contracts.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  contracts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    strategy:
+      matrix:
+        lua: ['5.3', '5.4']
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Lua
+        run: sudo apt-get update && sudo apt-get install --yes lua${{ matrix.lua }}
+      - name: Test harness support
+        run: python3 cc-arcade/tools/test_contracts.py --lua lua${{ matrix.lua }} --suite tests/support_contracts.lua
+      - name: Test production module contracts
+        run: python3 cc-arcade/tools/test_contracts.py --lua lua${{ matrix.lua }}
+      - name: Verify proposed payout analysis
+        run: python3 cc-arcade/tools/test_contracts.py --lua lua${{ matrix.lua }} --suite tests/payout_analysis.lua
+      - name: Verify generated installer and manifest
+        run: |
+          python3 cc-arcade/derby/tools/bundle.py
+          git diff --exit-code -- cc-arcade/install.lua cc-arcade/manifest.json
+
+  release-recovery-gate:
+    name: Release gate - interrupted increase recovery
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Lua
+        run: sudo apt-get update && sudo apt-get install --yes lua5.4
+      - name: Reject stale interrupted-round recovery
+        # Intentionally blocking until the documented production gap is fixed.
+        # Do not mark continue-on-error or treat the default harness pass as release approval.
+        run: python3 cc-arcade/tools/test_contracts.py --lua lua5.4 --suite tests/known_recovery_gap.lua

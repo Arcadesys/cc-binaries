@@ -47,7 +47,7 @@ function fake.get() return 50 end
 function fake.beginRound(game,stake,maximum,path) calls[#calls+1]={op='reserve',game=game,stake=stake,maximum=maximum}; return {account='house-1',round='r1',maximum=maximum} end
 local failSettle=false
 function fake.settleRound(round,amount) if failSettle then error('HOUSE: offline',0) end calls[#calls+1]={op='settle',amount=amount}; return 50-5+amount end
-function fake.retry() return true,{ok=true,balance=99} end
+function fake.retry() return true,{ok=true,balance=99},'house-1' end
 local ejected
 local oldDisk=disk; disk=setmetatable({eject=function(d) ejected=d end},{__index=oldDisk})
 local live=wallets.live('pineslots','PINE SLOTS',fake,function() return inserted end)

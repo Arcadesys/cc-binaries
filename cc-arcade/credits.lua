@@ -99,7 +99,7 @@ function M.refundRound(round)
  local s=network():localState(); s.rounds[round.account]=nil; network():saveLocal(s); return true
 end
 -- Resend the last unacknowledged request (for example a settlement lost while the house
--- was offline). Returns ok and the house result.
+-- was offline). Returns ok, the house result, and the persisted request account.
 function M.retry()
  if demo() then return true,{ok=true} end
  local cli=network(); local r=cli:retry()
@@ -108,7 +108,7 @@ function M.retry()
  if q and (q.op=='settle' or q.op=='refund') and s.rounds[q.account] and s.rounds[q.account].round==q.round then
   s.rounds[q.account]=nil; cli:saveLocal(s)
  end
- return true,r
+ return true,r,q and q.account
 end
 -- Unchecked edits must fail loudly if a forgotten consumer tries the old API.
 function M.set() error('HOUSE: local balance editing is retired',0) end

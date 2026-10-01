@@ -76,8 +76,10 @@ function M.live(game,name,credits,card)
   return true
  end
  function w:retry()
-  local ok,r=credits.retry()
-  if ok and current and r and r.balance then current.balance=r.balance end
+  local ok,r,account=credits.retry()
+  -- The durable request identifies this receipt's account, including retries
+  -- after a restart. The card currently in the drive may belong to someone else.
+  if ok and current and current.account==account and r and r.balance then current.balance=r.balance end
   return ok,r
  end
  -- Hands the card back. The balance stays on the account for the cashier or another game.
