@@ -1,6 +1,7 @@
 return {
     name = "Pine Lanes",
     group = "Games",
+    showcase = "pine3d",
     icon = "BOWL",
     entry = "/pkg/scripts/pine-lanes/bowl.lua",
     args = { "--terminal" },

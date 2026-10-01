@@ -1,6 +1,7 @@
 return {
     name = "Pine Links",
     group = "Games",
+    showcase = "pine3d",
     icon = "GOLF",
     entry = "/pkg/scripts/pine-links/golf.lua",
     args = { "--terminal" },

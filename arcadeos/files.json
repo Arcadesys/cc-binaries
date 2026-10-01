@@ -5,7 +5,7 @@
    "description": "ArcadeOS shell and accessories",
    "required": true,
    "turtle": false,
-   "size": 119533,
+   "size": 127609,
    "files": [
     {
      "src": "arcadeos/boot.lua",
@@ -80,7 +80,7 @@
     {
      "src": "arcadeos/apps/executive/main.lua",
      "dest": "/arcadeos/apps/executive/main.lua",
-     "size": 6036
+     "size": 6061
     },
     {
      "src": "arcadeos/apps/factory/app.lua",
@@ -135,22 +135,22 @@
     {
      "src": "arcadeos/apps/pineball/app.lua",
      "dest": "/arcadeos/apps/pineball/app.lua",
-     "size": 228
+     "size": 253
     },
     {
      "src": "arcadeos/apps/pinedungeon/app.lua",
      "dest": "/arcadeos/apps/pinedungeon/app.lua",
-     "size": 237
+     "size": 262
     },
     {
      "src": "arcadeos/apps/pinelanes/app.lua",
      "dest": "/arcadeos/apps/pinelanes/app.lua",
-     "size": 230
+     "size": 255
     },
     {
      "src": "arcadeos/apps/pinelinks/app.lua",
      "dest": "/arcadeos/apps/pinelinks/app.lua",
-     "size": 230
+     "size": 255
     },
     {
      "src": "arcadeos/apps/race/app.lua",
@@ -208,6 +208,11 @@
      "size": 9951
     },
     {
+     "src": "arcadeos/lib/launcher.lua",
+     "dest": "/arcadeos/lib/launcher.lua",
+     "size": 7951
+    },
+    {
      "src": "arcadeos/lib/ui.lua",
      "dest": "/arcadeos/lib/ui.lua",
      "size": 10855
@@ -253,7 +258,7 @@
    "description": "Arcade games: Blackjack, Slots, Can't Stop, Race, RPS Rogue, IdleCraft",
    "required": false,
    "turtle": false,
-   "size": 267792,
+   "size": 269266,
    "files": [
     {
      "src": "cc-arcade/audio.lua",
@@ -368,7 +373,7 @@
     {
      "src": "cc-arcade/derby/scene.lua",
      "dest": "/pkg/arcade/derby/scene.lua",
-     "size": 3678
+     "size": 5152
     },
     {
      "src": "cc-arcade/derby/server.lua",
