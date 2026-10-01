@@ -5,7 +5,10 @@ local font=require('casino.font')
 local dice=require('pinebox.dice')
 local M={}
 local tri,quad,box=mesh.tri,mesh.quad,mesh.box
-M.tile={width=1.15,height=1.8,gap=.12,x=5.6}
+-- Big tiles standing on a ledge (y) above the back rail, so every number reads from
+-- across the room. The marquee sits on top (M.header).
+M.tile={width=1.45,height=2.4,gap=.2,x=5.8,y=.5}
+M.header=M.tile.y+M.tile.height+.55
 function M.tileZ(n) return (n-5)*(M.tile.width+M.tile.gap) end
 function M.stage()
  local m={}; local T=dice.tray
@@ -18,11 +21,11 @@ function M.stage()
  box(m,T.xmin,-.2,T.zmax,T.xmax-T.xmin,.8,.5,colors.red)
  box(m,T.xmin-.55,.33,T.zmin-.55,.6,.08,T.zmax-T.zmin+1.1,colors.yellow)
  -- Number board: a dark panel with a gold frame and a marquee header.
- local half=4.5*(M.tile.width+M.tile.gap)+.35
- box(m,M.tile.x+.25,-.2,-half,.5,2.6,2*half,colors.black)
- box(m,M.tile.x+.15,2.35,-half-.2,.6,.25,2*half+.4,colors.yellow)
- box(m,M.tile.x+.25,2.6,-half,.5,1.3,2*half,colors.purple)
- box(m,M.tile.x+.15,3.9,-half-.2,.6,.2,2*half+.4,colors.yellow)
+ local half=4.5*(M.tile.width+M.tile.gap)+.35; local H=M.header
+ box(m,M.tile.x+.25,-.2,-half,.5,H,2*half,colors.black)
+ box(m,M.tile.x+.15,H-.25,-half-.2,.6,.25,2*half+.4,colors.yellow)
+ box(m,M.tile.x+.25,H,-half,.5,1.2,2*half,colors.purple)
+ box(m,M.tile.x+.15,H+1.2,-half-.2,.6,.2,2*half+.4,colors.yellow)
  return m
 end
 -- A number tile standing on its bottom edge (origin), face toward the camera.
@@ -30,7 +33,7 @@ function M.tileModel(n,lit)
  local m={}; local w,h=M.tile.width/2,M.tile.height
  local face=lit and colors.yellow or colors.white
  box(m,-.08,0,-w,.16,h,2*w,face)
- local cell=.26; local text=tostring(n)
+ local cell=.38; local text=tostring(n)
  local u0=-font.width(text)*cell/2
  font.draw(m,text,u0,h/2+2.5*cell,cell,colors.red,function(u,vv) return {-.1,vv,u} end,{-1,0,0})
  return m
@@ -78,7 +81,7 @@ end
 function M.lamp(color) local m={}; box(m,-.15,-.15,-.15,.3,.3,.3,color); return m end
 function M.lamps()
  local out={}; local half=4.5*(M.tile.width+M.tile.gap)
- for n=0,16 do out[#out+1]={M.tile.x+.1,3.25,-half+n*(2*half/16)} end
+ for n=0,16 do out[#out+1]={M.tile.x+.1,M.header+.6,-half+n*(2*half/16)} end
  return out
 end
 return M

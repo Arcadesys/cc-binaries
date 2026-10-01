@@ -1,6 +1,8 @@
 -- Pine Shut the Box: the grand prize round. Stake a bet, then roll two dice and knock
 -- down tiles that add up to each roll. Clear all nine for 13x; a roll no tiles can make
--- ends the round. The house reserves the grand prize up front and settles once.
+-- ends the turn. The house reserves the grand prize up front and settles once per turn.
+-- A match seats 2-4 players: each antes from their own card into a pot, then takes a
+-- turn on a fresh board scoring the tiles left standing. Lowest score takes the pot.
 local rules=require('pinebox.rules')
 local dice=require('pinebox.dice')
 local renderer=require('pinebox.render')
@@ -8,7 +10,7 @@ local sounds=require('casino.sound')
 local M={}
 M.back=1.6 -- seconds the camera holds on the settled dice
 local KEYS={[keys.one]=1,[keys.two]=2,[keys.three]=3,[keys.left]=1,[keys.up]=2,[keys.right]=3,[keys.space]=2,[keys.enter]=2}
-local HOTKEYS={[keys.r]='roll',[keys.t]='take',[keys.b]='bet',[keys.c]='cash'}
+local HOTKEYS={[keys.r]='roll',[keys.t]='take',[keys.b]='bet',[keys.c]='cash',[keys.s]='start'}
 -- opts: target, wallet, clock(), random(lo,hi), button(event,p1), sound
 function M.run(opts)
  local t=opts.target
@@ -19,6 +21,8 @@ function M.run(opts)
  local sound=opts.sound or sounds()
  local view=renderer.new(t)
  local betIndex=1
+ local seats=2
+ local players -- {list=scores, current=i} during a match
  local board=rules.full
  local tiles={}; for n=1,9 do tiles[n]={from=0,to=0,t0=0} end
  local selection=0
@@ -50,30 +54,49 @@ function M.run(opts)
   wait(throw.duration+M.back)
   return values
  end
- local function settle(r,amount)
-  local ok=wallet:settle(r,amount)
+ -- Keep asking until the house acknowledges: op is 'settle' or 'refund'.
+ local function settle(r,amount,op)
+  local ok
+  if op=='refund' then ok=wallet:refund(r) else ok=wallet:settle(r,amount) end
   while not ok do
    say('HOUSE OFFLINE: PAYOUT PENDING')
    if ask({{name='retry',label='RETRY'},{name='retry',label='RETRY'},{name='retry',label='RETRY'}})=='retry' then ok=wallet:retry() end
   end
  end
- local function round()
+ -- A player's card name, or PLAYER n when there is none or two seats share it.
+ local function who(p)
+  local n=players and players.names[p]
+  if n then for q,m in pairs(players.names) do if q~=p and m==n then n=nil break end end end
+  return n and n:upper() or ('PLAYER '..p)
+ end
+ -- One turn on a fresh board. Returns the score: the tiles left standing, 0 for a
+ -- shut box. Solo turns stake the bet against the grand prize; match turns play for
+ -- the pot, so they touch no money. Solo returns nil if the house refused the stake.
+ local function round(p)
+  local solo=not players
   local stake=bet(); local prize=stake*rules.prize
-  local r,err=wallet:begin(stake,prize)
-  if not r then say(tostring(err):upper()); return end
+  local r
+  if solo then
+   local err; r,err=wallet:begin(stake,prize)
+   if not r then say(tostring(err):upper()); wait(1.5); return end
+  end
+  local tag=solo and '' or who(p)..': '
   resetBoard(); wait(.4)
   while true do
-   info=('BOARD %s   CHANCE TO CLEAR %.1f%%'):format(boardText(),rules.chance(board)*100)
-   say('ROLL THE DICE')
+   -- The score tags fill the info row in a match; the chips already show the board.
+   info=solo and ('BOARD %s   CHANCE TO CLEAR %.1f%%'):format(boardText(),rules.chance(board)*100) or ('POT %d   CLEAR %.1f%%'):format(players.pot,rules.chance(board)*100)
+   say(tag..'ROLL THE DICE',not solo)
    ask({{name='',label=''},{name='roll',label='ROLL'},{name='',label=''}})
    local values=roll()
    local total=values[1]+values[2]
    local moves=rules.moves(board,total)
-   info=('ROLLED %d + %d = %d   BOARD %s'):format(values[1],values[2],total,boardText())
+   info=('ROLLED %d + %d = %d'):format(values[1],values[2],total)..(solo and '   BOARD '..boardText() or '')
    if #moves==0 then
-    say(('NO WAY TO MAKE %d. ROUND OVER'):format(total))
+    local left=rules.sum(board)
+    say(solo and ('NO WAY TO MAKE %d. ROUND OVER'):format(total) or ('NO %d. %s SCORES %d'):format(total,who(p),left))
     sound:play(clock(),'didgeridoo',1,4); sound:play(clock()+.35,'didgeridoo',1,1)
-    settle(r,0); wait(1.8); return
+    if r then settle(r,0) end
+    wait(1.8); return left
    end
    -- Start on the best play; LEFT/RIGHT step through the others.
    local best=rules.best(board,total); local pick=1
@@ -94,12 +117,78 @@ function M.run(opts)
    wait(.6)
    if board==0 then
     info='BOARD CLEARED!'
-    say(('GRAND PRIZE! YOU WIN %d CREDITS'):format(prize),true)
+    say(solo and ('GRAND PRIZE! YOU WIN %d CREDITS'):format(prize) or tag..'SHUT THE BOX!',true)
     celebrate=clock()+4
     local tune={12,16,19,24,19,24,28,31,24,28,31,36}
-    for i,p in ipairs(tune) do sound:play(clock()+i*.12,'bell',1,math.min(24,p)) ; sound:play(clock()+i*.12,'pling',.6,math.min(24,p-12)) end
-    settle(r,prize); wait(3); return
+    for i,q in ipairs(tune) do sound:play(clock()+i*.12,'bell',1,math.min(24,q)) ; sound:play(clock()+i*.12,'pling',.6,math.min(24,q-12)) end
+    if r then settle(r,prize) end
+    wait(3); return 0
    end
+  end
+ end
+ -- Every player antes the bet from their own card: insert it, press ANTE, pass the
+ -- slot on. Each account holds one house round reserving the whole pot, so seats
+ -- sharing a card share a round. Returns false if the table cancels (antes refunded).
+ local function ante(n)
+  local stake=bet(); local pot=stake*n
+  players={list={},names={},seat={},rounds={},current=1,pot=0}
+  for i=1,n do players.list[i]=false end
+  while players.current<=n do
+   local p=players.current; local s=wallet:session()
+   info=('ANTE %d EACH. LOW SCORE TAKES THE POT OF %d'):format(stake,pot)
+   say(s and ('PLAYER %d: ANTE %d AS %s?'):format(p,stake,(s.name or 'PLAYER'):upper()) or ('PLAYER %d: INSERT YOUR HOUSE CARD'):format(p),true)
+   local a=ask({{name='cancel',label='CANCEL'},s and {name='ante',label='ANTE '..stake} or {name='',label=''},{name='',label=''}},'ante')
+   if a=='cancel' then
+    for _,r in pairs(players.rounds) do settle(r,0,'refund') end
+    players=nil; say('MATCH CANCELLED: ANTES RETURNED'); wait(1.5); return false
+   elseif a=='ante' and s then
+    local key=s.account or s.name or 'card'
+    local r=players.rounds[key]; local ok,err
+    if r then ok,err=wallet:increase(r,stake,pot) else r,err=wallet:begin(stake,pot); ok=r~=nil end
+    if ok then
+     players.rounds[key]=r; players.seat[p]=key; players.names[p]=wallet.mode=='live' and s.name or nil; players.pot=players.pot+stake
+     players.current=p+1; sound:play(clock(),'pling',.8,10+p*3)
+    else say(tostring(err):upper()); wait(1.5) end
+   end
+  end
+  players.current=1
+  return true
+ end
+ -- Everyone takes a turn, then the lowest score takes the pot; a tie splits it (any odd
+ -- credit to the first tied seat). Every account's round settles with its share.
+ local function match(n)
+  if not ante(n) then return end
+  for p=1,n do players.current=p; players.list[p]=round(p) end
+  local low=math.huge; for _,sc in ipairs(players.list) do low=math.min(low,sc) end
+  local won={}; for p,sc in ipairs(players.list) do if sc==low then won[#won+1]=p end end
+  local pot=players.pot; local share=math.floor(pot/#won)
+  local paid={}
+  for i,p in ipairs(won) do local key=players.seat[p]; paid[key]=(paid[key] or 0)+share+(i==1 and pot-share*#won or 0) end
+  players.current=nil; info=('FINAL SCORES: POT %d'):format(pot)
+  if #won>1 then
+   local names={}; for _,p in ipairs(won) do names[#names+1]=who(p) end
+   say(('TIE AT %d: %s SPLIT %d'):format(low,table.concat(names,' & '),pot),true)
+  else say(('%s WINS WITH %d: +%d CREDITS'):format(who(won[1]),low,pot),true) end
+  for key,r in pairs(players.rounds) do settle(r,paid[key] or 0) end
+  celebrate=clock()+3
+  for i,q in ipairs({12,16,19,24}) do sound:play(clock()+i*.12,'bell',1,q) end
+  wait(4)
+  players=nil
+ end
+ -- Before a match: LEFT/RIGHT set how many play, CENTER starts.
+ local function seat()
+  while true do
+   if seats==1 then
+    say(('SOLO: BET %d, CLEAR ALL NINE FOR %d'):format(bet(),bet()*rules.prize))
+    info='ONE PLAYER PLAYS FOR THE GRAND PRIZE'
+   else
+    say(('%d PLAYERS: ANTE %d EACH, POT %d'):format(seats,bet(),bet()*seats))
+    info='EVERYONE ANTES FROM THEIR CARD. LOW SCORE TAKES THE POT'
+   end
+   local a=ask({{name='fewer',label='< FEWER'},{name='start',label=('START %dP'):format(seats)},{name='more',label='MORE >'}})
+   if a=='fewer' then seats=(seats-2)%4+1; sound:play(clock(),'hat',.5,14)
+   elseif a=='more' then seats=seats%4+1; sound:play(clock(),'hat',.5,18)
+   elseif a=='start' then return seats end
   end
  end
  local function script()
@@ -120,8 +209,11 @@ function M.run(opts)
     else wallet:cashout(); say('PRACTICE METER RESET TO 100') end
     wait(1.5)
    elseif a=='play' then
-    if (balance() or 0)<bet() then say('NOT ENOUGH CREDITS: LOWER THE BET'); wait(1)
-    else round(); resetBoard() end
+    local n=seat()
+    if n>1 then match(n)
+    elseif (balance() or 0)<bet() then say('NOT ENOUGH CREDITS: LOWER THE BET'); wait(1)
+    else round(1) end
+    resetBoard()
    end
   end
  end
@@ -172,7 +264,7 @@ function M.run(opts)
   end
   local party=now<celebrate
   local phase=math.floor(now*(party and 12 or 4))
-  view:draw({tiles=view_tiles,dice=d,camera=camera,credits=balance(),bet=bet(),title=wallet.title,info=info,
+  view:draw({tiles=view_tiles,players=players,dice=d,camera=camera,credits=balance(),bet=bet(),title=wallet.title,info=info,
    message=message,highlight=highlight or (party and phase%2==0),options=request and request.ask,
    lamps=function(i) if party then return (i+phase)%2==0 end return (i+phase)%4==0 end})
  end
@@ -185,7 +277,7 @@ function M.run(opts)
    local now=clock(); update(now); draw(now); timer=os.startTimer(.05)
   elseif e=='key' then
    if a==keys.q or a==keys.backspace then
-    if request and request.ask and request.card then return end
+    if request and request.ask and request.card==true then return end
    elseif HOTKEYS[a] then choose(nil,HOTKEYS[a])
    elseif KEYS[a] then choose(KEYS[a]) end
   elseif e=='monitor_touch' or e=='mouse_click' then

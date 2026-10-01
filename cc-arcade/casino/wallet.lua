@@ -18,6 +18,7 @@ function M.exhibition(name)
   s.balance=s.balance-stake; round.stake=round.stake+stake; return true
  end
  function w:settle(_,amount) s.balance=s.balance+amount; return true,s.balance end
+ function w:refund(round) s.balance=s.balance+round.stake; return true end
  function w:retry() return true end
  function w:cashout() local had=s.balance; s.balance=STARTING; return had end
  return w
@@ -66,6 +67,13 @@ function M.live(game,name,credits,card)
   if not ok then return false,tostring(balance) end
   if current and current.account==round.account then current.balance=balance end
   return true,balance
+ end
+ -- Hands a round's whole stake back (a cancelled table).
+ function w:refund(round)
+  local ok,err=pcall(credits.refundRound,round)
+  if not ok then return false,tostring(err) end
+  if current and current.account==round.account then current.balance=current.balance+round.stake end
+  return true
  end
  function w:retry()
   local ok,r=credits.retry()

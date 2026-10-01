@@ -33,7 +33,9 @@ local function play(w,values,steps,inspect)
  send(); settle()
  for _,s in ipairs(steps) do
   if type(s)=='function' then s(t)
+  elseif type(s)=='table' then send('key',keys[s.key]); for _=1,s.time*20 do now=now+.05; send('timer',1); s.watch(t) end
   elseif type(s)=='number' then send('key',({keys.one,keys.two,keys.three})[s]); settle()
+  elseif s=='wait' then settle()
   elseif s:match('^rs:') then send('redstone',s:sub(4)); settle()
   else send('key',keys[s]); settle() end
  end
@@ -50,7 +52,8 @@ local function spy()
 end
 local function row(t,y) return (t.getLine(y)) end
 -- Grand prize: pick rolls that keep the board clearable while always taking the best move.
-local board,values,steps=rules.full,{},{2}
+-- PLAY opens the seat screen; FEWER drops the default two players to one, CENTER starts.
+local board,values,steps=rules.full,{},{2,1,2}
 while board>0 do
  local pick,top
  for total=2,12 do
@@ -67,7 +70,7 @@ eq(play(w,values,steps),'dead','Quits between rounds')
 eq(calls[1].max,13,'Reserves the grand prize'); eq(calls[2].amount,13,'Grand prize paid'); eq(w:session().balance,112,'Grand prize balance')
 -- Dead roll: 1+1 takes the 2, then 1+1 again has no tiles left to make it.
 w,calls=spy()
-play(w,{1,1,1,1},{'space','space','space','space'})
+play(w,{1,1,1,1},{'space','left','space','space','space','space'})
 eq(#calls,2,'One round'); eq(calls[2].amount,0,'Dead roll loses'); eq(w:session().balance,99,'Stake lost')
 -- OTHER steps to another way of making 7, and TAKE removes exactly those tiles.
 local moves=rules.moves(rules.full,7); local best=rules.best(rules.full,7)
@@ -75,8 +78,52 @@ local at; for i,m in ipairs(moves) do if m==best then at=i end end
 local other=moves[at%#moves+1]
 local seen
 w,calls=spy()
-play(w,{3,4,6,6},{1,2,2,3,2,function(t) seen=row(t,17) end})
+play(w,{3,4,6,6},{1,2,1,2,2,3,2,function(t) seen=row(t,17) end})
 eq(calls[1].stake,2,'BET raised the stake to 2')
 local expect={}; for n=1,9 do expect[n]=rules.has(other,n) and '.' or tostring(n) end
 check(seen:find('BOARD '..table.concat(expect,' '),1,true),'Board after taking the other move: '..seen)
+-- Matches play for a pot. A fake house with two cards: tests swap the card in the drive.
+local function house()
+ local cards={ann={name='Ann',account='ann',balance=50},bo={name='Bo',account='bo',balance=50}}
+ local w={mode='live',title='T',cards=cards,want=cards.ann,log={}}
+ function w:refresh() if self.want~=self.current then self.current=self.want; return true end return false end
+ function w:session() return self.current end
+ function w:begin(stake,max)
+  local c=self.current; c.balance=c.balance-stake
+  self.log[#self.log+1]='begin '..c.account..' '..stake..'/'..max
+  return {account=c.account,stake=stake}
+ end
+ function w:increase(r,stake,max) cards[r.account].balance=cards[r.account].balance-stake; r.stake=r.stake+stake; self.log[#self.log+1]='increase '..r.account; return true end
+ function w:settle(r,amount) cards[r.account].balance=cards[r.account].balance+amount; self.log[#self.log+1]='settle '..r.account..' '..amount; return true end
+ function w:refund(r) cards[r.account].balance=cards[r.account].balance+r.stake; self.log[#self.log+1]='refund '..r.account; return true end
+ function w:retry() return true end
+ return w
+end
+local function swap(w,name) return function() w.want=w.cards[name] end end
+-- Ann antes, Bo antes, Ann dies on 43, Bo takes the best 3 and scores lower: Bo takes 2.
+local after=bit32.band(rules.full,bit32.bnot(rules.best(rules.full,3)))
+local p2=45-rules.sum(rules.best(rules.full,3))
+w=house()
+values={1,1,1,1,1,2,1,1}
+steps={'space','space','space',swap(w,'bo'),'wait','space','space','space','space','space','space','space'}
+if rules.has(after,2) then values[#values+1]=1; values[#values+1]=1; steps[#steps+1]='space'; steps[#steps+1]='space'; p2=p2-2 end
+local banner,scores
+steps[#steps]={key='space',time=12,watch=function(t) if row(t,18):find('WINS WITH',1,true) then banner=row(t,18); scores=row(t,17) end end}
+play(w,values,steps)
+check(banner and banner:find('BO WINS WITH '..p2..': +2',1,true),'Winner banner: '..tostring(banner))
+check(scores:find('P1 43',1,true) and scores:find('P2 '..p2,1,true),'Scoreboard: '..scores)
+eq(table.concat(w.log,','),'begin ann 1/2,begin bo 1/2,settle ann 0,settle bo 2','Antes reserve the pot; the winner is paid it')
+eq(w.cards.ann.balance,49,'Loser pays the ante'); eq(w.cards.bo.balance,51,'Winner takes the pot')
+-- Same rolls for both: a tie splits the pot. Shared card: two seats, one round.
+w=house()
+banner=nil
+play(w,{1,1,1,1,1,1,1,1},{'space','space','space','space','space','space','space','space','space',
+ {key='space',time=12,watch=function(t) if row(t,18):find('TIE',1,true) then banner=row(t,18) end end}})
+check(banner and banner:find('TIE AT 43: PLAYER 1 & PLAYER 2 SPLIT 2',1,true),'Tie banner: '..tostring(banner))
+eq(table.concat(w.log,','),'begin ann 1/2,increase ann,settle ann 2','One card, one round')
+eq(w.cards.ann.balance,50,'Shared card breaks even on a tie')
+-- Cancel after one ante: it comes back.
+w=house()
+play(w,{},{'space','space','space','left'})
+eq(table.concat(w.log,','),'begin ann 1/2,refund ann','Cancel refunds the ante'); eq(w.cards.ann.balance,50,'Ante returned')
 print('PASS '..passed..' Pine Shut the Box assertions')
