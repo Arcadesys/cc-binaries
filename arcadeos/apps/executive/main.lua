@@ -2,9 +2,11 @@
 local ui = arcadeos.lib("ui")
 local dialog = arcadeos.lib("dialog")
 
-local view = arcadeos.getSetting("executive.view", "programs")
+local view = "programs" -- Always open on the Pine3D showcase.
 local dir = ""
-local list = ui.list({})
+local files = ui.list({})
+local programs = arcadeos.lib("launcher").new(ui, arcadeos.lib("canvas"))
+local list = view == "programs" and programs or files
 local R = ui.roles()
 
 local function setMenus()
@@ -34,15 +36,9 @@ local function sizeText(n)
 end
 
 local function programItems()
-    local items, group = {}, nil
+    local items = {}
     for _, m in ipairs(arcadeos.apps()) do
-        if not m.hidden then
-            if m.group ~= group then
-                group = m.group
-                items[#items + 1] = { label = group, header = true, fg = R.titleActive }
-            end
-            items[#items + 1] = { label = "  " .. m.name, right = m.icon, app = m }
-        end
+        if not m.hidden and m.showcase == "pine3d" then items[#items + 1] = { app = m } end
     end
     return items
 end
@@ -67,12 +63,14 @@ local function fileItems()
 end
 
 local function refresh(keep)
+    list = view == "programs" and programs or files
     list:setItems(view == "programs" and programItems() or fileItems(), keep)
 end
 
 local function draw()
     local w, h = term.getSize()
     term.setCursorBlink(false)
+    if view == "programs" then programs:draw(w, h); return end
     local header = view == "programs" and " Programs" or (" /" .. dir)
     ui.text(1, 1, ui.pad(header, w), R.selectText, R.scrollThumb)
     list:place(1, 2, w, h - 1)
