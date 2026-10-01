@@ -3,6 +3,7 @@ local golf = require('lib.golf')
 local physics = require('lib.physics')
 local rules = require('lib.rules')
 local course = require('lib.course')
+local mascots = require('lib.mascots')
 local App = {}
 App.__index = App
 
@@ -15,7 +16,7 @@ end
 
 function App.new(options)
   local self = setmetatable({options = options or {}, phase = 'TITLE', fine = false, camera = 'tee',
-    shotId = 0, running = true, lastInput = 'Ready', fps = 0,
+    shotId = 0, running = true, lastInput = 'Ready', fps = 0, mascot = 1,
     message = course.hole.club .. ' | ' .. course.hole.name}, App)
   self:reset()
   return self
@@ -57,7 +58,7 @@ function App:view()
     strokes = s.strokes, penalties = s.penalties, lie = s.lie, toCup = golf.distanceToCup(s),
     carry = s.lastCarry, phase = self.phase, message = self.message, view = self.camera, fine = self.fine,
     lastInput = self.lastInput, fps = self.fps, forecast = self.phase == 'AIM' and self.forecast or nil,
-    scoreName = rules.scoreName(s.strokes, course.hole.par), scoreLabel = golf.scoreLabel(s.strokes)}
+    scoreName = rules.scoreName(s.strokes, course.hole.par), scoreLabel = golf.scoreLabel(s.strokes), mascot = self.mascot}
 end
 
 function App:pause(message)
@@ -111,7 +112,12 @@ function App:action(action)
     return
   end
   if action == 'restart' then self:restart(); return end
-  if self.phase == 'TITLE' then if action == 'start' or action == 'swing' then self:restart() end; return end
+  if self.phase == 'TITLE' then
+    if action == 'aim_left' or action == 'club_prev' then self.mascot=(self.mascot-2)%#mascots.list+1
+    elseif action == 'aim_right' or action == 'club_next' then self.mascot=self.mascot%#mascots.list+1
+    elseif action == 'start' or action == 'swing' then self:restart() end
+    return
+  end
   if self.phase == 'SCORECARD' then if action == 'start' or action == 'swing' then self:restart() end; return end
   if action == 'skip' and (self.phase == 'SIMULATE' or self.phase == 'SHOT_PLAYBACK') then
     self.skipPlayback = true
