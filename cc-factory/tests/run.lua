@@ -14,9 +14,12 @@ function require(name)
  local fn=assert(load(source,'@'..name,'t',_ENV));local result=fn();package.loaded[name]=result or true;return package.loaded[name]
 end
 local sim=require('simulator')
-local report={};local passed,failed=0,0
+local report={};local passed,failed,testIndex=0,0,0
 local function eq(a,b,msg) assert(a==b,(msg or 'Mismatch')..': expected '..tostring(b)..', got '..tostring(a)) end
 local function test(name,fn)
+ testIndex=testIndex+1
+ local part=_G.__SAFE_TEST_PART
+ if part and (testIndex-1)%part.total~=part.index-1 then return end
  if _G.__SAFE_TEST_FILTER and not name:find(_G.__SAFE_TEST_FILTER,1,true) then return end
  local marker=realFS.open('/results/running.txt','w');marker.write(name);marker.close()
  nativeSleep(0)
@@ -25,7 +28,9 @@ local function test(name,fn)
  local f=assert(realFS.open('/results/progress.txt','w'));f.write(table.concat(report,'\n'));f.close()
 end
 local function fresh(opts)
+ opts=opts or {};opts.env=_ENV
  local w=sim.new(opts)
+ turtle=w.turtle;fs=w.env.fs;peripheral=w.env.peripheral;sleep=w.env.sleep
  for name in pairs(package.loaded) do if name:match('^lib_') or name:match('^state_') then package.loaded[name]=nil end end
  return w
 end

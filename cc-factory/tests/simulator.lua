@@ -14,8 +14,9 @@ local function serialize(v)
 end
 function M.new(opts)
   opts=opts or {}
-  local w={pose={x=0,y=0,z=0,facing=opts.facing or 'north'},blocks={},slots={},selected=1,
-    fuel=opts.fuel or 10000, files={},calls={},fail={},drops=0,defaultBlock=opts.defaultBlock or 'minecraft:stone'}
+  local env=opts.env or _ENV
+  local w={pose=copy(opts.pose or {x=0,y=0,z=0,facing=opts.facing or 'north'}),blocks=opts.blocks or {},slots={},selected=1,
+    fuel=opts.fuel or 10000, files=opts.files or {},calls={},fail={},drops=0,defaultBlock=opts.defaultBlock or 'minecraft:stone'}
   local vectors={north={0,-1},east={1,0},south={0,1},west={-1,0}}
   local headings={'north','east','south','west'}
   function w.key(p) return p.x..','..p.y..','..p.z end
@@ -29,6 +30,7 @@ function M.new(opts)
   function w.block(p) local b=w.blocks[w.key(p)]; if b==nil then return w.defaultBlock end; return b end
   function w.set(p,b) w.blocks[w.key(p)]=b end
   function w.record(name,p)
+    if w.beforeMutation then w.beforeMutation(name,p or w.pose,w) end
     w.calls[#w.calls+1]={name=name,pose=copy(w.pose),target=copy(p)}
     if w.fail[name] then
       if type(w.fail[name])=='function' then return w.fail[name](w) end
@@ -70,6 +72,7 @@ function M.new(opts)
       b.capacity=b.capacity-accepted;b.received=(b.received or 0)+accepted;b.items=b.items or {};b.items[s.name]=(b.items[s.name] or 0)+accepted;s.count=s.count-accepted;if s.count==0 then w.slots[w.selected]=nil end;return true
     end
     t['suck'..suffix]=function(n)
+      if w.beforeMutation then local ok,err=w.record('suck'..suffix,w.target(dir));if not ok then return ok,err end end
       local b=w.block(w.target(dir));if type(b)~='table' then return false,'No inventory' end
       for _,name in ipairs({'minecraft:coal','minecraft:torch','minecraft:cobblestone'}) do
         local count=(b.items or {})[name] or 0;local slot=w.slots[w.selected]
@@ -100,14 +103,15 @@ function M.new(opts)
   t.getItemSpace=function(i) return 64-t.getItemCount(i) end
   t.getItemDetail=function(i) return copy(w.slots[i or w.selected]) end
   t.refuel=function(n)
+    if n~=0 and w.beforeMutation then local ok,err=w.record('refuel',w.pose);if not ok then return ok,err end end
     local s=w.slots[w.selected];if not s or s.name~='minecraft:coal' then return false,'Not fuel' end
     if n==0 then return true end
     local used=math.min(n or s.count,s.count);s.count=s.count-used;if s.count==0 then w.slots[w.selected]=nil end
     if w.fuel~='unlimited' then w.fuel=w.fuel+80*used end;return true
   end
-  _G.turtle=t
-  _G.textutils=_G.textutils or {serialize=serialize,unserialize=function(s) local f=load('return '..s);return f and f() end}
-  _G.fs={exists=function(p) return w.files[p]~=nil end,delete=function(p) w.files[p]=nil end,
+  env.turtle=t
+  env.textutils=env.textutils or {serialize=serialize,unserialize=function(s) local f=load('return '..s);return f and f() end}
+  env.fs={exists=function(p) return w.files[p]~=nil end,delete=function(p) w.files[p]=nil end,
     move=function(a,b) if w.fsFail=='move' then error('Injected rename failure') end;assert(w.files[a],'missing file');w.files[b]=w.files[a];w.files[a]=nil end,
     makeDir=function() end,getDir=function(p) return p:match('^(.*)/') or '' end,
     open=function(p,mode)
@@ -115,11 +119,12 @@ function M.new(opts)
       if mode=='r' then if w.files[p]==nil then return nil end;return {readAll=function() return w.fsFail=='readback' and 'CORRUPT READBACK' or w.files[p] end,close=function() end} end
       w.files[p]='';return {write=function(s) if w.fsFail=='write' then error('Injected write failure') end;w.files[p]=w.files[p]..s end,writeLine=function(s) w.files[p]=w.files[p]..s..'\n' end,close=function() end,flush=function() end}
     end}
-  _G.peripheral={isPresent=function(side) local b=w.block(w.target((side=='top' or side=='up') and 'up' or (side=='bottom' or side=='down') and 'down' or 'front'));return type(b)=='table' and b.capacity~=nil end,
-    hasType=function(side,kind) return peripheral.isPresent(side) and kind=='inventory' end,
-    getType=function(side) if peripheral.isPresent(side) then return 'minecraft:chest','inventory' end end,
-    wrap=function(side) if peripheral.isPresent(side) then return {list=function() local b=w.block(w.target(side=='up' and 'up' or side=='down' and 'down' or 'front'));local list={};for name,count in pairs(b.items or {}) do list[#list+1]={name=name,count=count} end;return list end,size=function() return 27 end} end end}
-  _G.sleep=function() end
+  env.peripheral={isPresent=function(side) local b=w.block(w.target((side=='top' or side=='up') and 'up' or (side=='bottom' or side=='down') and 'down' or 'front'));return type(b)=='table' and b.capacity~=nil end,
+    hasType=function(side,kind) return env.peripheral.isPresent(side) and kind=='inventory' end,
+    getType=function(side) if env.peripheral.isPresent(side) then return 'minecraft:chest','inventory' end end,
+    wrap=function(side) if env.peripheral.isPresent(side) then return {list=function() local b=w.block(w.target(side=='up' and 'up' or side=='down' and 'down' or 'front'));local list={};for name,count in pairs(b.items or {}) do list[#list+1]={name=name,count=count} end;return list end,size=function() return 27 end} end end}
+  env.sleep=function() end
+  w.env=env;w.turtle=t
   return w
 end
 M.copy=copy

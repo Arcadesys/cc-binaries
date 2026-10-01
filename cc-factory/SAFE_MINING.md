@@ -1,6 +1,6 @@
 # Safe branch-mining pilot
 
-This change prepares one bounded mining job. The reproducible tests use actual Lua modules in CraftOS-PC with a simulated turtle, world, inventory, and persistent filesystem. They do not establish survival or fleet readiness. Gates C and D below remain unverified in Minecraft.
+The single-turtle engine prepares one bounded mining job. An optional [bounded fleet coordinator](FLEET_MINING.md) now assigns approved jobs to compatible workers. The reproducible tests use actual Lua modules in CraftOS-PC with a simulated turtle, world, inventory, and persistent filesystem. They do not establish survival or fleet readiness. Gates C and D below remain unverified in Minecraft.
 
 ## Reproduce the local checks
 
@@ -9,9 +9,13 @@ Install CraftOS-PC for your platform. On macOS the default runner executable is 
 From the repository root:
 
 ```sh
-python3 cc-factory/tests/run.py
+for part in 1 2 3 4; do
+  python3 cc-factory/tests/run.py --part "$part/4" || exit 1
+done
 python3 cc-factory/tools/verify_distribution.py
 ```
+
+The 84 single-turtle cases run in four disjoint ordinal parts, with 21 cases per part. This keeps each native emulator invocation within its 240-second harness budget; a whole-suite timeout is a harness limit, not evidence of product safety or failure.
 
 The runner creates an isolated emulator directory, mounts source read-only, prints an evidence directory, and exits nonzero for a failed assertion, crash, missing report, or emulator timeout. It never opens Minecraft or connects to a world. The evidence directory contains the test report and actual terminal screen dumps. No npm test dependency is required. `verify_distribution.py` checks source/bundle equality, manifest inclusion and native installer readback. Render the final status screens with `python3 cc-factory/tests/run.py --screens`; this produces native terminal dump JSON for every detail page.
 
@@ -78,4 +82,4 @@ Regenerating the installer also synchronizes previously stale bundled copies of 
 
 **C — Supervised survival pilot: unverified.** One turtle must finish the tiny two-sided mine, return to the marked home facing, transfer output into the intended receiver, and stop. Inspect mined bounds, untouched containers, torches and support, floor/headroom, fluids, dropped items and remaining fuel. Repeat a stop/resume exercise and a forced-interruption reconciliation exercise. Check pack-specific ores and chunk unloading separately.
 
-**D — Separate-area scale test: unverified.** Start with two independently labelled turtles and jobs, separate bays and inventories, and non-overlapping full excavation/lighting/return areas. Measure supply and storage capacity. Verify whole-route chunk loading and repeat complete cycles before expanding. Shared routes require explicit traffic control; this change adds no fleet controller.
+**D — Separate-area scale test: unverified.** Start with two independently labelled turtles and jobs, separate bays and inventories, and non-overlapping full excavation/lighting/return areas. Measure supply and storage capacity. Verify whole-route chunk loading and repeat complete cycles before expanding. Shared routes require explicit traffic control. The optional [fleet coordinator](FLEET_MINING.md) reserves disjoint approved work and supports same-worker known-home reuse; its software tests do not establish gate D in-world acceptance.

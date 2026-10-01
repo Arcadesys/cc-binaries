@@ -16,7 +16,7 @@ def main():
     bundle = (ROOT / "dist/factory.lua").read_text()
     modules = dict(re.findall(r'bundled_modules\["([^"]+)"\] = \[===\[\n(.*?)\n\]===\]', bundle, re.S))
     expected = {p.stem: p.read_text() for p in ROOT.glob("*.lua")
-                if p.name in ("factory.lua", "turtle_os.lua") or p.name.startswith(("lib_", "state_"))}
+                if p.name in ("factory.lua", "turtle_os.lua", "fleet_coordinator.lua", "fleet_worker.lua") or p.name.startswith(("lib_", "state_"))}
     assert modules == expected, "Bundled modules differ from current source"
     manifest = json.loads((REPO / "arcadeos/files.json").read_text())
     files = manifest["packages"]["turtle"]["files"]
@@ -34,7 +34,7 @@ def main():
 local ok,err=pcall(function()
   assert(shell.run("/src/cc-factory/dist/factory.lua"), "Standalone installer failed")
   for _,name in ipairs(fs.list("/src/cc-factory")) do
-    if name=="factory.lua" or name=="turtle_os.lua" or name:match("^lib_.*%.lua$") or name:match("^state_.*%.lua$") then
+    if name=="factory.lua" or name=="turtle_os.lua" or name=="fleet_coordinator.lua" or name=="fleet_worker.lua" or name:match("^lib_.*%.lua$") or name:match("^state_.*%.lua$") then
       local a=assert(fs.open("/src/cc-factory/"..name,"r")); local expected=a.readAll();a.close()
       local b=assert(fs.open("/"..name,"r")); local installed=b.readAll();b.close()
       -- bundle.js adds one newline before the long-string closing delimiter.
@@ -44,10 +44,12 @@ local ok,err=pcall(function()
   end
   _G.turtle={} -- Select turtle package only; no world API is supplied.
   assert(shell.run("/src/arcadeos/install.lua","--local","/src","--yes"),"ArcadeOS installer failed")
-  for _,name in ipairs({"factory","lib_safe_miner","lib_mine_policy","lib_mining_checkpoint","lib_mining_status"}) do
-    local a=assert(fs.open("/src/cc-factory/"..name..".lua","r"));local expected=a.readAll();a.close()
-    local b=assert(fs.open("/pkg/factory/"..name..".lua","r"));local installed=b.readAll();b.close()
-    assert(installed==expected,"ArcadeOS content mismatch: "..name)
+  for _,name in ipairs(fs.list("/src/cc-factory")) do
+    if name=="factory.lua" or name=="turtle_os.lua" or name=="fleet_coordinator.lua" or name=="fleet_worker.lua" or name:match("^lib_.*%.lua$") or name:match("^state_.*%.lua$") then
+      local a=assert(fs.open("/src/cc-factory/"..name,"r"));local expected=a.readAll();a.close()
+      local b=assert(fs.open("/pkg/factory/"..name,"r"));local installed=b.readAll();b.close()
+      assert(installed==expected,"ArcadeOS content mismatch: "..name)
+    end
   end
   assert(not fs.exists("/pkg/factory/tests"),"Test helpers installed")
   assert(not fs.exists("/pkg/factory/tools"),"Developer tools installed")

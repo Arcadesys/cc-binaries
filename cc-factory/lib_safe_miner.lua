@@ -34,7 +34,31 @@ local function transact(ctx, name, fn)
     ctx.intent={ action=name, pointer=ctx.pointer, phase=ctx.phase, pose=copy(ctx.pose) }
     local ok,err=save(ctx); if not ok then return false,err end
     inventory.invalidate(ctx)
+    -- A fleet lease can expire inside a scan/service instruction. Guard each
+    -- native mutation, not merely its containing state-machine step. Restore
+    -- the API even on an exception so a guard never leaks into another context.
+    local native = turtle
+    if ctx.authorizeAction then
+        local guarded = {}
+        local mutations = { forward=true,back=true,up=true,down=true,
+            turnLeft=true,turnRight=true,dig=true,digUp=true,digDown=true,
+            place=true,placeUp=true,placeDown=true,drop=true,dropUp=true,dropDown=true,
+            suck=true,suckUp=true,suckDown=true,refuel=true,attack=true,attackUp=true,
+            attackDown=true,transferTo=true,equipLeft=true,equipRight=true }
+        for action,api in pairs(native) do
+            if type(api)=='function' and mutations[action] then
+                local actionName,actionFn=action,api
+                guarded[action]=function(...)
+                    local permitted,reason=ctx.authorizeAction(actionName,ctx)
+                    if permitted~=true then return false,'Action authorization denied: '..tostring(reason) end
+                    return actionFn(...)
+                end
+            else guarded[action]=api end
+        end
+        turtle=guarded
+    end
     local ran,result,detail=pcall(fn)
+    turtle=native
     inventory.invalidate(ctx)
     if not ran then return false,'Interrupted/failed action: '..tostring(result)..'; manual reconciliation required' end
     ctx.intent=nil
@@ -399,5 +423,13 @@ function M.step(ctx)
         return fail(ctx,err)
     end
     return 'MINE'
+end
+-- Fleet home reorientation is a separately journaled, in-place operation.
+-- The caller supplies a verified local home pose and its own position journal.
+function M.turnAtHome(ctx,direction)
+    if ctx.intent then return false,'Uncertain home orientation requires reconciliation' end
+    if not ctx.pose or not ctx.origin or not samePosition(ctx.pose,ctx.origin) then return false,'Home reorientation requires verified bay coordinates' end
+    if direction~='left' and direction~='right' then return false,'Invalid home turn' end
+    return transact(ctx,'fleet home orientation',function() return turn(ctx,direction) end)
 end
 return M

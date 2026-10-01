@@ -1,0 +1,8 @@
+Native CraftOS-PC renderer verification, 2026-10-01
+Reproduce: python3 cc-factory/tests/run.py --fleet-screens
+PASS all 18 native fleet screen pages (39x13, 39x19, 51x19)
+Full long-reason text and high-contrast colors checked in native terminal dumps.
+Six representative PNGs rendered with arcadeos/tools/render.py and visually inspected.
+Verified configured versus saved home heading, dimension, keyboard page controls,
+stop/exit controls, current coordinator totals, and complete paged failure reasons.
+No Minecraft world or live turtle was involved.

@@ -680,12 +680,22 @@
    "description": "Factory and TurtleOS turtle automation (turtles only)",
    "required": false,
    "turtle": true,
-   "size": 446686,
+   "size": 493669,
    "files": [
     {
      "src": "cc-factory/factory.lua",
      "dest": "/pkg/factory/factory.lua",
      "size": 9354
+    },
+    {
+     "src": "cc-factory/fleet_coordinator.lua",
+     "dest": "/pkg/factory/fleet_coordinator.lua",
+     "size": 5131
+    },
+    {
+     "src": "cc-factory/fleet_worker.lua",
+     "dest": "/pkg/factory/fleet_worker.lua",
+     "size": 3294
     },
     {
      "src": "cc-factory/lib_designer.lua",
@@ -696,6 +706,26 @@
      "src": "cc-factory/lib_diagnostics.lua",
      "dest": "/pkg/factory/lib_diagnostics.lua",
      "size": 1667
+    },
+    {
+     "src": "cc-factory/lib_fleet_coordinator.lua",
+     "dest": "/pkg/factory/lib_fleet_coordinator.lua",
+     "size": 18871
+    },
+    {
+     "src": "cc-factory/lib_fleet_store.lua",
+     "dest": "/pkg/factory/lib_fleet_store.lua",
+     "size": 1636
+    },
+    {
+     "src": "cc-factory/lib_fleet_worker.lua",
+     "dest": "/pkg/factory/lib_fleet_worker.lua",
+     "size": 13626
+    },
+    {
+     "src": "cc-factory/lib_fleet_worker_status.lua",
+     "dest": "/pkg/factory/lib_fleet_worker_status.lua",
+     "size": 2520
     },
     {
      "src": "cc-factory/lib_fs.lua",
@@ -805,7 +835,7 @@
     {
      "src": "cc-factory/lib_safe_miner.lua",
      "dest": "/pkg/factory/lib_safe_miner.lua",
-     "size": 24025
+     "size": 25930
     },
     {
      "src": "cc-factory/lib_schema.lua",

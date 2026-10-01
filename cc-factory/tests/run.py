@@ -16,9 +16,17 @@ def main():
         return 1
     with tempfile.TemporaryDirectory(prefix='safe-mining-emulator-') as data:
         result = Path(tempfile.mkdtemp(prefix='safe-mining-results-'))
-        suite = 'screens.lua' if '--screens' in sys.argv else 'run.lua'
+        suite = 'fleet_screens.lua' if '--fleet-screens' in sys.argv else 'fleet.lua' if '--fleet' in sys.argv else 'screens.lua' if '--screens' in sys.argv else 'run.lua'
         selection = sys.argv[sys.argv.index('--filter') + 1] if '--filter' in sys.argv else None
         prefix = '_G.__SAFE_TEST_FILTER=' + json.dumps(selection) + ';' if selection else ''
+        if '--part' in sys.argv:
+            try:
+                part_index, part_total = map(int, sys.argv[sys.argv.index('--part') + 1].split('/'))
+                assert 1 <= part_index <= part_total <= 16
+            except (ValueError, IndexError, AssertionError):
+                print('FAIL: --part requires N/TOTAL with 1 <= N <= TOTAL <= 16')
+                return 1
+            prefix += f'_G.__SAFE_TEST_PART={{index={part_index},total={part_total}}};'
         code = prefix + ('local ok,err=pcall(function() dofile("/src/tests/' + suite + '") end) '
                 'if not ok then local f=fs.open("/results/crash.txt","w") f.write(tostring(err)) f.close() end os.shutdown()')
         try:

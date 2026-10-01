@@ -1,0 +1,40 @@
+Native CraftOS-PC fleet integration, 2026-10-01
+Command: python3 cc-factory/tests/run.py --fleet
+Exit status: 0
+PASS isolated turtle environments share only physical world cells
+PASS workers require local preflight before protocol or physical actions
+PASS two actual mining engines complete disjoint assignments and safely idle
+PASS expired lease inside multi-action instruction blocks further native mutation
+PASS spoofed assignment sender never authorizes mining
+PASS uncorrelated or reordered assignment response never authorizes mining
+PASS lost assignment leaves occupied area reserved with no worker action
+PASS worker reports full-output and never reports false completion
+PASS worker reports low-fuel and never reports false completion
+PASS worker reports unknown-block and never reports false completion
+PASS duplicate completion is idempotent and never produces second assignment
+PASS duplicate assignment replay has only remaining original lease time
+PASS reordered request and spoofed sender cannot alter durable owner
+PASS failed durable assignment save grants no physical permission
+PASS coordinator restart persists quarantine and changed epoch stops next action
+PASS worker restart after interrupted physical action requires reconciliation
+PASS native fleet store readback survives clean reload and refuses staged corruption
+PASS same-bay north then south jobs self-schedule beside another real worker
+PASS known-home successor turn expiry stops without further mutation
+PASS known-home successor turn power-loss stops without further mutation
+PASS lost heartbeat reply stops before any next physical action
+PASS unsolicited forged grant cannot replace a live permit or start idle worker
+PASS documented serialized coordinator and worker examples are compatible
+PASS native worker and coordinator adapters agree on default Rednet protocol
+PASS native coordinator adapter ignores wrong protocol and answers matching worker
+PASS regressed monotonic worker clock blocks next mutation
+PASS catalog rejects overlapping excavation even at same authorized bay
+PASS catalog rejects planned work crossing another registered bay
+PASS all 28 passed, 0 failed
+
+Command: python3 cc-factory/tests/run.py --fleet-screens
+Exit status: 0
+PASS all 18 native fleet rendered screen pages at 39x13, 39x19, 51x19
+
+Coordinator reports native distribution/installer verification PASS for all 53 source modules.
+Original single-miner evidence remains preserved in validation-results.txt.
+No Minecraft world operations performed. Survival and fleet gates C/D remain unverified.

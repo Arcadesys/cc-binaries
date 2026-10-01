@@ -27,6 +27,8 @@ See the [ArcadeOS README](./arcadeos/README.md) for usage and for writing apps.
 
 For turtle branch mining, start with the [safe mining pilot guide](./cc-factory/SAFE_MINING.md). It covers bounded jobs, checked return/unload, restart recovery, installation, and the supervised in-world checks required before scaling.
 
+The [mining fleet guide](./cc-factory/FLEET_MINING.md) adds automatic assignment of pre-approved jobs, durable area reservations, and shared-world turtle-tester scenarios. A lost turtle's area remains quarantined until manually reconciled.
+
 ## Pine games
 
 The standalone Pine3D games are in [`computercraft_scripts`](./computercraft_scripts). Copy an entire game folder to a CC:Tweaked computer so its bundled libraries stay beside the launcher.
