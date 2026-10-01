@@ -1,13 +1,12 @@
 -- Real Pine3D drawing and responsive control layout at supported widths.
 local render=require('lib.render')
-local course=require('lib.course')
 local App=require('lib.app')
 local original=term.current()
 for _,size in ipairs({{39,19},{51,19}}) do
   local target=window.create(original,1,1,size[1],size[2],true)
   term.redirect(target)
-  local r=render.new(target,course)
-  local app=App.new(course,{})
+  local r=render.new(target)
+  local app=App.new({})
   app:action('start')
   for _,camera in ipairs({'tee','overview','map'}) do
     app.camera=camera; r:draw(app:view())
@@ -17,7 +16,7 @@ for _,size in ipairs({{39,19},{51,19}}) do
       assert(b.w>=8 and b.h>=2,'target too small')
       actions[b.id]=true
     end
-    for _,id in ipairs({'swing','aim_left','aim_right','power_up','power_down','club_prev','club_next','fine','view','help','pause'}) do assert(actions[id],'missing control '..id) end
+    for _,id in ipairs({'swing','aim_left','aim_right','power_up','power_down','club_prev','club_next','aim_cup','fine','view','help','pause'}) do assert(actions[id],'missing control '..id) end
   end
   r:close(); term.redirect(original)
   print('PASS display '..size[1]..'x'..size[2]..': three Pine3D cameras, all targets within bounds')

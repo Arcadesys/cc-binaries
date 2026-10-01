@@ -1,5 +1,7 @@
 # Pine Lanes integration contract
 
+> Since the furball port, physics is `lib/pindeck.lua` behind the same `physics.begin/advance/simulate` contract. Lane units are furball scene units (see `CALIBRATION.md`); shot settings are furball control units (position/aim/hook −100..100, power 0..100) and each shot carries a `seed`. Standing pins always return to their rack spots.
+
 ## Scope and ownership
 
 One lane, 1–4 local players taking turns by frame, ten-pin scoring, position/aim/power/hook, deterministic arcade contacts, real Pine3D, keyboard and Advanced Monitor. No networking, saves, sound, custom names, or oil patterns. Base commit: `0aefec5`. Three Luna workers at medium effort; coordinator owns integration. Preserve Pine Links and existing programs without extracting a shared framework.

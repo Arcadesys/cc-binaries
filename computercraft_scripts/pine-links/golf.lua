@@ -18,7 +18,7 @@ if options.log then
   log=assert(fs.open(options.log,'w'))
   options.record=function(kind,data,app)
     log.writeLine(textutils.serializeJSON({kind=kind,data=data,phase=app.phase,
-      strokes=app.state.strokes,time=os.epoch('utc')})); log.flush()
+      strokes=app:state().strokes,time=os.epoch('utc')})); log.flush()
   end
 end
 local ok,err=pcall(function() require('lib.app').run(options) end)

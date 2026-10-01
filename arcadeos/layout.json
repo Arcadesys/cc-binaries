@@ -64,7 +64,7 @@
       ]
     },
     "pine": {
-      "description": "Pine3D games: Pine Links, Pine Lanes, Pine Dungeon",
+      "description": "Pine3D games: Pine Ball, Pine Links, Pine Lanes, Pine Dungeon",
       "mounts": [
         {
           "src": "computercraft_scripts",

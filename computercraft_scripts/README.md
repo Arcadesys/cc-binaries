@@ -4,13 +4,17 @@
 
 The separate [`pine-dungeon`](pine-dungeon/README.md) program is a compact first-person Pine3D dungeon crawler with a persistent ASCII map, three floors, turn-based monsters, loot, keyboard controls, and Advanced Monitor tap targets.
 
+## Pine Ball
+
+The separate [`pine-ball`](pine-ball/README.md) program is Pine3D arcade baseball at Rogers Bark Municipal Field, running the furball-simulator baseball engine against a CPU pitcher or a second player.
+
 ## Pine Lanes
 
-The separate [`pine-lanes`](pine-lanes/README.md) program adds local multiplayer bowling with Pine3D, arcade hook, pin collisions, and ten-frame scoring. Keyboard and Advanced Monitor tap controls are supported.
+The separate [`pine-lanes`](pine-lanes/README.md) program adds local multiplayer bowling with Pine3D on the furball-simulator bowling engine: approach position, launch angle, power and spin, collision-driven pin action, and ten-frame scoring. Keyboard and Advanced Monitor tap controls are supported.
 
 ## Pine Links
 
-The separate [`pine-links`](pine-links/README.md) program adds a Pine3D golf practice game based on Pebble Beach hole 7. It includes keyboard and Advanced Monitor controls, deterministic physics and scoring tests, and a display/input diagnostic. The existing desktop and MIDI programs remain separate entry points.
+The separate [`pine-links`](pine-links/README.md) program adds Pine3D golf on furball-simulator's Marovitz-inspired Hole 3, using the furball golf engine with a shot forecast. It includes keyboard and Advanced Monitor controls, parity, physics and scoring tests, and a display/input diagnostic. The existing desktop and MIDI programs remain separate entry points.
 
 This is a simple GUI-based operating system for ComputerCraft, styled after early Windows systems (Windows 95/98).
 

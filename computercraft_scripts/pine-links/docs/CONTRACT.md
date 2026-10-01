@@ -1,3 +1,5 @@
+> **Historical.** This describes the original Pebble Beach hole 7 prototype. Pine Links now runs furball-simulator's Marovitz-inspired Hole 3 and golf kernel; see `README.md`.
+
 # Milestones 0–2 working contract
 
 Route: coordinator integration plus three bounded Luna workers, explicitly requested by user. Medium effort for physics, source geometry, and renderer/input; interface fixed first because these components depend on one another. No other holes, persistence, networking or publishing.

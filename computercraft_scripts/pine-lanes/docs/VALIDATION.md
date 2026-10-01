@@ -25,3 +25,14 @@ CraftOS-PC validation does not establish operation inside Minecraft, ATM10, or a
 ## Rounder ball and pins follow-up
 
 The lane's display-only Z stretch was removed from the ball and pin meshes while retained for lane geometry and object positions. The ball mesh is enlarged uniformly and shaded across facets; pin crowns are capped and their side facets shaded. Mesh-bound tests now check that ball X/Z spans and upright pin footprints remain round. The five core groups and the full GUI integration suite passed after the visual change. Native CraftOS-PC captures at 51×19 and exact 39×19 were reviewed for silhouette and control readability. macOS locked after physical input during a further live roll, so that particular post-change manual roll did not finish; the complete keyboard and monitor games did finish in the GUI integration runner.
+
+## Furball engine port
+
+`lib/physics.lua` now adapts the furball-simulator kernel (`lib/pindeck.lua`, `lib/rng.lua`) instead of the original Pine physics; the scene uses furball's alley converted to Pine3D meshes (`lib/alley.lua`). Checks run in CraftOS-PC 2.8.3:
+
+- `tests/furball.lua`: six RNG seeds bit-for-bit, three aim previews, and 66 seeded shots from furball `a26fa32` (fresh and partial racks, gutters, short and missed rolls) reproduce the same knocked pins, contact events, durations, path samples and final pin poses.
+- Six core modules pass (`tools/test_craftos.sh`), including rewritten physics tests for the adapter (batch independence, rack partition, pocket strike across seeds, mirrored hook, gutter lockout, short roll, preview).
+- The full GUI runtime suite passes: one-player keyboard match, two-player monitor match with resize/detach, perfect 300 game with furball's pocket shot, live-playback recovery and error-path restoration. A monitor that disappears before its detach event (timer poll returns no size) now falls back to the terminal instead of crashing.
+- Rendering the alley scene measured about 3–4 ms per frame in CraftOS-PC at 51×19.
+
+Not yet run inside Minecraft.

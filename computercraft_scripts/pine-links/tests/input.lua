@@ -1,7 +1,7 @@
 local input = require("lib.input")
 
 local oldKeys, oldClock = keys, os.clock
-keys = {left=1,right=2,up=3,down=4,q=5,e=6,space=7,tab=8,f=9,h=10,p=11,r=12,backspace=13,s=14}
+keys = {left=1,right=2,up=3,down=4,q=5,e=6,space=7,tab=8,f=9,h=10,p=11,r=12,backspace=13,s=14,a=15,c=16,enter=17}
 local now=1
 os.clock=function() return now end
 local buttons={
@@ -12,6 +12,9 @@ local buttons={
 assert(input.action({"key",keys.left},buttons)=="aim_left")
 assert(input.action({"key",keys.space},buttons)=="swing")
 assert(input.action({"key",keys.s},buttons)=="skip")
+assert(input.action({"key",keys.a},buttons)=="aim_cup")
+assert(input.action({"key",keys.c},buttons)=="club_next")
+assert(input.action({"key",keys.enter},buttons)=="swing")
 assert(input.action({"key",keys.space,true},buttons)==nil) -- repeated key-down
 assert(input.action({"key",keys.backspace},buttons)=="quit")
 assert(input.action({"monitor_touch","right_monitor",1,12},buttons,"right_monitor")=="aim_left")

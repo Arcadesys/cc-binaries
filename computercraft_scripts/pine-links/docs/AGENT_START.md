@@ -1,3 +1,5 @@
+> **Historical.** This describes the original Pebble Beach hole 7 prototype. Pine Links now runs furball-simulator's Marovitz-inspired Hole 3 and golf kernel; see `README.md`.
+
 # First implementation task: Pine Links
 
 Read `PINE_LINKS_IMPLEMENTATION_PLAN.md` (or `PLAN.md` if renamed) and `course_manifest.json`.

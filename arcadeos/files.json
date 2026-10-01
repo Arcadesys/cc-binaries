@@ -5,7 +5,7 @@
    "description": "ArcadeOS shell and accessories",
    "required": true,
    "turtle": false,
-   "size": 119225,
+   "size": 119453,
    "files": [
     {
      "src": "arcadeos/boot.lua",
@@ -131,6 +131,11 @@
      "src": "arcadeos/apps/paint/main.lua",
      "dest": "/arcadeos/apps/paint/main.lua",
      "size": 8084
+    },
+    {
+     "src": "arcadeos/apps/pineball/app.lua",
+     "dest": "/arcadeos/apps/pineball/app.lua",
+     "size": 228
     },
     {
      "src": "arcadeos/apps/pinedungeon/app.lua",
@@ -356,11 +361,81 @@
    ]
   },
   "pine": {
-   "description": "Pine3D games: Pine Links, Pine Lanes, Pine Dungeon",
+   "description": "Pine3D games: Pine Ball, Pine Links, Pine Lanes, Pine Dungeon",
    "required": false,
    "turtle": false,
-   "size": 422466,
+   "size": 530053,
    "files": [
+    {
+     "src": "computercraft_scripts/pine-ball/ball.lua",
+     "dest": "/pkg/scripts/pine-ball/ball.lua",
+     "size": 1271
+    },
+    {
+     "src": "computercraft_scripts/pine-ball/lib/app.lua",
+     "dest": "/pkg/scripts/pine-ball/lib/app.lua",
+     "size": 19932
+    },
+    {
+     "src": "computercraft_scripts/pine-ball/lib/baseball.lua",
+     "dest": "/pkg/scripts/pine-ball/lib/baseball.lua",
+     "size": 13076
+    },
+    {
+     "src": "computercraft_scripts/pine-ball/lib/input.lua",
+     "dest": "/pkg/scripts/pine-ball/lib/input.lua",
+     "size": 1941
+    },
+    {
+     "src": "computercraft_scripts/pine-ball/lib/plays.lua",
+     "dest": "/pkg/scripts/pine-ball/lib/plays.lua",
+     "size": 9888
+    },
+    {
+     "src": "computercraft_scripts/pine-ball/lib/render.lua",
+     "dest": "/pkg/scripts/pine-ball/lib/render.lua",
+     "size": 6244
+    },
+    {
+     "src": "computercraft_scripts/pine-ball/lib/rng.lua",
+     "dest": "/pkg/scripts/pine-ball/lib/rng.lua",
+     "size": 1540
+    },
+    {
+     "src": "computercraft_scripts/pine-ball/lib/roster.lua",
+     "dest": "/pkg/scripts/pine-ball/lib/roster.lua",
+     "size": 1058
+    },
+    {
+     "src": "computercraft_scripts/pine-ball/lib/stadium.lua",
+     "dest": "/pkg/scripts/pine-ball/lib/stadium.lua",
+     "size": 11791
+    },
+    {
+     "src": "computercraft_scripts/pine-ball/lib/ui.lua",
+     "dest": "/pkg/scripts/pine-ball/lib/ui.lua",
+     "size": 5714
+    },
+    {
+     "src": "computercraft_scripts/pine-ball/vendor/LICENSE",
+     "dest": "/pkg/scripts/pine-ball/vendor/LICENSE",
+     "size": 1062
+    },
+    {
+     "src": "computercraft_scripts/pine-ball/vendor/Pine3D.lua",
+     "dest": "/pkg/scripts/pine-ball/vendor/Pine3D.lua",
+     "size": 69417
+    },
+    {
+     "src": "computercraft_scripts/pine-ball/vendor/REVISION.txt",
+     "dest": "/pkg/scripts/pine-ball/vendor/REVISION.txt",
+     "size": 422
+    },
+    {
+     "src": "computercraft_scripts/pine-ball/vendor/betterblittle.lua",
+     "dest": "/pkg/scripts/pine-ball/vendor/betterblittle.lua",
+     "size": 6135
+    },
     {
      "src": "computercraft_scripts/pine-dungeon/dungeon.lua",
      "dest": "/pkg/scripts/pine-dungeon/dungeon.lua",
@@ -414,12 +489,17 @@
     {
      "src": "computercraft_scripts/pine-lanes/bowl.lua",
      "dest": "/pkg/scripts/pine-lanes/bowl.lua",
-     "size": 1279
+     "size": 1381
+    },
+    {
+     "src": "computercraft_scripts/pine-lanes/lib/alley.lua",
+     "dest": "/pkg/scripts/pine-lanes/lib/alley.lua",
+     "size": 11104
     },
     {
      "src": "computercraft_scripts/pine-lanes/lib/app.lua",
      "dest": "/pkg/scripts/pine-lanes/lib/app.lua",
-     "size": 10521
+     "size": 11312
     },
     {
      "src": "computercraft_scripts/pine-lanes/lib/input.lua",
@@ -429,17 +509,27 @@
     {
      "src": "computercraft_scripts/pine-lanes/lib/lane.lua",
      "dest": "/pkg/scripts/pine-lanes/lib/lane.lua",
-     "size": 800
+     "size": 1079
     },
     {
      "src": "computercraft_scripts/pine-lanes/lib/physics.lua",
      "dest": "/pkg/scripts/pine-lanes/lib/physics.lua",
-     "size": 12768
+     "size": 5582
+    },
+    {
+     "src": "computercraft_scripts/pine-lanes/lib/pindeck.lua",
+     "dest": "/pkg/scripts/pine-lanes/lib/pindeck.lua",
+     "size": 18477
     },
     {
      "src": "computercraft_scripts/pine-lanes/lib/render.lua",
      "dest": "/pkg/scripts/pine-lanes/lib/render.lua",
-     "size": 10994
+     "size": 8257
+    },
+    {
+     "src": "computercraft_scripts/pine-lanes/lib/rng.lua",
+     "dest": "/pkg/scripts/pine-lanes/lib/rng.lua",
+     "size": 1540
     },
     {
      "src": "computercraft_scripts/pine-lanes/lib/rules.lua",
@@ -449,7 +539,7 @@
     {
      "src": "computercraft_scripts/pine-lanes/lib/ui.lua",
      "dest": "/pkg/scripts/pine-lanes/lib/ui.lua",
-     "size": 10324
+     "size": 10236
     },
     {
      "src": "computercraft_scripts/pine-lanes/vendor/LICENSE",
@@ -474,47 +564,47 @@
     {
      "src": "computercraft_scripts/pine-links/golf.lua",
      "dest": "/pkg/scripts/pine-links/golf.lua",
-     "size": 1032
-    },
-    {
-     "src": "computercraft_scripts/pine-links/courses/pebble_beach/hole_07.lua",
-     "dest": "/pkg/scripts/pine-links/courses/pebble_beach/hole_07.lua",
-     "size": 58323
+     "size": 1034
     },
     {
      "src": "computercraft_scripts/pine-links/lib/app.lua",
      "dest": "/pkg/scripts/pine-links/lib/app.lua",
-     "size": 9668
+     "size": 11275
     },
     {
      "src": "computercraft_scripts/pine-links/lib/course.lua",
      "dest": "/pkg/scripts/pine-links/lib/course.lua",
-     "size": 2171
+     "size": 1681
+    },
+    {
+     "src": "computercraft_scripts/pine-links/lib/golf.lua",
+     "dest": "/pkg/scripts/pine-links/lib/golf.lua",
+     "size": 6951
     },
     {
      "src": "computercraft_scripts/pine-links/lib/input.lua",
      "dest": "/pkg/scripts/pine-links/lib/input.lua",
-     "size": 2010
+     "size": 2077
     },
     {
      "src": "computercraft_scripts/pine-links/lib/physics.lua",
      "dest": "/pkg/scripts/pine-links/lib/physics.lua",
-     "size": 13323
+     "size": 2083
     },
     {
      "src": "computercraft_scripts/pine-links/lib/render.lua",
      "dest": "/pkg/scripts/pine-links/lib/render.lua",
-     "size": 14646
+     "size": 12254
     },
     {
      "src": "computercraft_scripts/pine-links/lib/rules.lua",
      "dest": "/pkg/scripts/pine-links/lib/rules.lua",
-     "size": 2214
+     "size": 1640
     },
     {
      "src": "computercraft_scripts/pine-links/lib/ui.lua",
      "dest": "/pkg/scripts/pine-links/lib/ui.lua",
-     "size": 5375
+     "size": 5581
     },
     {
      "src": "computercraft_scripts/pine-links/vendor/LICENSE",

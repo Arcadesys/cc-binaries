@@ -10,8 +10,8 @@ local function keyAction(key)
   end
   bind("left","aim_left"); bind("right","aim_right")
   bind("up","power_up"); bind("down","power_down")
-  bind("q","club_prev"); bind("e","club_next")
-  bind("space","swing"); bind("tab","view"); bind("f","fine")
+  bind("q","club_prev"); bind("e","club_next"); bind("c","club_next"); bind("a","aim_cup")
+  bind("space","swing"); bind("enter","swing"); bind("tab","view"); bind("f","fine")
   bind("h","help"); bind("p","pause"); bind("r","restart")
   bind("escape","quit"); bind("backspace","quit"); bind("s","skip")
   return map[key]

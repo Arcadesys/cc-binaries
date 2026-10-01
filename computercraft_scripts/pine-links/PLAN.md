@@ -1,3 +1,5 @@
+> **Historical.** This describes the original Pebble Beach hole 7 prototype. Pine Links now runs furball-simulator's Marovitz-inspired Hole 3 and golf kernel; see `README.md`.
+
 # Pine Links: Pebble Beach implementation plan
 
 **Target:** An original, flat-shaded golf game running entirely inside CC:Tweaked with Pine3D.
