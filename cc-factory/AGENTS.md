@@ -37,6 +37,7 @@ States must treat `ctx` as the single source of truth.
 ### 2.1 Accepted Formats
 
 * **JSON**: preferred; supports material names and coordinates.
+* **Building Gadgets 2 template**: the JSON BG2's Template Manager copies (`statePosArrayList` SNBT); read by `lib_bg2.lua`, blockstate kept in `meta.state`. turtle-blueprints exports this format.
 * **Text grid**: simple symbolic map where symbols map to materials via a legend.
 * **Voxel dataset**: optional advanced format.
 
