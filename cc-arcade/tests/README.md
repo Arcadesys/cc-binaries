@@ -129,20 +129,20 @@ credit denominations can make an exact 98% target unattainable at a given stake.
 Slots can be enumerated; skill games and blackjack require explicit strategy and
 rules assumptions. Blackjack does not guarantee house profit every round.
 
-## Configurable item currency: next implementation boundary
+## Configurable item currency: explicit version-2 opt-in
 
-The deployed v1 cashier still accepts and redeems only diamonds, one diamond per
-credit. Current wire tests prove partial movement, full output, duplicate/lost
-receipts and verified reconciliation for that actual implementation; they also
-prove gold and eyes of ender are currently ignored rather than silently credited.
+Unmigrated hosts retain the diamond-only, one-credit v1 path. The explicit
+version-2 implementation adds configured item currencies through a gated exchange
+operation while leaving game credit units unchanged. See
+[`derby/CURRENCY.md`](../derby/CURRENCY.md) for default-disabled gold/ender-eye
+entries, immutable policy revisions, identity checks, migration backups and the
+fail-closed persistence guard. Run the new `currency_identity.lua`,
+`currency_runtime.lua` and `currency_wire.lua` suites via the same test runner.
 
-[The proposed currency contract](CURRENCY_CONTRACT.md) and
-`contracts/currency_policy.lua` define separately enabled deposit/redemption items,
-exact registry/NBT identities, integer atomic-unit rates, immutable policy revisions
-and actual-movement receipt invariants. Rates in its fixtures are synthetic test
-values, not configured economic prices. This acceptance oracle does **not** add
-multi-item currency support to production. A versioned inventory/ledger/cashier
-migration and in-game acceptance are still required, after recovery is corrected.
+The [historical proposed currency contract](CURRENCY_CONTRACT.md) remains an
+independent design oracle. Its synthetic rates are not production configuration.
+Local tests cannot establish actual inventory behavior; in-game acceptance and
+operator-set rates are still required before enabling additional items.
 
 ## Protocol compatibility admission gate
 
@@ -154,7 +154,7 @@ nor player/score protocols are introduced or silently accepted.
 | Current v1 client → current v1 host | Accepted valid requests; canonical response shapes |
 | Wrong/future protocol → v1 host | Ignored without ledger mutation; client times out with retry retained |
 | Foreign protocol/sender/token → v1 client | Ignored; only correlated host response completes request |
-| Future version/adapter | Unsupported; add deliberate fixtures and producer/consumer matrix before shipping |
+| API 2 exchange → migrated host | Explicit operation/version/revision gate; legacy transfer requests rejected; `currency_wire.lua` exercises actual client/server |
 
 Pine Face's separate multiplayer protocol is not a wallet protocol. Its existing
 network suite remains the source for gameplay-network compatibility. Future

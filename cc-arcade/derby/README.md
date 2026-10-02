@@ -134,3 +134,9 @@ Those commands rebuild the standalone `cc-arcade/install.lua` and the ArcadeOS
 manifest. Tests, tools, docs and the concept image are excluded from runtime
 packages. Pine3D is bundled at the revision in `vendor/REVISION.txt` with its MIT
 license; no runtime library download is required.
+
+## Configurable item currencies
+
+See [CURRENCY.md](CURRENCY.md) for explicit version-2 migration, operator-controlled
+rates and identities, cashier selection, backups and physical acceptance. Existing
+unmigrated banks remain diamond-only; gold and ender eyes are disabled by default.
