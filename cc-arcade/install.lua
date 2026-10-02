@@ -12127,6 +12127,468 @@ else
 end
 ]])
 
+writeFile('tables/app.lua', [[
+local net=require('tables.net')
+local M={}
+function M.run(args)
+ local command=args[1]
+ if command=='setup' then return net.setup({table.unpack(args,2)}) end
+ local c=net.read()
+ if not c then
+  print('Table network is not configured.')
+  print('Table: tables setup table <wired-modem> <seat-ids...>')
+  print('Seat:  tables setup seat <wired-modem> <table-id>')
+  return
+ end
+ command=command or c.role
+ assert(command==c.role,'This computer is configured as a '..c.role)
+ local t=term.current()
+ local ok,err=pcall(function()
+  if command=='table' then require('tables.host').run(c) else require('tables.seat').run(c) end
+ end)
+ term.redirect(t); t.setBackgroundColor(colors.black); t.setTextColor(colors.white); t.clear(); t.setCursorPos(1,1)
+ if not ok then error(err,0) end
+end
+return M
+]])
+
+writeFile('tables/bank.lua', [[
+-- Where a table's credits come from. Exhibition keeps practice balances on the
+-- table computer and never touches the house. House play (reserve per seat,
+-- settle the whole table at once) needs a ledger operation that is not built yet.
+local M={}
+local STARTING=100
+function M.exhibition()
+ local balances={}
+ local b={mode='exhibition'}
+ function b:balance(account) if balances[account]==nil then balances[account]=STARTING end return balances[account] end
+ function b:stake(account,amount)
+  if b:balance(account)<amount then return false,'Not enough credits' end
+  balances[account]=balances[account]-amount; return true
+ end
+ function b:pay(account,amount) balances[account]=b:balance(account)+amount end
+ return b
+end
+return M
+]])
+
+writeFile('tables/games/highcard.lua', [=[
+-- High Card: every player antes and flips one card. Alone you play the house
+-- (win pays 2x, tie pushes); with company the highest card takes the pot.
+--
+-- Game interface used by tables.host:
+--  new(players,rng)      players = {{seat=,name=},...} in seat order
+--  view(s,seat)          seat view, or the public table view when seat is nil
+--  press(s,seat,button)  a player's button; returns true when it changed state
+--  pending(s,seat)       true while the table waits on this seat
+--  auto(s,seat)          the default move for an absent or idle seat
+--  payouts(s)            nil while playing, then {[seat]=credits returned}
+--  maximum(s)            the most the hand can return in total (the host enforces it)
+local M={id='highcard',title='HIGH CARD',ante=5}
+local RANKS={'2','3','4','5','6','7','8','9','10','J','Q','K','A'}
+local SUITS={'S','H','D','C'}
+local function name(c) return RANKS[c.rank]..SUITS[c.suit] end
+function M.new(players,rng)
+ local deck={}
+ for s=1,4 do for r=1,13 do deck[#deck+1]={rank=r,suit=s} end end
+ for i=#deck,2,-1 do local j=rng(i); deck[i],deck[j]=deck[j],deck[i] end
+ local s={players={},house=#players==1,pot=M.ante*#players}
+ for _,p in ipairs(players) do s.players[p.seat]={name=p.name,card=table.remove(deck),shown=false} end
+ if s.house then s.dealer=table.remove(deck) end
+ return s
+end
+function M.pending(s,seat) local p=s.players[seat]; return p~=nil and not p.shown end
+function M.press(s,seat,button)
+ if button~='flip' or not M.pending(s,seat) then return false end
+ s.players[seat].shown=true; return true
+end
+function M.maximum(s) return s.house and 2*M.ante or s.pot end
+M.auto=function(s,seat) return M.press(s,seat,'flip') end
+local function done(s) for seat in pairs(s.players) do if M.pending(s,seat) then return false end end return true end
+function M.payouts(s)
+ if not done(s) then return nil end
+ local out={}
+ if s.house then
+  local seat,p=next(s.players)
+  out[seat]=p.card.rank>s.dealer.rank and 2*M.ante or p.card.rank==s.dealer.rank and M.ante or 0
+  return out
+ end
+ local best=0; local winners={}
+ for seat,p in pairs(s.players) do
+  if p.card.rank>best then best=p.card.rank; winners={seat} elseif p.card.rank==best then winners[#winners+1]=seat end
+ end
+ table.sort(winners)
+ -- Split ties; the lowest seat keeps any odd credit so the pot is paid exactly.
+ local share=math.floor(s.pot/#winners)
+ for seat in pairs(s.players) do out[seat]=0 end
+ for _,seat in ipairs(winners) do out[seat]=share end
+ out[winners[1]]=out[winners[1]]+s.pot-share*#winners
+ return out
+end
+function M.view(s,seat)
+ local lines={}
+ local over=done(s)
+ if s.house then lines[#lines+1]={'House: '..(over and name(s.dealer) or '??'),colors.orange} else lines[#lines+1]={'Pot: '..s.pot..' credits',colors.yellow} end
+ local seats={}; for k in pairs(s.players) do seats[#seats+1]=k end; table.sort(seats)
+ for _,k in ipairs(seats) do
+  local p=s.players[k]
+  local card=(p.shown or k==seat) and name(p.card) or '??'
+  lines[#lines+1]={(k==seat and '> ' or '  ')..'Seat '..k..' '..p.name..': '..card..(p.shown and '' or ' (hidden)'),k==seat and colors.white or colors.lightGray}
+ end
+ local buttons={}
+ if seat and M.pending(s,seat) then buttons[1]={id='flip',label='FLIP YOUR CARD'} end
+ return {lines=lines,buttons=buttons}
+end
+return M
+]=])
+
+writeFile('tables/host.lua', [[
+-- The table computer: lobby, seat liveness, game flow and money. Pure logic is in
+-- M.new (driven by receive/tick with an injectable clock and sender); M.run wires
+-- it to rednet, timers and the table's own display.
+local view=require('tables.view')
+local M={COUNTDOWN=10,IDLE=30,RESULT=5}
+-- o: seats (computer IDs in seat order), game, bank, send(id,msg), now() in seconds,
+--    rng(n) -> 1..n, exhibition (guests may join without a card)
+function M.new(o)
+ local h={phase='LOBBY',seats={},log={},table=o.id,bank=o.bank}
+ local index={}
+ for i,id in ipairs(o.seats) do h.seats[i]={id=id,online=false,last=-math.huge,seq=0,sent=nil}; index[id]=i end
+ local game=o.game
+ local function log(s) h.log[#h.log+1]=s end
+ local function online(seat) return o.now()-seat.last<=require('tables.net').TIMEOUT end
+ local function shortName(account) return tostring(account):gsub('^guest:.*','GUEST'):sub(1,10) end
+ -- Lobby identity follows the card in the drive; a game keeps the account it started with.
+ local function present(seat,card)
+  local account=card and (card.account or (o.exhibition and card.diskID and 'disk:'..card.diskID))
+  if seat.guest then account=seat.account end
+  if account~=seat.account then seat.account=account; seat.ready=false end
+ end
+ local function start()
+  local players={}; h.round={players={},total=0}
+  for i,seat in ipairs(h.seats) do
+   if seat.ready and seat.account and online(seat) then
+    local ok,err=o.bank:stake(seat.account,game.ante)
+    if ok then players[#players+1]={seat=i,name=shortName(seat.account)}; h.round.players[i]=seat.account; h.round.total=h.round.total+game.ante
+    else seat.ready=false; seat.notice=err end
+   end
+  end
+  if #players==0 then return end
+  h.state=game.new(players,o.rng); h.phase='PLAYING'; h.lastAction=o.now(); h.countdown=nil
+  local list={}; for _,p in ipairs(players) do list[#list+1]=p.seat end
+  log('start '..table.concat(list,','))
+ end
+ local function finish(payouts)
+  local paid=0; for _,amount in pairs(payouts) do paid=paid+amount end
+  -- Money check before anything is credited: solo games may pay up to the game's
+  -- stated maximum; player-vs-player games can only redistribute the stakes.
+  local limit=game.maximum and game.maximum(h.state) or h.round.total
+  if paid>limit then error('Table payout '..paid..' exceeds limit '..limit,0) end
+  h.round.payouts=payouts
+  for seat,amount in pairs(payouts) do
+   o.bank:pay(h.round.players[seat],amount); log('payout '..seat..' '..amount)
+  end
+  h.phase='RESULT'; h.resultUntil=o.now()+M.RESULT
+ end
+ function h:seatView(i)
+  local seat=h.seats[i]
+  local v={title=game.title..' | SEAT '..i,footer='Seat '..i..' | table #'..tostring(o.id),lines={},buttons={}}
+  local playing=h.round and h.round.players[i] and h.phase~='LOBBY'
+  if playing then
+   local g=game.view(h.state,i); v.lines=g.lines; v.buttons=g.buttons or {}
+   if h.phase=='RESULT' then
+    local won=h.round.payouts[i] or 0
+    v.status=won>game.ante and 'YOU WIN '..won or won==game.ante and 'PUSH: stake returned' or 'No win this hand'
+    if #v.lines>0 then v.lines[#v.lines+1]='' end
+    v.lines[#v.lines+1]={'Balance: '..o.bank:balance(h.round.players[i]),colors.yellow}
+   else v.status=game.pending(h.state,i) and 'Your move' or 'Waiting for other players' end
+  elseif h.phase~='LOBBY' then
+   v.status='Game in progress. Next hand soon.'
+   for _,l in ipairs(game.view(h.state,nil).lines) do v.lines[#v.lines+1]=l end
+  elseif not seat.account then
+   v.status='Insert your house card'
+   v.lines={'Ante '..game.ante..' credits per hand.','Play alone against the house,','or against everyone seated.'}
+   if o.exhibition then v.buttons={{id='guest',label='JOIN AS GUEST'}} end
+  else
+   v.status=seat.ready and (h.countdown and 'Starting in '..math.max(0,math.ceil(h.countdown-o.now()))..'s' or 'Ready') or 'Press READY to play'
+   v.lines={{'Player: '..shortName(seat.account),colors.white},{'Balance: '..o.bank:balance(seat.account)..' credits',colors.yellow},'Ante: '..game.ante}
+   v.buttons={seat.ready and {id='unready',label='NOT READY',color=colors.orange} or {id='ready',label='READY'}}
+   if seat.guest then v.buttons[#v.buttons+1]={id='leave',label='LEAVE',color=colors.lightGray} end
+  end
+  if seat.notice then v.lines[#v.lines+1]={seat.notice,colors.red} end
+  return v
+ end
+ function h:publicView()
+  local v={title=game.title..' | TABLE #'..tostring(o.id),lines={},buttons={},footer='Q: stop table'}
+  if h.phase=='LOBBY' then
+   v.status=h.countdown and 'Starting in '..math.max(0,math.ceil(h.countdown-o.now()))..'s' or 'Insert cards at the seats'
+   for i,seat in ipairs(h.seats) do
+    local state=not online(seat) and 'offline' or not seat.account and 'empty' or seat.ready and 'READY' or 'seated'
+    v.lines[#v.lines+1]={'Seat '..i..' (#'..seat.id..'): '..state..(seat.account and ' '..shortName(seat.account) or ''),seat.ready and colors.lime or colors.lightGray}
+   end
+  else
+   v.status=h.phase=='RESULT' and 'Hand over' or 'Playing'
+   v.lines=game.view(h.state,nil).lines
+  end
+  return v
+ end
+ local function push(i,force)
+  local seat=h.seats[i]
+  local v=h:seatView(i); local key=textutils.serialize(v,{compact=true})
+  if key~=seat.sent then seat.seq=seat.seq+1; seat.sent=key; force=true end
+  if force then o.send(seat.id,{t='view',seq=seat.seq,view=v}) end
+ end
+ function h:receive(from,msg)
+  local i=index[from]; if not i then return end -- not a seat at this table
+  local seat=h.seats[i]
+  if msg.t=='hello' then
+   seat.last=o.now(); present(seat,type(msg.card)=='table' and msg.card or nil)
+   if h.phase=='LOBBY' then h:tick() end
+   push(i,true)
+  elseif msg.t=='press' then
+   seat.last=o.now()
+   -- Act only on a button this seat is offered right now. Other players acting
+   -- does not cancel a press, but a double tap or a delayed packet for a button
+   -- that has since gone away is ignored.
+   local offered=false
+   for _,b in ipairs(h:seatView(i).buttons) do if b.id==msg.button then offered=true end end
+   if offered then h:press(i,msg.button) else log('ignored '..i..' '..tostring(msg.button)) end
+   push(i,true)
+  end
+ end
+ function h:press(i,button)
+  local seat=h.seats[i]; seat.notice=nil
+  if h.phase=='LOBBY' then
+   if button=='guest' and o.exhibition and not seat.account then seat.guest=true; seat.account='guest:'..seat.id
+   elseif button=='leave' and seat.guest then seat.guest=nil; seat.account=nil; seat.ready=false
+   elseif button=='ready' and seat.account then seat.ready=true
+   elseif button=='unready' then seat.ready=false end
+   h:tick()
+  elseif h.phase=='PLAYING' and h.round.players[i] then
+   if game.press(h.state,i,button) then h.lastAction=o.now(); log('press '..i..' '..button); h:tick() end
+  end
+ end
+ function h:tick()
+  local now=o.now()
+  if h.phase=='LOBBY' then
+   local ready,seated=0,0
+   for _,seat in ipairs(h.seats) do
+    if seat.account and online(seat) then seated=seated+1; if seat.ready then ready=ready+1 end end
+   end
+   if ready==0 then h.countdown=nil
+   elseif ready==seated or (h.countdown and now>=h.countdown) then start()
+   elseif not h.countdown then h.countdown=now+M.COUNTDOWN end
+  elseif h.phase=='PLAYING' then
+   for i in pairs(h.round.players) do
+    if game.pending(h.state,i) and (not online(h.seats[i]) or now-h.lastAction>M.IDLE) then
+     game.auto(h.state,i); h.lastAction=now; log('auto '..i)
+    end
+   end
+   local payouts=game.payouts(h.state)
+   if payouts then finish(payouts) end
+  elseif h.phase=='RESULT' and now>=h.resultUntil then
+   h.phase='LOBBY'; h.state=nil; h.round=nil
+   for _,seat in ipairs(h.seats) do seat.ready=false end
+   log('lobby')
+  end
+  for i,seat in ipairs(h.seats) do if online(seat) then push(i,false) end end
+ end
+ return h
+end
+-- script (optional) runs alongside the table with the host object; used by tests.
+function M.run(c,script)
+ local net=require('tables.net')
+ local link=net.open(c)
+ local monitor=peripheral.find('monitor')
+ local t=monitor or term.current()
+ if monitor then monitor.setTextScale(1) end
+ local h=M.new({id=os.getComputerID(),seats=c.seats,game=require('tables.games.'..(c.game or 'highcard')),
+  bank=require('tables.bank').exhibition(),send=link.send,now=function() return os.epoch('utc')/1000 end,
+  rng=math.random,exhibition=c.exhibition~=false})
+ math.randomseed(os.epoch('utc'))
+ local function loop()
+  local timer=os.startTimer(.25)
+  while true do
+   local e,a,b,p=os.pullEvent()
+   local from,msg=link.parse(e,a,b,p)
+   if from then h:receive(from,msg)
+   elseif e=='timer' and a==timer then h:tick(); timer=os.startTimer(.25)
+   elseif e=='key' and a==keys.q and not script then return end
+   if t.isColor() then view.draw(t,h:publicView()) end
+  end
+ end
+ if script then parallel.waitForAny(loop,function() script(h) end) else loop() end
+ return h
+end
+return M
+]])
+
+writeFile('tables/net.lua', [[
+-- Seat <-> table messages over a private wired rednet network.
+-- Only the table computer runs the game and holds money; seats are thin terminals
+-- that send their card and button presses and draw whatever view the table sends.
+--
+-- seat -> table  {t='hello',card={account=,diskID=}|nil}   every HEARTBEAT seconds
+--                {t='press',seq=<view seq>,button=<id>}  (acted on only if offered now)
+-- table -> seat  {t='view',seq=<n>,view={title,status,lines,buttons}}
+--                sent on every change and in reply to every hello, so a lost
+--                message heals within one heartbeat.
+local M={protocol='pine-table-v1',HEARTBEAT=1,TIMEOUT=4,path='/table-config.json'}
+function M.read()
+ if not fs.exists(M.path) then return nil end
+ local f=assert(fs.open(M.path,'r')); local c=textutils.unserializeJSON(f.readAll()); f.close(); return c
+end
+function M.write(c)
+ local f=assert(fs.open(M.path,'w')); f.write(textutils.serializeJSON(c)); f.close()
+end
+function M.open(c)
+ assert(c and c.modem,'Run tables setup first')
+ local modem=assert(peripheral.wrap(c.modem),'Configured modem missing: '..tostring(c.modem))
+ assert(modem.isWireless and not modem.isWireless(),'Use a wired modem for the table network')
+ rednet.open(c.modem)
+ return {
+  send=function(id,msg) rednet.send(id,msg,M.protocol) end,
+  -- Returns sender and message for a table-network event, nil for anything else.
+  parse=function(e,from,msg,protocol)
+   if e=='rednet_message' and protocol==M.protocol and type(msg)=='table' and type(msg.t)=='string' then return from,msg end
+  end,
+ }
+end
+-- tables setup table <modem> <seat-id> [<seat-id> ...]   (seat order = seat numbers)
+-- tables setup seat <modem> <table-id>
+function M.setup(args)
+ local role,modem=args[1],args[2]
+ assert(role=='table' or role=='seat','Use: tables setup table <modem> <seat ids...> | tables setup seat <modem> <table id>')
+ assert(not M.read(),'Configuration exists; remove '..M.path..' to reconfigure')
+ local c={role=role,modem=assert(modem,'Wired modem name required')}
+ if role=='table' then
+  c.seats={}
+  for i=3,#args do c.seats[#c.seats+1]=assert(tonumber(args[i]),'Seat IDs are computer numbers') end
+  assert(#c.seats>=1 and #c.seats<=4,'A table has 1 to 4 seats')
+  c.game=settings.get('tables.game','highcard')
+  c.exhibition=true
+ else c.table=assert(tonumber(args[3]),'Table computer ID required') end
+ M.open(c); M.write(c)
+ print('Saved '..M.path..'. Run: tables '..role)
+end
+return M
+]])
+
+writeFile('tables/seat.lua', [[
+-- A seat terminal: reports its card, draws the table's view, sends button presses.
+-- Holds no money and no game rules, so a seat never needs updating for a new game.
+local net=require('tables.net')
+local view=require('tables.view')
+local M={}
+-- o: send(msg) to the table, card() -> inserted card or nil, now() in seconds
+function M.new(o)
+ local s={seq=0,heard=-math.huge}
+ function s:hello()
+  local c=o.card()
+  o.send({t='hello',card=c and {account=c.account,diskID=c.diskID} or nil})
+ end
+ function s:receive(msg)
+  if msg.t~='view' or type(msg.view)~='table' then return false end
+  s.heard=o.now(); s.seq=msg.seq; s.view=msg.view; return true
+ end
+ function s:connected() return s.view~=nil and o.now()-s.heard<=net.TIMEOUT end
+ function s:current()
+  if s:connected() then return s.view end
+  return {title='TABLE SEAT',status='Connecting to table #'..tostring(o.table)..'...',lines={'Waiting for the table computer.'},buttons={},footer='Q: quit'}
+ end
+ function s:press(id)
+  if not s:connected() then return false end
+  for _,b in ipairs(s.view.buttons or {}) do
+   if b.id==id then o.send({t='press',seq=s.seq,button=id}); return true end
+  end
+  return false
+ end
+ return s
+end
+-- script (optional) runs alongside the seat with the seat object; used by tests.
+function M.run(c,script)
+ local link=net.open(c)
+ local monitor=peripheral.find('monitor')
+ local t=monitor or term.current()
+ if monitor then monitor.setTextScale(1) end
+ local card=require('derby.ui').card
+ local s=M.new({table=c.table,card=card,now=function() return os.epoch('utc')/1000 end,
+  send=function(msg) link.send(c.table,msg) end})
+ local function loop()
+  local timer=os.startTimer(0)
+  while true do
+   local e,a,b,p=os.pullEvent()
+   local from,msg=link.parse(e,a,b,p)
+   if from==c.table then s:receive(msg)
+   elseif e=='timer' and a==timer then s:hello(); timer=os.startTimer(net.HEARTBEAT)
+   elseif e=='disk' or e=='disk_eject' then s:hello()
+   elseif e=='mouse_click' or e=='monitor_touch' then
+    local hit=view.hit(t,s:current(),p); if hit then s:press(hit.id) end
+   elseif e=='key' then
+    if a==keys.q and not script then return end
+    local n=a-keys.one+1
+    local buttons=s:current().buttons or {}
+    if buttons[n] then s:press(buttons[n].id) elseif a==keys.enter and buttons[1] then s:press(buttons[1].id) end
+   end
+   if t.isColor() then view.draw(t,s:current()) end
+  end
+ end
+ if script then parallel.waitForAny(loop,function() script(s) end) else loop() end
+ return s
+end
+return M
+]])
+
+writeFile('tables/view.lua', [[
+-- Draws a table view: {title,status,lines={{text,color}},buttons={{id,label}}}.
+-- Seats know nothing about any game; new games need no seat update.
+local M={}
+local function line(t,y,text,fg,bg)
+ local w,h=t.getSize(); if y<1 or y>h then return end
+ t.setCursorPos(1,y); t.setTextColor(fg or colors.white); t.setBackgroundColor(bg or colors.black)
+ t.write((tostring(text)..string.rep(' ',w)):sub(1,w))
+end
+-- Buttons stack up from the bottom, three rows each when there is room.
+function M.layout(t,view)
+ local w,h=t.getSize(); local n=#(view.buttons or {})
+ local tall=h-3-n*3>=4; local size=tall and 3 or 1
+ local out={}
+ for i=1,n do out[i]={y=h-1-(n-i+1)*size+1,height=size} end
+ return out,size
+end
+function M.draw(t,view)
+ t.setBackgroundColor(colors.black); t.clear()
+ line(t,1,' '..(view.title or 'TABLE'),colors.white,colors.blue)
+ line(t,2,' '..(view.status or ''),colors.yellow)
+ local boxes=M.layout(t,view)
+ local bottom=boxes[1] and boxes[1].y-1 or select(2,t.getSize())-1
+ for i,l in ipairs(view.lines or {}) do
+  if 3+i>bottom then break end
+  if type(l)=='table' then line(t,3+i,' '..l[1],l[2]) else line(t,3+i,' '..l) end
+ end
+ for i,b in ipairs(view.buttons or {}) do
+  local box=boxes[i]
+  for row=box.y,box.y+box.height-1 do
+   local label=row==box.y+math.floor(box.height/2) and ' ['..i..'] '..b.label or ''
+   line(t,row,label,colors.black,b.color or colors.lime)
+  end
+ end
+ local _,h=t.getSize(); line(t,h,' '..(view.footer or ''),colors.lightGray)
+end
+-- Which button a click/touch at row y lands on.
+function M.hit(t,view,y)
+ for i,box in ipairs(M.layout(t,view)) do
+  if y>=box.y and y<box.y+box.height then return view.buttons[i] end
+ end
+end
+return M
+]])
+
+writeFile('tables.lua', [[
+-- Multi-seat tables: one table computer runs the game, 1-4 seat computers play it.
+require('tables.app').run({...})
+]])
+
 writeFile('track.lua', [[
 -- track.lua
 -- Track & Field Demake (Timing Race)
