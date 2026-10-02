@@ -1,6 +1,7 @@
 --[[
 Parser library for CC:Tweaked turtles.
-Normalises schema sources (JSON, text grids, voxel tables) into the canonical
+Normalises schema sources (JSON, Building Gadgets 2 templates, text grids,
+voxel tables) into the canonical
 schema[x][y][z] format used by the build states. All public entry points
 return success booleans with optional error messages and metadata tables.
 --]]
@@ -13,6 +14,7 @@ local table_utils = require("lib_table")
 local fs_utils = require("lib_fs")
 local json_utils = require("lib_json")
 local schema_utils = require("lib_schema")
+local bg2 = require("lib_bg2")
 
 local function parseLayerRows(schema, bounds, counts, layerDef, legend, opts)
     local rows = layerDef.rows
@@ -240,6 +242,10 @@ local function buildCanonical(def, opts)
         ok, err = parseLayers(schema, bounds, counts, def, def.legend, opts)
     elseif def.grid then
         ok, err = parseVoxelGrid(schema, bounds, counts, def.grid)
+    elseif def.bg2 then
+        ok, err = bg2.eachBlock(def.bg2, function(x, y, z, material, meta)
+            return schema_utils.addBlock(schema, bounds, counts, x, y, z, material, meta)
+        end)
     else
         return nil, "unknown_definition"
     end
@@ -377,6 +383,9 @@ local function parseJsonContent(obj, opts)
     if type(obj) ~= "table" then
         return nil, "invalid_json_root"
     end
+    if bg2.isTemplate(obj) then
+        return { bg2 = obj.statePosArrayList }
+    end
     local legend = schema_utils.mergeLegend(opts and opts.legend or nil, obj.legend or nil)
     if obj.blocks then
         return {
@@ -471,7 +480,7 @@ function parser.parse(ctx, spec)
         if data then
             if data.layers then
                 format = "grid"
-            elseif data.blocks then
+            elseif data.blocks or bg2.isTemplate(data) then
                 format = "json"
             elseif data.grid or data.voxels then
                 format = "voxel"

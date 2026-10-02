@@ -222,6 +222,65 @@ local function run(ctxOverrides, ioOverrides)
         end, data.EXPECT_JSON)
     end)
 
+    -- Each placed block lands where BG2 would put it, with its blockstate in meta.
+    local function checkBg2Cells(schema)
+        local function at(x, y, z)
+            return schema[x] and schema[x][y] and schema[x][y][z]
+        end
+        local stairs, glass = at(0, 1, 0), at(2, 1, 1)
+        if not (stairs and stairs.material == "minecraft:oak_stairs") then
+            return false, "expected oak_stairs at 0,1,0"
+        end
+        if not (stairs.meta and stairs.meta.state and stairs.meta.state.facing == "north" and stairs.meta.state.half == "bottom") then
+            return false, "stairs lost their blockstate"
+        end
+        if not (glass and glass.material == "minecraft:glass") then
+            return false, "expected glass at 2,1,1"
+        end
+        if at(1, 1, 0) or at(0, 1, 1) then
+            return false, "air cells were placed"
+        end
+        return true
+    end
+
+    step("Sample BG2 Template", function()
+        local ok, err = executeParse(io, function()
+            return parser.parse(ctx, { text = data.SAMPLE_BG2, format = "json" })
+        end, data.EXPECT_BG2)
+        if not ok then
+            return false, err
+        end
+        return checkBg2Cells(ctx.schema)
+    end)
+
+    step("Sample BG2 Template, loose SNBT", function()
+        local ok, err = executeParse(io, function()
+            return parser.parseJson(ctx, data.SAMPLE_BG2_LOOSE)
+        end, data.EXPECT_BG2)
+        if not ok then
+            return false, err
+        end
+        ok, err = checkBg2Cells(ctx.schema)
+        if not ok then
+            return false, err
+        end
+        if ctx.schema[0][1][0].meta.state.note ~= "it's" then
+            return false, "escaped quote not read"
+        end
+        return true
+    end)
+
+    step("BG2 Template with a short statelist is refused", function()
+        local ok, err = parser.parseJson(ctx, data.SAMPLE_BG2_SHORT)
+        if ok then
+            return false, "parsed a statelist with fewer cells than the box"
+        end
+        if not tostring(err):find("bg2_statelist_size", 1, true) then
+            return false, "unexpected error " .. tostring(err)
+        end
+        return true
+    end)
+
     for _, sample in ipairs(data.FILE_SAMPLES) do
         step(sample.label, function()
             return runFileSample(io, ctx, sample)
