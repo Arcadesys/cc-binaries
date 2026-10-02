@@ -20,9 +20,24 @@ function M.items(state)
  return list
 end
 local KEYS_BACK={[keys.backspace]=true}
+-- Menu sounds: {seconds after the cue, instrument, volume, pitch}. A game launch is a single
+-- chord because the menu stops listening while the game has the screen.
+local CUES={
+ welcome={{0,'harp',1,12},{.12,'harp',1,16},{.24,'harp',1,19},{.36,'harp',1,24}},
+ left={{0,'hat',.5,14}},
+ right={{0,'hat',.5,20}},
+ choose={{0,'pling',.8,16},{.08,'pling',.8,21}},
+ back={{0,'hat',.5,8}},
+ launch={{0,'bell',1,12},{0,'bell',1,19},{0,'basedrum',1,10}},
+ bootOn={{0,'chime',1,19},{.1,'chime',1,24}},
+ bootOff={{0,'chime',.8,14},{.1,'chime',.8,9}},
+ denied={{0,'bass',1,6},{.12,'bass',1,3}},
+}
+M.cues=CUES
 -- opts: dir (install folder holding .get.json), target, args (as given to pinearcade),
 -- clock(), button(event,p1), launch(item,args) -> ok[, problem], pause(item) (waits after a
--- game stops, so its error can be read), setBoot(name|'off') -> ok
+-- game stops, so its error can be read), setBoot(name|'off') -> ok, sound (casino.sound's
+-- play(at,instrument,volume,pitch) and tick(now), timed by clock())
 function M.run(opts)
  local dir=opts.dir
  local state=readJSON(fs.combine(dir,STATE))
@@ -53,6 +68,12 @@ function M.run(opts)
   local ok=shell.run('/'..fs.combine(dir,'get.lua'),'boot',name,'--dir','/'..fs.combine(dir,''))
   term.redirect(old)
   return ok
+ end
+ local sound=opts.sound or require('casino.sound')()
+ local function cue(name)
+  local at=clock()
+  for _,n in ipairs(CUES[name]) do sound:play(at+n[1],n[2],n[3],n[4]) end
+  sound:tick(at)
  end
  local palette=require('casino.palette')
  local restore=require('derby.palette').save(t)
@@ -98,7 +119,8 @@ function M.run(opts)
    state=readJSON(fs.combine(dir,STATE)) or state
    local b=bootTitle()
    say(b and b..' NOW STARTS AT BOOT' or 'NOTHING STARTS AT BOOT NOW')
-  else say('COULD NOT CHANGE THE STARTUP') end
+   cue(b and 'bootOn' or 'bootOff')
+  else say('COULD NOT CHANGE THE STARTUP'); cue('denied') end
  end
  local function play(it)
   restore()
@@ -111,6 +133,7 @@ function M.run(opts)
     elseif a=='--monitor' then gameArgs[#gameArgs+1]=a; gameArgs[#gameArgs+1]=args[i+1] end
    end
   end
+  cue('launch')
   local ok,problem=launch(it,gameArgs)
   -- A failed run (a crash, or Ctrl+T) keeps its output up until a key is pressed.
   if not ok and not problem then pause(it) end
@@ -122,10 +145,10 @@ function M.run(opts)
  local function press(b)
   local it=item()
   if mode=='browse' then
-   if b=='LEFT' then index=index-1; spin=0
-   elseif b=='RIGHT' then index=index+1; spin=0
-   elseif b=='CENTER' then mode='card' end
-  elseif b=='LEFT' then mode='browse'
+   if b=='LEFT' then index=index-1; spin=0; cue('left')
+   elseif b=='RIGHT' then index=index+1; spin=0; cue('right')
+   elseif b=='CENTER' then mode='card'; cue('choose') end
+  elseif b=='LEFT' then mode='browse'; cue('back')
   elseif it.name=='boot' then
    changeBoot(b=='CENTER' and launcher() or 'off')
   elseif b=='CENTER' then play(it)
@@ -141,6 +164,7 @@ function M.run(opts)
  end
  local last=clock()
  local timer=os.startTimer(.05)
+ cue('welcome')
  local ok,err=pcall(function()
   while true do
    local e,p1,p2,p3=os.pullEventRaw()
@@ -152,6 +176,7 @@ function M.run(opts)
     if math.abs(index-1-pos)<.002 then pos=index-1 end
     zoom=zoom+((mode=='card' and 1 or 0)-zoom)*math.min(1,dt*8)
     spin=spin+dt*(mode=='card' and 2 or .8)
+    sound:tick(now)
     draw()
     timer=os.startTimer(.05)
    elseif e=='key' and KEYS_BACK[p1] and mode=='card' then b='LEFT'

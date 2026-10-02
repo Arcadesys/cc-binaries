@@ -22,6 +22,10 @@
      "size": 642
     },
     {
+     "path": "casino/sound.lua",
+     "size": 564
+    },
+    {
      "path": "casino/wallet.lua",
      "size": 5310
     },
@@ -79,7 +83,7 @@
     },
     {
      "path": "pinearcade/app.lua",
-     "size": 7492
+     "size": 8536
     },
     {
      "path": "pinearcade/emblems.lua",
@@ -410,12 +414,28 @@
    "description": "House-run 3D horse race: display, betting station or exhibition",
    "files": [
     {
+     "path": "casino/font.lua",
+     "size": 1708
+    },
+    {
+     "path": "casino/mesh.lua",
+     "size": 1551
+    },
+    {
+     "path": "casino/sound.lua",
+     "size": 564
+    },
+    {
      "path": "derby/app.lua",
-     "size": 3420
+     "size": 3496
+    },
+    {
+     "path": "derby/cage.lua",
+     "size": 8163
     },
     {
      "path": "derby/cashier.lua",
-     "size": 5673
+     "size": 6086
     },
     {
      "path": "derby/client.lua",
@@ -470,12 +490,16 @@
      "size": 9071
     },
     {
+     "path": "derby/sfx.lua",
+     "size": 2358
+    },
+    {
      "path": "derby/sim.lua",
      "size": 1763
     },
     {
      "path": "derby/station.lua",
-     "size": 3852
+     "size": 4131
     },
     {
      "path": "derby/store.lua",
@@ -514,12 +538,28 @@
    "description": "House host, station, cashier and display roles (house setup ...)",
    "files": [
     {
+     "path": "casino/font.lua",
+     "size": 1708
+    },
+    {
+     "path": "casino/mesh.lua",
+     "size": 1551
+    },
+    {
+     "path": "casino/sound.lua",
+     "size": 564
+    },
+    {
      "path": "derby/app.lua",
-     "size": 3420
+     "size": 3496
+    },
+    {
+     "path": "derby/cage.lua",
+     "size": 8163
     },
     {
      "path": "derby/cashier.lua",
-     "size": 5673
+     "size": 6086
     },
     {
      "path": "derby/client.lua",
@@ -570,12 +610,16 @@
      "size": 9071
     },
     {
+     "path": "derby/sfx.lua",
+     "size": 2358
+    },
+    {
      "path": "derby/sim.lua",
      "size": 1763
     },
     {
      "path": "derby/station.lua",
-     "size": 3852
+     "size": 4131
     },
     {
      "path": "derby/store.lua",
@@ -646,7 +690,7 @@
     },
     {
      "path": "pine-ball/lib/app.lua",
-     "size": 19932,
+     "size": 20952,
      "src": "computercraft_scripts/pine-ball/lib/app.lua"
     },
     {
@@ -678,6 +722,11 @@
      "path": "pine-ball/lib/roster.lua",
      "size": 1058,
      "src": "computercraft_scripts/pine-ball/lib/roster.lua"
+    },
+    {
+     "path": "pine-ball/lib/sound.lua",
+     "size": 2779,
+     "src": "computercraft_scripts/pine-ball/lib/sound.lua"
     },
     {
      "path": "pine-ball/lib/stadium.lua",
@@ -719,7 +768,7 @@
     },
     {
      "path": "pine-links/lib/app.lua",
-     "size": 11566,
+     "size": 12245,
      "src": "computercraft_scripts/pine-links/lib/app.lua"
     },
     {
@@ -756,6 +805,11 @@
      "path": "pine-links/lib/rules.lua",
      "size": 1640,
      "src": "computercraft_scripts/pine-links/lib/rules.lua"
+    },
+    {
+     "path": "pine-links/lib/sound.lua",
+     "size": 2026,
+     "src": "computercraft_scripts/pine-links/lib/sound.lua"
     },
     {
      "path": "pine-links/lib/ui.lua",
@@ -797,7 +851,7 @@
     },
     {
      "path": "pine-lanes/lib/app.lua",
-     "size": 12199,
+     "size": 13581,
      "src": "computercraft_scripts/pine-lanes/lib/app.lua"
     },
     {
@@ -841,6 +895,11 @@
      "src": "computercraft_scripts/pine-lanes/lib/rules.lua"
     },
     {
+     "path": "pine-lanes/lib/sound.lua",
+     "size": 2216,
+     "src": "computercraft_scripts/pine-lanes/lib/sound.lua"
+    },
+    {
      "path": "pine-lanes/lib/ui.lua",
      "size": 10784,
      "src": "computercraft_scripts/pine-lanes/lib/ui.lua"
@@ -875,7 +934,7 @@
     },
     {
      "path": "pine-dungeon/lib/app.lua",
-     "size": 4192,
+     "size": 6090,
      "src": "computercraft_scripts/pine-dungeon/lib/app.lua"
     },
     {
@@ -887,6 +946,11 @@
      "path": "pine-dungeon/lib/render.lua",
      "size": 8413,
      "src": "computercraft_scripts/pine-dungeon/lib/render.lua"
+    },
+    {
+     "path": "pine-dungeon/lib/sound.lua",
+     "size": 2604,
+     "src": "computercraft_scripts/pine-dungeon/lib/sound.lua"
     },
     {
      "path": "pine-dungeon/lib/ui.lua",
@@ -928,7 +992,7 @@
     },
     {
      "path": "pine-face/lib/app.lua",
-     "size": 5599,
+     "size": 7217,
      "src": "computercraft_scripts/pine-face/lib/app.lua"
     },
     {
@@ -950,6 +1014,11 @@
      "path": "pine-face/lib/render.lua",
      "size": 6981,
      "src": "computercraft_scripts/pine-face/lib/render.lua"
+    },
+    {
+     "path": "pine-face/lib/sound.lua",
+     "size": 2098,
+     "src": "computercraft_scripts/pine-face/lib/sound.lua"
     },
     {
      "path": "pine-face/lib/ui.lua",

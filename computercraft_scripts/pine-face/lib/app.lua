@@ -8,7 +8,8 @@ local function myName()
 end
 function App.new(options)
   options=options or {}
-  local self=setmetatable({options=options,running=true,overlay=nil,input=input.new()},App)
+  local self=setmetatable({options=options,running=true,overlay=nil,input=input.new(),
+    sound=options.sound or require("lib.sound").new()},App)
   local rn=options.rednet or rednet
   if options.join~=nil then
     self.session=net.client({rn=rn,name=myName(),hostId=type(options.join)~="boolean" and tonumber(options.join) or nil,find=options.find,now=options.now})
@@ -21,6 +22,35 @@ function App.new(options)
 end
 function App:view()
   local v=self.session:view();v.overlay=self.overlay;return v
+end
+-- Sound is read off the world's per-tick events from this seat's point of view: your own
+-- shots, hits and tags are loud, everyone else's are faint. A snapshot resent while the
+-- game is idle repeats the last tick's events, so each tick sounds once.
+function App:hearEvents()
+  local s=self.session;local state=s.state
+  if not state or state.tick==self.heardTick then return end
+  self.heardTick=state.tick
+  local me,tagged=s.mySeat,{}
+  for _,e in ipairs(state.events or {}) do if e.kind=="tag" then tagged[e.seat]=true end end
+  for _,e in ipairs(state.events or {}) do
+    local cue
+    if e.kind=="fire" then cue=e.seat==me and "fire" or "fire_far"
+    elseif e.kind=="hit" then
+      if not tagged[e.seat] then cue=e.seat==me and "hit" or e.by==me and "hitmark" or nil end
+    elseif e.kind=="block" then cue=(e.seat==me or e.by==me) and "block" or nil
+    elseif e.kind=="tag" then cue=e.by==me and "tag" or e.seat==me and "tagged" or "tag_far"
+    elseif e.kind=="spawn" then cue=e.seat==me and "spawn" or nil end
+    if cue then self.sound:play(cue) end
+  end
+end
+function App:hearPhase()
+  local s=self.session
+  if s.phase==self.heardPhase then return end
+  local was=self.heardPhase;self.heardPhase=s.phase
+  if s.phase=="play" then self.heardTick=nil;self.sound:play("start")
+  elseif s.phase=="over" and was=="play" then
+    self.sound:play(s.state and s.state.winner==s.mySeat and "win" or "lose")
+  end
 end
 function App:emit(kind,data)
   if self.options.record then self.options.record(kind,data,self) end
@@ -35,7 +65,7 @@ function App:command(cmd)
   end
   if cmd=="resume" then self.overlay=nil;return true end
   if cmd=="start" and s.role=="host" and (s.phase=="lobby" or s.phase=="over") then
-    self.overlay=nil;s:start();self:emit("start");return true
+    self.overlay=nil;s:start();self:emit("start");self:hearPhase();return true
   end
   if cmd=="retry" and s.role=="client" and s.phase=="lost" then s:join();return true end
   return false
@@ -53,19 +83,21 @@ function App:update(now)
     self.last=self.last+TICK;steps=steps+1
     local before=s.phase
     if s.role=="host" then
-      if s:tick(self:mask()) then changed=true;self:emit("tick",s.state) end
+      if s:tick(self:mask()) then changed=true;self:emit("tick",s.state);self:hearEvents() end
     elseif s:tick(self:mask()) then changed=true end
     self.input:decay()
     if s.phase~=before then changed=true end
   end
   if now-self.last>=TICK*3 then self.last=now end -- fell behind: drop time rather than spiral
+  self:hearPhase()
   return changed
 end
 function App:handle(event)
   local kind=event[1]
   if kind=="rednet_message" then
     local r=self.session:handle(event[2],event[3],event[4])
-    if r=="snap" then self:emit("snap",self.session.snap) end
+    if r=="snap" then self:emit("snap",self.session.snap);self:hearEvents() end
+    self:hearPhase()
     return r and true or false
   end
   local result=self.input:event(event,self.buttons,self.monitorName)
@@ -120,10 +152,11 @@ function App.run(options)
         local w,h=target.getSize()
         if w~=width or h~=height then rebuild();dirty=true end
         if app:update(os.epoch("utc")) then dirty=true end
+        app.sound:tick()
         -- Draw at most once per timer so a burst of snapshots never backs up the queue.
         if dirty and app.running then draw();dirty=false end
         timer=os.startTimer(.05)
-      elseif app:handle(event) then dirty=true end
+      elseif app:handle(event) then dirty=true; app.sound:tick() end
     end
   end,debug.traceback)
   pcall(function() app.session:close() end)

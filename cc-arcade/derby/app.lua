@@ -5,6 +5,7 @@ function M.display(client,t,demo,verify)
  local snapshot={phase='CONNECTING',positions={0,0,0},order={}}
  local race=demo and sim.new(1977); local tick=0
  local nextStep=os.epoch('utc'); local started=nextStep; local frames=0
+ local sfx=require('derby.sfx').new()
  local timer=os.startTimer(.05)
  while true do
   local e,a,b,c=os.pullEvent()
@@ -25,6 +26,7 @@ function M.display(client,t,demo,verify)
     local r=client:read({op='snapshot'})
     snapshot=r.ok and r or {phase='HOUSE OFFLINE',positions=snapshot.positions,order={},paused=true}
    end
+   sfx:hear(snapshot,os.epoch('utc'))
    render:draw(snapshot,camera,demo); frames=frames+1; timer=os.startTimer(.05)
   elseif e=='key' then
    if a==keys.q or a==keys.backspace then return

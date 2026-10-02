@@ -16,10 +16,12 @@ function App.new(options)
   local self=setmetatable({options=options,phase='SETUP',playerCount=1,selected='position',fine=false,camera='lane',scorePlayer=1,
     running=true,deliveryId=0,lastInput='Ready',message='Choose 1-4 players, then START.',
     seed=math.floor(tonumber(options.seed) or (os.epoch and os.epoch('utc') or os.time()) % 1000000)},App)
+  self.sound=options.sound or require('lib.sound').new()
   self:resetMatch(1)
   if options.diagnostic then self.phase='AIM'; self.message='X+ down lane | Y+ up | Z+ right' end
   return self
 end
+function App:cue(name,offsetMs) self.sound:play(name,offsetMs) end
 function App:emit(kind,data)
   if self.options.record then self.options.record(kind,data,self) end
 end
@@ -59,6 +61,15 @@ function App:roll()
   self.skipRequested=false; self.sim=sim; self.phase='SIMULATE'; self.message='Preparing roll...'
   self:emit('release',shot)
 end
+-- Pins and gutters are heard as they happen in playback; the result adds the verdict.
+function App:cueResult(result)
+  local rolls=self.match.players[self.beforeRoll.player].rolls[self.beforeRoll.frame]
+  local n=#rolls
+  if rolls[n]==10 then self:cue('strike')
+  elseif n>=2 and rolls[n-1]<10 and rolls[n-1]+rolls[n]==10 then self:cue('spare')
+  elseif result.kind=='gutter' then self:cue('gutter')
+  elseif #result.knocked==0 then self:cue('miss') end
+end
 function App:resolve()
   if not self.sim then return end
   local result=self.sim.result
@@ -70,6 +81,7 @@ function App:resolve()
     self.rollSummary=copy(self.beforeRoll)
     self.rollSummary.count=#result.knocked; self.rollSummary.knocked=copy(result.knocked)
     self.phase='RESULT'
+    self:cueResult(result)
     local label=#result.knocked>0 and (#result.knocked..' pins') or ({gutter='gutter ball',short='short of the pins',miss='clean miss'})[result.kind] or '0 pins'
     self.message=string.format('Player %d: %s. CONTINUE when ready.',self.beforeRoll.player,label)
     self:emit('resolved',result)
@@ -98,7 +110,7 @@ function App:action(action)
   end
   if action=='start' and (self.phase=='HELP' or self.phase=='PAUSED') then self:resume(); return end
   if action=='restart' and (self.phase=='PAUSED' or self.phase=='HELP' or self.phase=='FINAL') then
-    self:resetMatch(self.playerCount); self.phase='AIM'; self.message='New match. Player 1 bowls.'; self:emit('restart'); return
+    self:resetMatch(self.playerCount); self.phase='AIM'; self.message='New match. Player 1 bowls.'; self:cue('start'); self:emit('restart'); return
   end
   if self.phase=='HELP' or self.phase=='PAUSED' then return end
   if action=='view' then self.camera=({lane='deck',deck='score',score='lane'})[self.camera]; self.scorePlayer=self.match.currentPlayer; return end
@@ -107,23 +119,24 @@ function App:action(action)
     self.scorePlayer=((self.scorePlayer-1+(action=='select_next' and 1 or -1))%self.playerCount)+1; return
   end
   if self.phase=='SETUP' then
-    if action=='players_up' or action=='adjust_up' then self:resetMatch(math.min(4,self.playerCount+1))
-    elseif action=='players_down' or action=='adjust_down' then self:resetMatch(math.max(1,self.playerCount-1))
+    if action=='players_up' or action=='adjust_up' then self:resetMatch(math.min(4,self.playerCount+1)); self:cue('tick')
+    elseif action=='players_down' or action=='adjust_down' then self:resetMatch(math.max(1,self.playerCount-1)); self:cue('tick')
     elseif action=='start' then self.phase='MASCOTS'; self.mascotPlayer=1; self.message='Player 1: choose a mascot.' end
     return
   end
   if self.phase=='MASCOTS' then
-    if action=='mascot_prev' or action=='adjust_down' then self.playerMascots[self.mascotPlayer]=(self.playerMascots[self.mascotPlayer]-2)%#mascots.list+1
-    elseif action=='mascot_next' or action=='adjust_up' then self.playerMascots[self.mascotPlayer]=self.playerMascots[self.mascotPlayer]%#mascots.list+1
+    if action=='mascot_prev' or action=='adjust_down' then self.playerMascots[self.mascotPlayer]=(self.playerMascots[self.mascotPlayer]-2)%#mascots.list+1; self:cue('tick')
+    elseif action=='mascot_next' or action=='adjust_up' then self.playerMascots[self.mascotPlayer]=self.playerMascots[self.mascotPlayer]%#mascots.list+1; self:cue('tick')
     elseif action=='mascot_confirm' or action=='start' then
       if self.mascotPlayer<self.playerCount then self.mascotPlayer=self.mascotPlayer+1; self.message='Player '..self.mascotPlayer..': choose a mascot.'
-      else self.phase='AIM'; self.message='Player 1: position, aim, power, hook; ROLL.' end
+      else self.phase='AIM'; self.message='Player 1: position, aim, power, hook; ROLL.'; self:cue('start') end
     end
     return
   end
   if self.phase=='RESULT' and action=='continue' then
     self.displaySnapshot=nil; self.rollSummary=nil; self.scorePlayer=self.match.currentPlayer
     self.phase=self.match.complete and 'FINAL' or 'AIM'
+    if self.match.complete then self:cue('final') end
     self.message=self.match.complete and 'Match complete.' or ('Player '..self.match.currentPlayer..' bowls next.')
     return
   end
@@ -134,13 +147,21 @@ function App:action(action)
   if self.phase~='AIM' then return end
   if action=='roll' then self:roll(); return end
   if action=='fine' then self.fine=not self.fine; return end
-  for _,p in ipairs(parameters) do if action=='select_'..p then self.selected=p; return end end
+  for _,p in ipairs(parameters) do if action=='select_'..p then self.selected=p; self:cue('tick'); return end end
   if action=='select_prev' or action=='select_next' then
-    for i,p in ipairs(parameters) do if self.selected==p then self.selected=parameters[((i-1+(action=='select_next' and 1 or -1))%4)+1]; return end end
+    for i,p in ipairs(parameters) do if self.selected==p then self.selected=parameters[((i-1+(action=='select_next' and 1 or -1))%4)+1]; self:cue('tick'); return end end
   elseif action=='adjust_up' or action=='adjust_down' then
     local p=self.selected; local bounds=limits[p]; local s=self:currentSettings()
     s[p]=math.max(bounds[1],math.min(bounds[2],s[p]+bounds[self.fine and 4 or 3]*(action=='adjust_up' and 1 or -1)))
+    self:cue('tick')
   end
+end
+-- First pin contact crashes, later toppling clacks; the ball dropping into a gutter rumbles once.
+function App:cuePlayback(p,snap)
+  local down=0
+  for _,pin in ipairs(snap.pins or {}) do if pin.down or (pin.tilt or 0)>0.2 then down=down+1 end end
+  if down>p.down then self:cue(p.down==0 and 'crash' or 'clack'); p.down=down end
+  if snap.ball and snap.ball.gutter and not p.gutter then p.gutter=true; self:cue('gutter') end
 end
 function App:tick(dt)
   if self.phase=='SIMULATE' then
@@ -148,13 +169,14 @@ function App:tick(dt)
     if done then
       if not self.sim.result or self.sim.result.status~='ok' then self:resolve()
       elseif self.skipRequested then self.displaySnapshot=self.sim.trajectory[#self.sim.trajectory];self:resolve()
-      else self.phase='PLAYBACK'; self.playback={elapsed=0,index=1}; self.displaySnapshot=self.sim.trajectory[1]; self.message='Rolling... S / SKIP jumps to result.' end
+      else self.phase='PLAYBACK'; self.playback={elapsed=0,index=1,down=0,gutter=false}; self.displaySnapshot=self.sim.trajectory[1]; self.message='Rolling... S / SKIP jumps to result.'; self:cue('release') end
     end
   elseif self.phase=='PLAYBACK' then
     local p=self.playback; p.elapsed=p.elapsed+dt
     local samples=self.sim.trajectory
     while p.index<#samples and samples[p.index+1].t<=p.elapsed do p.index=p.index+1 end
     self.displaySnapshot=samples[p.index]
+    self:cuePlayback(p,self.displaySnapshot)
     if p.index>=#samples then self:resolve() end
   end
 end
@@ -195,11 +217,11 @@ function App.run(options)
           -- The monitor vanished before its detach event arrived; fall back the same way.
           target=original;monitorName=nil;app:pause('Monitor detached. Resume here.');rebuild();changed=true
         elseif w~=width or h~=height then app:pause('Display resized. Resume when ready.');rebuild();changed=true
-        else local phase=app.phase;app:tick(.1);changed=phase=='SIMULATE' or phase=='PLAYBACK' end
+        else local phase=app.phase;app:tick(.1);app.sound:tick();changed=phase=='SIMULATE' or phase=='PLAYBACK' end
         timer=os.startTimer(.1)
       else
         local action=input.action(event,renderer.buttons or {},monitorName)
-        if action then app:action(action);changed=true end
+        if action then app:action(action);app.sound:tick();changed=true end
       end
       if app.running and changed then draw() end
     end

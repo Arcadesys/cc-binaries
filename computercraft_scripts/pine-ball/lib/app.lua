@@ -19,12 +19,15 @@ function App.new(options)
   local self = setmetatable({options = options, running = true, mode = options.mode or "cpu",
     innings = options.innings or bb.DEFAULT_INNINGS, phase = "SETUP", clock = 0, held = {},
     message = "Choose CPU or 2-player duel, then START.", lastInput = "Ready"}, App)
+  self.sound = options.sound or require("lib.sound").new()
   self.seed = math.floor(tonumber(options.seed) or ((os.epoch and os.epoch("utc") or os.time()) % 1000000))
   self:newGame()
   return self
 end
 
 function App:emit(kind, data) if self.options.record then self.options.record(kind, data, self) end end
+
+function App:cue(name, offsetMs) self.sound:play(name, offsetMs) end
 
 function App:newGame()
   self.state = bb.createGame({light = roster.light, dark = roster.dark}, self.innings)
@@ -57,6 +60,7 @@ end
 function App:start()
   self:newGame()
   self.phase = "INTRO"; self.deadline = self.clock + plays.INTRO_MS
+  self:cue("playball")
   self.message = "PLAY BALL! " .. self:batter().name .. " leads off."
   self:emit("start", {mode = self.mode, seed = self.seed})
 end
@@ -90,6 +94,7 @@ function App:captureSwing(at, aim)
   self.swing = {inputAt = at, offset = offset, aim = aim, tier = contact and tier or nil, event = event,
     location = p.pitch.location, visibleContactAt = contact and math.max(p.arrivesAt, at) or at + bb.SWING_DRIVE_MS,
     holdMs = contact and IMPACT_HOLD_MS[tier] or 0, batterId = batter.id}
+  self:cue("swing")
   self:emit("swing", {offset = offset, aim = aim, event = event})
 end
 
@@ -113,8 +118,24 @@ function App:commit(t, info)
     end
   end
   self.state = t.state
+  self:cueResult(t.callouts, runs)
   if label then self.flash = {label = label, big = big, detail = detail} end
   self:emit("commit", {callouts = t.callouts, runs = runs, label = label, detail = detail})
+end
+
+-- One sound per result, chosen in the same priority order as the headline.
+local RESULT_CUES = {{"WALK_OFF", "homerun"}, {"ERROR", "error"}, {"HOME_RUN", "homerun"}, {"TRIPLE", "triple"},
+  {"DOUBLE", "double"}, {"SINGLE", "single"}, {"STRIKEOUT", "strikeout"}, {"WALK", "walk"}, {"FORCE_OUT", "out"},
+  {"OUT", "out"}, {"STRIKE", "strike"}, {"BALL", "ball"}}
+function App:cueResult(callouts, runs)
+  local set = {}
+  for _, c in ipairs(callouts) do set[c] = true end
+  local scoring
+  for _, r in ipairs(RESULT_CUES) do
+    if set[r[1]] then scoring = r[2]; break end
+  end
+  if scoring then self:cue(scoring) end
+  if runs > 0 and scoring ~= "homerun" then self:cue("run", 350) end
 end
 
 function App:presentEvent(event)
@@ -143,6 +164,7 @@ function App:afterEvent()
     self.phase = "FINAL"
     local s = self.state.score
     self.message = (s.light > s.dark and "LIGHT" or "DARK") .. " WINS " .. math.max(s.light, s.dark) .. "-" .. math.min(s.light, s.dark) .. "! SPACE plays again."
+    self:cue("final")
     self:emit("final", {score = s})
   else self:nextPitch() end
 end
@@ -152,12 +174,12 @@ function App:update()
   if self.phase == "INTRO" then
     if now >= self.deadline then self:nextPitch() end
   elseif self.phase == "WINDUP" then
-    if now >= self.deadline then self.phase = "PITCH" end
+    if now >= self.deadline then self.phase = "PITCH"; self:cue("pitch") end
   elseif self.phase == "PITCH" then
     local s = self.swing
     if s and now >= s.visibleContactAt then
       if s.tier then
-        self.phase = "CONTACT"; self.launchAt = now + s.holdMs
+        self.phase = "CONTACT"; self.launchAt = now + s.holdMs; self:cue("hit_" .. s.tier)
       elseif now >= math.max(p.arrivesAt + bb.CONTACT_WINDOW_MS, s.inputAt + bb.SWING_DURATION_MS) then
         self:presentEvent(s.event)
       end
@@ -167,7 +189,7 @@ function App:update()
   end
   if self.phase == "CONTACT" and now >= self.launchAt then
     if self.swing.event.kind == "FOUL" then
-      self.phase = "FOUL"; self.foulStart = self.launchAt
+      self.phase = "FOUL"; self.foulStart = self.launchAt; self:cue("foul")
     else self:beginInPlay(self.swing.event.result, self.launchAt) end
   end
   if self.phase == "FOUL" and now >= self.foulStart + plays.FOUL_FLIGHT_MS then
@@ -375,14 +397,14 @@ function App.run(options)
         local w, h = target.getSize()
         if monitorName and not w then target = original; monitorName = nil; app:pause("Monitor detached. Resume here."); rebuild()
         elseif w ~= width or h ~= height then app:pause("Display resized. Resume when ready."); rebuild() end
-        tick()
+        tick(); app.sound:tick()
         -- Fast frames while the ball is live; a slower idle cadence otherwise.
         local live = app.phase == "WINDUP" or app.phase == "PITCH" or app.phase == "CONTACT" or app.phase == "FOUL" or app.phase == "IN_PLAY"
         timer = os.startTimer(live and 0.05 or 0.1)
       else
         -- Advance the clock to this exact event before acting, so swing timing uses the press time.
         local action = input.action(event, renderer.buttons or {}, monitorName)
-        if action then tick(); app:action(action) end
+        if action then tick(); app:action(action); app.sound:tick() end
       end
       if app.running then draw() end
     end
