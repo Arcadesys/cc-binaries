@@ -1,30 +1,34 @@
 local ui=require('derby.ui')
 local M={}
+local slots=require('derby.cage').slots
 function M.run(client,t)
  local amounts={5,10,20,64}; local index=1; local status=''; local review
- local card,balance
+ local card,balance,anim
+ local cage
  local function refresh()
   card=ui.card(); balance=nil
   if card and card.account then local r=client:read({op='lookup',account=card.account}); balance=r.ok and r.balance or nil; if not r.ok then status=r.error end end
  end
  local function draw()
   if not ui.usable(t) then return end
-  ui.clear(t,'DIAMOND CASHIER')
-  ui.line(t,3,' 1 diamond = 1 credit',colors.yellow)
-  ui.line(t,5,' '..(card and (card.account or 'New card - issue an account') or 'Insert a floppy disk'))
-  ui.line(t,6,' Balance: '..tostring(balance or 'UNAVAILABLE'))
-  if review then
-   ui.line(t,8,' '..review.op:upper()..' '..review.amount..' DIAMONDS',colors.yellow)
-   ui.button(t,10,'ENTER: CONFIRM',true,false)
-   ui.line(t,14,' Backspace: cancel')
-  else
-   ui.line(t,8,' Amount: '..amounts[index]..'  [Left/Right]',colors.yellow)
-   ui.button(t,9,'[D] DEPOSIT from intake chest',false,false)
-   ui.button(t,12,'[W] WITHDRAW to output chest',false,false)
-   ui.line(t,16,' [N] Issue new card | [R] Retry request')
+  cage=cage or require('derby.cage').new(t)
+  local now=os.epoch('utc')/1000
+  local dx,hide=0,false
+  if anim then
+   local u=(now-anim.t0)/anim.dur
+   if u>=1 then anim=nil
+   else dx=(anim.op=='deposit' and u or 1-u)*7.5; hide=anim.op=='deposit' and u>.85 end
   end
-  ui.line(t,18,' [Q] Exit | Empty output after withdrawal')
-  local _,h=t.getSize(); ui.line(t,h,' '..status,colors.yellow)
+  local v={balance=balance,count=review and review.amount or amounts[index],dx=dx,hidePile=hide,status=status,
+   info=(card and (card.account or 'New card: issue an account') or 'Insert a floppy disk')..'  |  Balance: '..tostring(balance or 'UNAVAILABLE')}
+  if review then
+   v.prompt=review.op:upper()..' '..review.amount..' DIAMONDS?'; v.hint='Enter: confirm  Backspace: cancel'
+   v.options={'CONFIRM','','CANCEL'}
+  else
+   v.prompt='Amount: '..amounts[index]..'  [Left/Right]'; v.hint='[N] New card  [R] Retry  [Q] Exit'
+   v.options={'DEPOSIT',tostring(amounts[index]),'WITHDRAW'}
+  end
+  cage:draw(v)
  end
  local function create()
   if not ui.usable(t) then return end
@@ -53,12 +57,13 @@ function M.run(client,t)
   if not current or current.account~=review.account then status='Card changed. Transfer not sent.'; review=nil; return end
   local r=client:mutate(review)
   status=r.ok and ('Transferred '..tostring(r.moved or 0)..' diamonds') or r.error
+  if r.ok and (r.moved or 1)>0 then anim={op=review.op,t0=os.epoch('utc')/1000,dur=.9} end
   review=nil; refresh()
  end
- refresh(); draw(); local timer=os.startTimer(1)
+ refresh(); draw(); local timer=os.startTimer(.1); local ticks=0
  while true do
   local e,a,b,c=os.pullEvent()
-  if e=='timer' and a==timer then refresh(); timer=os.startTimer(1)
+  if e=='timer' and a==timer then ticks=ticks+1; if ticks%10==0 then refresh() end; timer=os.startTimer(.1)
   elseif e=='key' then
    if a==keys.q then return elseif a==keys.backspace then review=nil
    elseif a==keys.enter then confirm()
@@ -68,9 +73,11 @@ function M.run(client,t)
     elseif a==keys.n then create() elseif a==keys.d then choose('deposit') elseif a==keys.w then choose('withdraw') end
    end
   elseif e=='monitor_touch' or e=='mouse_click' then
-   if review and c>=10 and c<=12 then confirm()
-   elseif not review then
-    if c==8 then index=index%#amounts+1 elseif c>=9 and c<=11 then choose('deposit') elseif c>=12 and c<=14 then choose('withdraw') end
+   local w,h=t.getSize()
+   if c>=h-1 then
+    local slot; for i,s in ipairs(slots(w)) do if b>=s.x1 and b<=s.x2 then slot=i end end
+    if review then if slot==1 then confirm() elseif slot==3 then review=nil end
+    elseif slot==1 then choose('deposit') elseif slot==2 then index=index%#amounts+1 elseif slot==3 then choose('withdraw') end
    end
   end
   draw()
