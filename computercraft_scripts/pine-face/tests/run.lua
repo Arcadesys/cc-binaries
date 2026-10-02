@@ -248,5 +248,6 @@ do
   end
 end
 print("bot match: "..m.tick.." ticks, "..shots.." shots, winner P"..m.winner.." scores "..table.concat(scores,","))
+check(require("tests.sound")==true,"sound cues")
 print("PASS Pine Face arena, movement, bullets, tags, respawn, snapshot, bot match, net, input, render, event loop")
 return true

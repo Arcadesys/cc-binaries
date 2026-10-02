@@ -6,6 +6,8 @@ function M.run(client,t)
  local stakes={5,10,20}; local status=''; local review
  local snapshot={}; local account,balance,card
  local timer=os.startTimer(0)
+ local sfx=require('derby.sfx').new()
+ local tone=os.startTimer(.1)
  local function refresh()
   card=ui.card(); account=card and card.account
   local r=client:read({op='snapshot',account=account})
@@ -42,7 +44,7 @@ function M.run(client,t)
    local now=ui.card()
    if not now or now.account~=review.account then status='Card changed. Bet not sent.'; review=nil; return end
    local r=client:mutate({op='bet',account=review.account,race=review.race,horse=review.horse,stake=review.stake})
-   status=r.ok and 'Ticket accepted. Winnings reach your account.' or r.error; review=nil; refresh()
+   status=r.ok and 'Ticket accepted. Winnings reach your account.' or r.error; review=nil; sfx:ticket(r.ok,os.epoch('utc')); refresh()
   elseif focus<=3 then horse=focus
   elseif focus==4 then stakeIndex=stakeIndex%3+1
   elseif snapshot.ok and snapshot.phase=='OPEN' and not snapshot.paused and account and balance and not snapshot.ticket then
@@ -53,14 +55,18 @@ function M.run(client,t)
  while true do
   local e,a,b,c=os.pullEvent()
   if e=='timer' and a==timer then refresh(); timer=os.startTimer(1)
+  elseif e=='timer' and a==tone then sfx:tick(os.epoch('utc')); tone=os.startTimer(.1)
   elseif e=='key' then
    if a==keys.q then return
    elseif a==keys.r then local r=client:retry(); status=r.ok and 'Request acknowledged' or r.error; refresh()
    elseif a==keys.backspace then review=nil
    elseif a==keys.enter then activate()
    elseif not review then
+    local moved=true
     if a==keys.tab or a==keys.down then focus=focus%5+1 elseif a==keys.up then focus=(focus-2)%5+1
-    elseif a==keys.left then stakeIndex=(stakeIndex-2)%3+1 elseif a==keys.right then stakeIndex=stakeIndex%3+1 end
+    elseif a==keys.left then stakeIndex=(stakeIndex-2)%3+1 elseif a==keys.right then stakeIndex=stakeIndex%3+1
+    else moved=false end
+    if moved then sfx:move(os.epoch('utc')) end
    end
   elseif e=='monitor_touch' or e=='mouse_click' then
    local y=c

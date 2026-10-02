@@ -1,14 +1,47 @@
 local world=require("lib.world")
 local App={};App.__index=App
 function App.new(options)
+  options=options or {}
   return setmetatable({state=world.new(),overlay=nil,map=false,running=true,
-    options=options or {},small=false},App)
+    options=options,small=false,sound=options.sound or require("lib.sound").new()},App)
 end
 function App:view()
   return {state=self.state,overlay=self.overlay,map=self.map}
 end
 function App:emit(kind,data)
   if self.options.record then self.options.record(kind,data,self) end
+end
+local function snapshot(state)
+  local foes=0
+  for _,m in ipairs(state.monsters) do if m.hp>0 then foes=foes+m.hp end end
+  local p=state.player
+  return {x=p.x,z=p.z,hp=p.hp,potions=p.potions,gold=p.gold,floor=state.floor,
+    kills=state.kills,foes=foes}
+end
+-- The world is pure, so sound is read off what a turn changed. The player's own result
+-- sounds at once; the monsters' reply (damage, Warden telegraphs) lands just after.
+function App:hear(before,action,consumed)
+  local state,sound=self.state,self.sound
+  local now=snapshot(state)
+  if now.floor~=before.floor then sound:play("descend")
+  elseif state.phase=="won" then sound:play("win")
+  elseif not consumed then sound:play("blocked")
+  elseif now.kills>before.kills then sound:play(state.message:find("Warden falls",1,true) and "champion" or "kill")
+  elseif now.foes<before.foes then sound:play("hit")
+  elseif action=="attack" then sound:play("whiff")
+  elseif action=="turn_left" or action=="turn_right" then sound:play("turn")
+  elseif now.hp>before.hp and now.potions<before.potions then sound:play("heal")
+  elseif now.x~=before.x or now.z~=before.z then
+    sound:play("step")
+    if now.gold>before.gold then sound:play("coin",120) elseif now.potions>before.potions then sound:play("steak",120) end
+  end
+  if now.floor~=before.floor or not consumed then return end
+  local message=state.message
+  if message:find("SONIC BOOM",1,true) then sound:play("boom",180)
+  elseif now.hp<before.hp then sound:play("hurt",180) end
+  if message:find("CHARGES",1,true) then sound:play("warn",360) end
+  if message:find("roars",1,true) then sound:play("roar",360) end
+  if state.phase=="lost" then sound:play("lose",600) end
 end
 function App:action(action)
   if not action then return false end
@@ -17,6 +50,7 @@ function App:action(action)
   if action=="new" then
     if self.overlay or self.state.phase~="play" then
       self.state=world.new();self.overlay=nil;self.map=false;self:emit("new")
+      self.sound:play("start")
       return true
     end
     return false
@@ -35,7 +69,9 @@ function App:action(action)
   end
   if self.overlay or self.state.phase~="play" then return false end
   if action=="map" then self.map=not self.map;return true end
+  local before=snapshot(self.state)
   local consumed=world.act(self.state,action)
+  self:hear(before,action,consumed)
   if consumed then self:emit("turn",{action=action,turn=self.state.turn,
     floor=self.state.floor,hp=self.state.player.hp,phase=self.state.phase}) end
   return consumed or true -- show blocked moves and no-potion feedback
@@ -85,10 +121,10 @@ function App.run(options)
           app.overlay="menu";app.state.message="Display resized. RESUME when ready."
           rebuild();changed=true
         end
-        timer=os.startTimer(.25)
+        app.sound:tick();timer=os.startTimer(.25)
       else
         local action=input.action(event,renderer.buttons,monitorName)
-        if action then changed=app:action(action) end
+        if action then changed=app:action(action);app.sound:tick() end
       end
       if app.running and changed then draw() end
     end

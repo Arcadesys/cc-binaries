@@ -196,5 +196,6 @@ for _,size in ipairs({{39,19},{51,19}}) do
   check(#painter.buttons>=11,"visible actions at "..size[1])
   painter:close();term.redirect(old)
 end
+check(require("tests.sound")==true,"sound cues")
 print("PASS Pine Dungeon maps, combat, loot, stairs, input, state, 39x19 and 51x19 Pine3D")
 return true

@@ -18,9 +18,12 @@ function App.new(options)
   local self = setmetatable({options = options or {}, phase = 'TITLE', fine = false, camera = 'tee',
     shotId = 0, running = true, lastInput = 'Ready', fps = 0, mascot = 1,
     message = course.hole.club .. ' | ' .. course.hole.name}, App)
+  self.sound = self.options.sound or require('lib.sound').new()
   self:reset()
   return self
 end
+
+function App:cue(name, offsetMs) self.sound:play(name, offsetMs) end
 
 function App:emit(kind, data)
   if self.options.record then self.options.record(kind, data, self) end
@@ -37,6 +40,7 @@ function App:restart()
   self:reset()
   self.phase = 'AIM'
   self.message = 'Par 3, ' .. string.format('%.1f', course.hole.length) .. ' m. Choose club, aim, power; SWING.'
+  self:cue('start')
   self:emit('restart')
 end
 
@@ -70,10 +74,17 @@ function App:resolve()
   local result = self.sim.result
   local ok, err = rules.apply(self.round, self.shotId, result)
   self:emit('resolved', {outcome = result.outcome, surface = result.surface, carry = result.carry, ok = ok})
+  local putting = self:shot().club == 'putter'
   self.displayBall = nil; self.playback = nil; self.sim = nil
   if not ok then self.phase = 'AIM'; self.message = 'Shot cancelled: ' .. tostring(err); return end
   local s = self:state()
   self.message = s.message
+  if result.outcome == 'holed' then
+    self:cue('cup'); self:cue(s.strokes <= course.hole.par and 'cheer' or 'finish', 450)
+  elseif result.outcome == 'ob' then self:cue('ob')
+  elseif result.surface == 'sand' then self:cue('sand')
+  elseif result.surface == 'green' then if not putting then self:cue('green') end
+  else self:cue('land') end
   if s.phase == 'finished' then
     self.phase = 'SCORECARD'
     return
@@ -91,6 +102,7 @@ function App:swing()
   self.shotId = self.shotId + 1
   self.sim = sim; self.phase = 'SIMULATE'; self.skipPlayback = false
   self.message = self:shot().club == 'putter' and 'Putting...' or 'Swing!'
+  self:cue(self:shot().club == 'putter' and 'putt' or 'swing')
   self:emit('shot', {id = self.shotId, club = self:shot().club, power = self.power, aim = self.aim})
 end
 
@@ -136,8 +148,8 @@ function App:action(action)
   elseif action == 'power_up' then self.power = math.min(100, self.power + powerStep)
   elseif action == 'power_down' then self.power = math.max(0.5, self.power - powerStep)
   elseif action == 'fine' then self.fine = not self.fine; return
-  elseif action == 'club_next' then self.clubIndex = self.clubIndex % #physics.clubs + 1
-  elseif action == 'club_prev' then self.clubIndex = (self.clubIndex - 2) % #physics.clubs + 1
+  elseif action == 'club_next' then self.clubIndex = self.clubIndex % #physics.clubs + 1; self:cue('tick')
+  elseif action == 'club_prev' then self.clubIndex = (self.clubIndex - 2) % #physics.clubs + 1; self:cue('tick')
   elseif action == 'aim_cup' then self:aimAtCup()
   elseif action == 'swing' then self:swing(); return
   else return end
@@ -226,7 +238,7 @@ function App.run(options)
         elseif phase == 'DIAGNOSTIC' then
           local t = os.clock(); app.displayBall = {x = 6 * math.sin(t), y = 2, z = 20}
           app.message = 'Axes: +X downrange | +Y up | +Z right'; changed = true
-        else app:tick(0.1); changed = (phase == 'SIMULATE' or phase == 'SHOT_PLAYBACK') end
+        else app:tick(0.1); app.sound:tick(); changed = (phase == 'SIMULATE' or phase == 'SHOT_PLAYBACK') end
         timer = os.startTimer(0.1)
       else
         local action = input.action(event, renderer.buttons or {}, monitorName)
@@ -234,7 +246,7 @@ function App.run(options)
           if app.phase == 'DIAGNOSTIC' then
             app.lastInput = action; app:emit('input', action)
             if action == 'quit' then app.running = false elseif action == 'view' then app.camera = app.camera == 'tee' and 'map' or 'tee' end
-          else app:action(action) end
+          else app:action(action); app.sound:tick() end
           changed = true
         end
       end
