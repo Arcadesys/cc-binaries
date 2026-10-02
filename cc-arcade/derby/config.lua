@@ -30,6 +30,7 @@ function M.setup(role,modem,host)
    for id in ids:gmatch('%d+') do assert(not c.clients[id],'Duplicate client ID'); c.clients[id]=r end
   end
   c.enabled=false
+  c.currency=require('derby.currency').default()
  else c.host=assert(tonumber(host or ask('House host computer ID')),'Host ID required') end
  M.write(c); print('Saved '..M.path..'. Run house '..role)
 end

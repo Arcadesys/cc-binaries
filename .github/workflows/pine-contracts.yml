@@ -31,6 +31,11 @@ jobs:
         run: python3 cc-arcade/tools/test_contracts.py --lua lua${{ matrix.lua }} --suite tests/support_contracts.lua
       - name: Test production module contracts
         run: python3 cc-arcade/tools/test_contracts.py --lua lua${{ matrix.lua }}
+      - name: Test production currency and migration
+        run: |
+          python3 cc-arcade/tools/test_contracts.py --lua lua${{ matrix.lua }} --suite tests/currency_runtime.lua
+          python3 cc-arcade/tools/test_contracts.py --lua lua${{ matrix.lua }} --suite tests/currency_identity.lua
+          python3 cc-arcade/tools/test_contracts.py --lua lua${{ matrix.lua }} --suite tests/currency_wire.lua
       - name: Verify proposed payout analysis
         run: python3 cc-arcade/tools/test_contracts.py --lua lua${{ matrix.lua }} --suite tests/payout_analysis.lua
       - name: Verify generated installer and manifest

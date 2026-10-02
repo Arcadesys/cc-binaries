@@ -2333,24 +2333,39 @@ end
 return M
 ]])
 
-writeFile('derby/cashier.lua', [[
+writeFile('derby/cashier.lua', [=[
 local ui=require('derby.ui')
+local currency=require('derby.currency')
 local M={}
 function M.run(client,t)
  local amounts={5,10,20,64}; local index=1; local status=''; local review
  local card,balance
+ local policy,entries,selected=nil,{},1
+ local apiVersion
+ local reviewItem,reviewUnits,reviewBalance
  local function refresh()
+  local info=client:read({op='currency'})
+  apiVersion=info.ok and info.apiVersion or nil
+  policy=info.ok and info.apiVersion==2 and info.policy or nil
+  entries={}
+  if policy then for id,e in pairs(policy.entries) do if e.depositEnabled or e.redeemEnabled then entries[#entries+1]=id end end; table.sort(entries) end
+  if selected>#entries then selected=1 end
   card=ui.card(); balance=nil
   if card and card.account then local r=client:read({op='lookup',account=card.account}); balance=r.ok and r.balance or nil; if not r.ok then status=r.error end end
  end
  local function draw()
   if not ui.usable(t) then return end
-  ui.clear(t,'DIAMOND CASHIER')
-  ui.line(t,3,' 1 diamond = 1 credit',colors.yellow)
+  ui.clear(t,policy and 'ITEM CREDIT CASHIER' or 'DIAMOND CASHIER')
+  local entry=policy and policy.entries[entries[selected]]
+  ui.line(t,3,entry and (' '..entry.itemId..' = '..entry.unitsPerItem..' credits [Up/Down]') or ' 1 diamond = 1 credit',colors.yellow)
   ui.line(t,5,' '..(card and (card.account or 'New card - issue an account') or 'Insert a floppy disk'))
   ui.line(t,6,' Balance: '..tostring(balance or 'UNAVAILABLE'))
   if review then
-   ui.line(t,8,' '..review.op:upper()..' '..review.amount..' DIAMONDS',colors.yellow)
+   if review.op=='exchange' then
+    ui.line(t,8,' '..review.direction:upper()..' '..review.requestedItems..' '..reviewItem,colors.yellow)
+    local delta=reviewUnits
+    ui.line(t,9,' '..delta..' credits; expected balance '..reviewBalance)
+   else ui.line(t,8,' '..review.op:upper()..' '..review.amount..' DIAMONDS',colors.yellow) end
    ui.button(t,10,'ENTER: CONFIRM',true,false)
    ui.line(t,14,' Backspace: cancel')
   else
@@ -2380,7 +2395,18 @@ function M.run(client,t)
  local function choose(op)
   if not ui.usable(t) then return end
   refresh()
-  if card and card.account and balance then review={op=op,account=card.account,amount=amounts[index]} else status='Insert an issued card and connect to house' end
+  if apiVersion~=1 and apiVersion~=2 then status='Currency policy unavailable; retry when connected'; return end
+  if not (card and card.account and balance) then status='Insert an issued card and connect to house'; return end
+  if policy then
+   local id=entries[selected]; local e=id and policy.entries[id]
+   local direction=op=='deposit' and 'deposit' or 'redeem'
+   if not e or not e[direction=='deposit' and 'depositEnabled' or 'redeemEnabled'] then status='This item is disabled for '..direction; return end
+   local ok,units=pcall(currency.quote,e,amounts[index],policy)
+   if not ok then status='Choose fewer items; configured transfer limit exceeded'; return end
+   reviewItem=e.itemId; reviewUnits=units; reviewBalance=balance+(direction=='deposit' and reviewUnits or -reviewUnits)
+   review={op='exchange',apiVersion=2,account=card.account,direction=direction,entryId=id,
+    requestedItems=amounts[index],policyId=policy.policyId,policyRevision=policy.revision}
+  else review={op=op,account=card.account,amount=amounts[index]} end
  end
  local function confirm()
   if not ui.usable(t) then return end
@@ -2388,7 +2414,7 @@ function M.run(client,t)
   local current=ui.card()
   if not current or current.account~=review.account then status='Card changed. Transfer not sent.'; review=nil; return end
   local r=client:mutate(review)
-  status=r.ok and ('Transferred '..tostring(r.moved or 0)..' diamonds') or r.error
+  status=r.ok and ('Transferred '..tostring(r.confirmedItems or r.moved or 0)..' items; balance '..tostring(r.balance)) or r.error
   review=nil; refresh()
  end
  refresh(); draw(); local timer=os.startTimer(1)
@@ -2400,20 +2426,20 @@ function M.run(client,t)
    elseif a==keys.enter then confirm()
    elseif a==keys.r then local r=client:retry(); status=r.ok and 'Request acknowledged; check balance' or r.error; refresh()
    elseif not review then
-    if a==keys.left then index=(index-2)%#amounts+1 elseif a==keys.right then index=index%#amounts+1
+    if policy and #entries>0 and a==keys.up then selected=(selected-2)%#entries+1 elseif policy and #entries>0 and a==keys.down then selected=selected%#entries+1 elseif a==keys.left then index=(index-2)%#amounts+1 elseif a==keys.right then index=index%#amounts+1
     elseif a==keys.n then create() elseif a==keys.d then choose('deposit') elseif a==keys.w then choose('withdraw') end
    end
   elseif e=='monitor_touch' or e=='mouse_click' then
    if review and c>=10 and c<=12 then confirm()
    elseif not review then
-    if c==8 then index=index%#amounts+1 elseif c>=9 and c<=11 then choose('deposit') elseif c>=12 and c<=14 then choose('withdraw') end
+    if c==3 and policy and #entries>0 then selected=selected%#entries+1 elseif c==8 then index=index%#amounts+1 elseif c>=9 and c<=11 then choose('deposit') elseif c>=12 and c<=14 then choose('withdraw') end
    end
   end
   draw()
  end
 end
 return M
-]])
+]=])
 
 writeFile('derby/client.lua', [[
 local config=require('derby.config')
@@ -2490,8 +2516,185 @@ function M.setup(role,modem,host)
    for id in ids:gmatch('%d+') do assert(not c.clients[id],'Duplicate client ID'); c.clients[id]=r end
   end
   c.enabled=false
+  c.currency=require('derby.currency').default()
  else c.host=assert(tonumber(host or ask('House host computer ID')),'Host ID required') end
  M.write(c); print('Saved '..M.path..'. Run house '..role)
+end
+return M
+]])
+
+writeFile('derby/currency.lua', [[
+-- Integer-credit policy. Rates are operator choices, never inferred from recipes.
+local M={schema='pine-currency-policy',schemaVersion=1,maxExactInteger=9007199254740991,maxTransferUnits=1000000000}
+local function integer(v) return type(v)=='number' and v==v and v>=0 and v<=M.maxExactInteger and v%1==0 end
+local function positive(v) return integer(v) and v>0 end
+local function text(v) return type(v)=='string' and #v>0 end
+local function registry(v) return text(v) and v:match('^[a-z0-9_.%-]+:[a-z0-9_./%-]+$')~=nil end
+local function fields(t,allowed,message)
+ assert(type(t)=='table',message)
+ for key in pairs(t) do assert(allowed[key],message..': '..tostring(key)) end
+end
+local function array(t,predicate,message)
+ assert(type(t)=='table',message)
+ local n=0
+ for k,v in pairs(t) do assert(positive(k) and predicate(v),message); n=n+1 end
+ for i=1,n do assert(t[i]~=nil,message) end
+ assert(n==#t,message)
+end
+local function contains(list,value)
+ for _,v in ipairs(list) do if v==value then return true end end
+ return false
+end
+-- These are documented, scalar top-level getItemDetail fields. Unknown mod fields
+-- need an explicit adapter extension, not a guessed extraction rule. NBT remains
+-- an exact peripheral-provided fingerprint; no hash algorithm is assumed.
+local metadataTypes={damage='number',maxDamage='number',unbreakable='boolean'}
+local function identity(id)
+ fields(id,{allowNoNbt=true,nbtHashes=true,metadata=true},'Invalid identity rule')
+ assert(type(id.allowNoNbt)=='boolean','Explicit plain-item permission required')
+ array(id.nbtHashes,text,'Explicit NBT fingerprint allowlist required')
+ assert(id.allowNoNbt or #id.nbtHashes>0,'Identity must admit at least one variant')
+ local seen={}
+ for _,hash in ipairs(id.nbtHashes) do assert(not seen[hash],'Duplicate NBT fingerprint'); seen[hash]=true end
+ assert(type(id.metadata)=='table','Explicit metadata allowlist required')
+ for field,allowed in pairs(id.metadata) do
+  local kind=metadataTypes[field]
+  assert(kind,'Unsupported metadata field: '..tostring(field))
+  array(allowed,function(v) return type(v)==kind and (kind~='number' or integer(v)) end,'Invalid metadata allowlist')
+  assert(#allowed>0,'Empty metadata allowlist')
+ end
+end
+local function entry(e,limit)
+ fields(e,{itemId=true,depositEnabled=true,redeemEnabled=true,unitsPerItem=true,identity=true},'Invalid currency entry field')
+ assert(registry(e.itemId),'Exact lowercase namespaced item ID required')
+ assert(type(e.depositEnabled)=='boolean' and type(e.redeemEnabled)=='boolean','Explicit deposit and redemption flags required')
+ if e.unitsPerItem==nil then
+  assert(not e.depositEnabled and not e.redeemEnabled,'Enabled currency needs an explicit rate')
+ else
+  assert(positive(e.unitsPerItem) and e.unitsPerItem<=limit,'Rate must be positive integer credits within the transfer limit')
+ end
+ identity(e.identity)
+ return e
+end
+function M.validate(p)
+ fields(p,{schema=true,schemaVersion=true,policyId=true,revision=true,creditScale=true,maxTransferUnits=true,entries=true},'Invalid currency policy field')
+ assert(p.schema==M.schema and p.schemaVersion==M.schemaVersion,'Unsupported currency policy schema')
+ assert(text(p.policyId) and #p.policyId<=160 and positive(p.revision),'Invalid policy identity or revision')
+ assert(p.creditScale==1,'This implementation supports whole credits only (creditScale=1)')
+ assert(positive(p.maxTransferUnits) and p.maxTransferUnits<=M.maxTransferUnits,'Invalid transfer-unit limit')
+ assert(type(p.entries)=='table' and next(p.entries),'Currency policy needs entries')
+ local used={}
+ for key,e in pairs(p.entries) do
+  assert(text(key) and #key<=80 and key:match('^[a-z0-9_.%-]+$'),'Exact entry ID required')
+  entry(e,p.maxTransferUnits)
+  assert(not used[e.itemId],'Duplicate registry ID in currency policy')
+  used[e.itemId]=true
+ end
+ return p
+end
+function M.default()
+ local function plain() return {allowNoNbt=true,nbtHashes={},metadata={}} end
+ return {schema=M.schema,schemaVersion=M.schemaVersion,policyId='pine-house-credits',revision=1,creditScale=1,maxTransferUnits=M.maxTransferUnits,
+  entries={
+   diamond={itemId='minecraft:diamond',depositEnabled=true,redeemEnabled=true,unitsPerItem=1,identity=plain()},
+   gold={itemId='minecraft:gold_ingot',depositEnabled=false,redeemEnabled=false,identity=plain()},
+   ender_eye={itemId='minecraft:ender_eye',depositEnabled=false,redeemEnabled=false,identity=plain()},
+  }}
+end
+-- Both normalized records and CC:Tweaked details are accepted. Never use display
+-- names/tags to identify an item. The documented NBT fingerprint covers variant
+-- properties (including enchantments/lore); these display projections are ignored.
+-- Reference: https://tweaked.cc/reference/item_details.html (verified 2026-10-01).
+local rawFields={name=true,count=true,nbt=true,damage=true,maxDamage=true,unbreakable=true,
+ displayName=true,lore=true,maxCount=true,tags=true,itemGroups=true,durability=true,
+ enchantments=true,potionEffects=true,mapColour=true,mapColor=true}
+local normalizedFields={name=true,count=true,nbt=true,metadata=true}
+function M.normalize(item)
+ if type(item)~='table' then return nil,'Item details required' end
+ local normalized=item.metadata~=nil
+ for key in pairs(item) do
+  if not (normalized and normalizedFields[key] or not normalized and rawFields[key]) then return nil,'Unrecognized item detail field: '..tostring(key) end
+ end
+ if not registry(item.name) or (item.count~=nil and not integer(item.count)) or (item.nbt~=nil and not text(item.nbt)) then return nil,'Invalid item name, count or NBT fingerprint' end
+ local metadata={}
+ if normalized then
+  if type(item.metadata)~='table' then return nil,'Normalized metadata must be a table' end
+  for key,v in pairs(item.metadata) do metadata[key]=v end
+ else
+  for key in pairs(metadataTypes) do if item[key]~=nil then metadata[key]=item[key] end end
+ end
+ for key,v in pairs(metadata) do
+  if not metadataTypes[key] or type(v)~=metadataTypes[key] or (type(v)=='number' and not integer(v)) then return nil,'Unsupported or invalid item metadata' end
+ end
+ return {name=item.name,count=item.count,nbt=item.nbt,metadata=metadata}
+end
+function M.match(e,item)
+ local ok,why=pcall(entry,e,M.maxTransferUnits)
+ if not ok then return false,why end
+ local observed,problem=M.normalize(item)
+ if not observed then return false,problem end
+ if observed.name~=e.itemId then return false,'Registry ID does not match' end
+ if observed.nbt==nil then
+  if not e.identity.allowNoNbt then return false,'Plain item is not admitted' end
+ elseif not contains(e.identity.nbtHashes,observed.nbt) then return false,'NBT fingerprint is not admitted' end
+ for key,allowed in pairs(e.identity.metadata) do
+  if not contains(allowed,observed.metadata[key]) then return false,'Required metadata is missing or disallowed' end
+ end
+ for key in pairs(observed.metadata) do
+  if e.identity.metadata[key]==nil then return false,'Metadata field is not admitted' end
+ end
+ return true
+end
+function M.quote(e,count,p)
+ M.validate(p); entry(e,p.maxTransferUnits)
+ assert(positive(e.unitsPerItem),'Currency has no configured rate')
+ assert(integer(count) and count<=math.floor(p.maxTransferUnits/e.unitsPerItem),'Item count exceeds exact transfer-unit limit')
+ return count*e.unitsPerItem
+end
+function M.value(p,stock)
+ M.validate(p)
+ assert(type(stock)=='table','Classified stock required')
+ local total=0
+ for key,count in pairs(stock) do
+  local e=p.entries[key]
+  assert(e and integer(count),'Unknown entry or invalid stock count')
+  if e.unitsPerItem==nil then
+   assert(count==0,'Unpriced items cannot count as backing')
+  else
+   assert(count<=math.floor((M.maxExactInteger-total)/e.unitsPerItem),'Inventory valuation overflow')
+   total=total+count*e.unitsPerItem
+  end
+ end
+ return total
+end
+-- Length-delimited encoding avoids delimiter collisions in policy/receipt pins.
+-- Numeric formatting gives 1 and 1.0 the same canonical representation.
+function M.canonical(value)
+ local active={}
+ local function encode(v)
+  local kind=type(v)
+  if kind=='nil' then return 'z' end
+  if kind=='boolean' then return v and 'b1' or 'b0' end
+  if kind=='string' then return 's'..#v..':'..v end
+  if kind=='number' then
+   assert(v==v and v~=math.huge and v~=-math.huge,'Nonfinite canonical number')
+   if v==0 then v=0 end
+   return 'n'..string.format('%.17g',v)..';'
+  end
+  assert(kind=='table' and not active[v],'Unsupported or cyclic canonical value')
+  active[v]=true
+  local keys={}
+  for key in pairs(v) do
+   assert(type(key)=='string' or type(key)=='number' or type(key)=='boolean','Unsupported canonical key')
+   keys[#keys+1]={encoded=encode(key),key=key}
+  end
+  table.sort(keys,function(a,b) return a.encoded<b.encoded end)
+  local out={'t',tostring(#keys),':'}
+  for _,key in ipairs(keys) do out[#out+1]=key.encoded; out[#out+1]=encode(v[key.key]) end
+  active[v]=nil
+  return table.concat(out)
+ end
+ return encode(value)
 end
 return M
 ]])
@@ -2574,31 +2777,107 @@ return M
 
 writeFile('derby/inventory.lua', [[
 -- The host alone moves items. There is no automatic retry after an uncertain transfer.
+local currency=require('derby.currency')
 local M={}
+-- Legacy v1 intentionally keeps its historical diamond-only interpretation.
 function M.count(inv)
  local n=0
  for _,item in pairs(inv.list()) do if item.name=='minecraft:diamond' then n=n+item.count end end
  return n
 end
-function M.move(source,destinationName,amount)
- local moved=0
- local slots={}; for slot in pairs(source.list()) do slots[#slots+1]=slot end; table.sort(slots)
+local function integer(v) return type(v)=='number' and v==v and v>=0 and v<=currency.maxExactInteger and v%1==0 end
+local function listed(inv)
+ assert(type(inv)=='table' and type(inv.list)=='function','Inventory list unavailable')
+ local items=inv.list(); assert(type(items)=='table','Invalid inventory list')
+ local slots={}
+ for slot,item in pairs(items) do
+  assert(integer(slot) and slot>0,'Invalid inventory slot')
+  assert(type(item)=='table' and type(item.name)=='string' and integer(item.count) and item.count>0,'Invalid listed item')
+  assert(item.nbt==nil or (type(item.nbt)=='string' and #item.nbt>0),'Invalid listed NBT fingerprint')
+  slots[#slots+1]=slot
+ end
+ table.sort(slots)
+ return items,slots
+end
+local function detail(inv,slot,basic)
+ assert(type(inv.getItemDetail)=='function','Detailed inventory identity unavailable')
+ local item=inv.getItemDetail(slot)
+ -- A stale read cannot establish a stable before/after inventory snapshot.
+ assert(type(item)=='table' and item.name==basic.name and item.count==basic.count and item.nbt==basic.nbt,'Inventory changed during identity inspection')
+ return item
+end
+-- CC:Tweaked list supplies name/count/optional nbt; configured scalar metadata
+-- comes from getItemDetail. A missing detail or a disagreement aborts the scan.
+-- Only priced, admitted entries count as backing, even when exchange-disabled.
+-- References: https://tweaked.cc/generic_peripheral/inventory.html and
+-- https://tweaked.cc/reference/item_details.html (verified 2026-10-01).
+function M.stock(inv,policy)
+ currency.validate(policy)
+ local stock,byItem={},{}
+ for id,e in pairs(policy.entries) do
+  if e.unitsPerItem then stock[id]=0; byItem[e.itemId]={id=id,entry=e} end
+ end
+ local items,slots=listed(inv)
  for _,slot in ipairs(slots) do
-  local item=source.getItemDetail(slot)
-  if item and item.name=='minecraft:diamond' and moved<amount then
-   local n=source.pushItems(destinationName,slot,math.min(item.count,amount-moved))
-   assert(type(n)=='number' and n>=0 and n%1==0 and n<=amount-moved,'Invalid inventory transfer receipt')
-   moved=moved+n
+  local basic=items[slot]; local selected=byItem[basic.name]
+  if selected then
+   local observed=detail(inv,slot,basic)
+   if currency.match(selected.entry,observed) then
+    assert(basic.count<=currency.maxExactInteger-stock[selected.id],'Inventory item-count overflow')
+    stock[selected.id]=stock[selected.id]+basic.count
+   end
   end
  end
+ return stock
+end
+function M.move(source,destinationName,amount,entry)
+ if entry==nil then
+  -- Preserve the old public adapter for the v1 service until explicit migration.
+  local moved=0
+  local slots={}; for slot in pairs(source.list()) do slots[#slots+1]=slot end; table.sort(slots)
+  for _,slot in ipairs(slots) do
+   local item=source.getItemDetail(slot)
+   if item and item.name=='minecraft:diamond' and moved<amount then
+    local n=source.pushItems(destinationName,slot,math.min(item.count,amount-moved))
+    assert(type(n)=='number' and n>=0 and n%1==0 and n<=amount-moved,'Invalid inventory transfer receipt')
+    moved=moved+n
+   end
+  end
+  return moved
+ end
+ assert(integer(amount) and amount<=currency.maxTransferUnits,'Invalid requested item count')
+ assert(type(destinationName)=='string' and #destinationName>0,'Destination inventory name required')
+ assert(type(source)=='table' and type(source.pushItems)=='function','Inventory movement unavailable')
+ assert(type(entry)=='table' and integer(entry.unitsPerItem) and entry.unitsPerItem>0,'Priced currency entry required')
+ assert(entry.depositEnabled==true or entry.redeemEnabled==true,'Currency exchange is disabled')
+ local moved=0
+ local items,slots=listed(source)
+ for _,slot in ipairs(slots) do
+  if moved>=amount then break end
+  local basic=items[slot]
+  if basic.name==entry.itemId then
+   local item=detail(source,slot,basic)
+   if currency.match(entry,item) then
+    local limit=math.min(item.count,amount-moved)
+    local n=source.pushItems(destinationName,slot,limit)
+    assert(integer(n) and n<=limit,'Invalid inventory transfer receipt')
+    moved=moved+n
+   end
+  end
+ end
+ -- This number is not an identity proof. The service must verify both classified
+ -- source and destination deltas before crediting/debiting. Controlled physical
+ -- access is required: getItemDetail + pushItems is not an atomic operation.
  return moved
 end
 return M
 ]])
 
 writeFile('derby/ledger.lua', [[
--- All money is integer credits, backed one-for-one by diamonds in the bank.
+-- All balances are integer credits. Version 2 bank is classified item value.
 local M={}
+local currency=require('derby.currency')
+local copy=require('derby.store').copy
 local function canonical(v)
  if type(v)~='table' then return type(v)..':'..tostring(v) end
  local keys={}; for k in pairs(v) do keys[#keys+1]=k end
@@ -2612,12 +2891,13 @@ function M.liability(s)
  local n=0
  for _,a in pairs(s.accounts) do n=n+a.balance end
  for _,r in pairs(s.rounds) do if r.status=='open' then n=n+r.maximum end end
- for _,p in pairs(s.pending) do if p.kind=='withdraw' then n=n+p.amount end end
+ for _,p in pairs(s.pending) do if p.kind=='withdraw' then n=n+p.amount elseif p.kind=='redeem' then n=n+p.requestedUnits end end
  return n
 end
 function M.available(s) return s.bank-M.liability(s) end
 function M.apply(s,q)
  local function fail(message) return {ok=false,error=message} end
+ if s.version~=1 and s.version~=2 then return fail('Unsupported ledger version') end
  if type(q)~='table' or type(q.op)~='string' then return fail('Invalid request') end
  if q.op=='lookup' then
   local a=s.accounts[q.account]
@@ -2630,7 +2910,12 @@ function M.apply(s,q)
  elseif q.op=='status' then return s.transactions[q.id] and s.transactions[q.id].result or fail('Unknown transaction') end
  if type(q.id)~='string' or #q.id>160 then return fail('Transaction ID required') end
  -- The transport serialises a stable request and rejects reuse with different content.
- local fingerprint=canonical(q)
+ local fingerprint
+ if q.op=='exchange' then
+  local ok,value=pcall(currency.canonical,q)
+  if not ok then return fail('Invalid currency request encoding') end
+  fingerprint=value
+ else fingerprint=canonical(q) end
  if s.transactions[q.id] then
   if s.transactions[q.id].fingerprint~=fingerprint then return fail('Transaction ID reused with different request') end
   return s.transactions[q.id].result
@@ -2671,7 +2956,24 @@ function M.apply(s,q)
   if r.status~='open' then return fail('Round already settled') end
   r.status=q.op=='refund' and 'refunded' or 'settled'; r.paid=amount; a.balance=a.balance+amount
   result={ok=true,balance=a.balance,paid=amount}
+ elseif q.op=='exchange' then
+  if s.version~=2 or q.apiVersion~=2 then return fail('Currency API version 2 required') end
+  if q.policyId~=s.currency.policyId or q.policyRevision~=s.currency.revision then return fail('Currency policy changed; review a new quote') end
+  local entry=s.currency.entries[q.entryId]
+  if not entry or (q.direction~='deposit' and q.direction~='redeem') then return fail('Invalid item or direction') end
+  if not entry[q.direction=='deposit' and 'depositEnabled' or 'redeemEnabled'] then return fail('Item exchange is disabled') end
+  local ok,units=pcall(currency.quote,entry,q.requestedItems,s.currency)
+  if not ok or q.requestedItems<1 then return fail('Invalid whole item quantity') end
+  if q.direction=='redeem' and a.balance<units then return fail('Not enough credits') end
+  if q.direction=='redeem' and (s.stock[q.entryId] or 0)<q.requestedItems then return fail('Requested item stock unavailable; no substitution') end
+  if q.direction=='deposit' and (s.bank>1000000000-units or a.balance>1000000000-units) then return fail('Credit limit exceeded') end
+  if q.direction=='redeem' then a.balance=a.balance-units end
+  s.pending[q.id]={kind=q.direction,account=q.account,entryId=q.entryId,requestedItems=q.requestedItems,
+   requestedUnits=units,policyId=s.currency.policyId,policyRevision=s.currency.revision,
+   entry=copy(entry),beforeBank=s.bank,beforeStock=copy(s.stock)}
+  result={ok=true,pending=true,id=q.id}
  elseif q.op=='deposit' or q.op=='withdraw' then
+  if s.version~=1 then return fail('Legacy cashier disabled; upgrade cashier for currency API 2') end
   if not integer(q.amount) or q.amount<1 then return fail('Positive whole diamond amount required') end
   if q.op=='withdraw' and a.balance<q.amount then return fail('Not enough credits') end
   if q.op=='withdraw' then a.balance=a.balance-q.amount end
@@ -2682,8 +2984,24 @@ function M.apply(s,q)
  return result
 end
 function M.complete(s,id,moved)
+ assert(s.version==1 or s.version==2,'Unsupported ledger version')
  local p=s.pending[id]
  assert(p,'No pending transfer')
+ if s.version==2 then
+  assert(integer(moved) and moved<=p.requestedItems,'Invalid transferred count')
+  local units=currency.quote(p.entry,moved,s.currency)
+  local a=s.accounts[p.account]
+  local sign=p.kind=='deposit' and 1 or -1
+  s.stock[p.entryId]=(s.stock[p.entryId] or 0)+sign*moved
+  s.bank=s.bank+sign*units
+  if p.kind=='deposit' then a.balance=a.balance+units else a.balance=a.balance+p.requestedUnits-units end
+  local result={ok=true,id=id,account=p.account,entryId=p.entryId,itemId=p.entry.itemId,
+   policyId=p.policyId,policyRevision=p.policyRevision,direction=p.kind,requestedItems=p.requestedItems,
+   confirmedItems=moved,unitsPerItem=p.entry.unitsPerItem,unitsDelta=sign*units,balance=a.balance,completed=true}
+  s.transactions[id].result=result; s.pending[id]=nil
+  assert(M.available(s)>=0 and s.bank==currency.value(s.currency,s.stock),'Unbacked currency ledger')
+  return result
+ end
  assert(integer(moved) and moved<=p.amount,'Invalid transferred count')
  local a=s.accounts[p.account]
  if p.kind=='deposit' then s.bank=s.bank+moved; a.balance=a.balance+moved
@@ -2692,6 +3010,24 @@ function M.complete(s,id,moved)
  s.transactions[id].result=result; s.pending[id]=nil
  assert(M.available(s)>=0,'Unbacked ledger')
  return result
+end
+function M.changeCurrency(s,policy,stock)
+ assert(s.version==1 or s.version==2,'Unsupported source ledger version')
+ assert(s.paused,'Pause host before changing currency')
+ assert(not next(s.pending),'Reconcile transfers before changing currency')
+ currency.validate(policy)
+ assert(policy.creditScale==1,'Existing credits retain scale 1')
+ if s.version==2 then
+  assert(policy.policyId==s.currency.policyId and policy.revision>s.currency.revision,'Policy revision must increase')
+ end
+ local value=currency.value(policy,stock)
+ assert(value<=1000000000,'Bank value exceeds supported credit limit')
+ assert(value>=M.liability(s),'New policy cannot cover existing liabilities')
+ local n=copy(s)
+ n.version=2; n.currency=copy(policy); n.stock=copy(stock); n.bank=value
+ n.currencyHistory=n.currencyHistory or {}
+ n.currencyHistory[tostring(policy.revision)]=copy(policy)
+ return n
 end
 return M
 ]])
@@ -2905,13 +3241,13 @@ function M.run(c)
  local t=term.current(); local message='P: start after live acceptance. F: recognise funded bank.'
  local function draw()
   local s=host:state(); ui.clear(t,'HOUSE HOST | ID '..os.getComputerID())
-  ui.line(t,3,' Bank: '..s.bank..' diamonds | Available: '..ledger.available(s))
+  ui.line(t,3,' Bank: '..s.bank..' credits backing | Available: '..ledger.available(s))
   ui.line(t,5,' '..(s.paused and 'PAUSED' or 'RUNNING')..' | '..(s.race and s.race.id..' '..s.race.phase or 'Awaiting first race'))
   ui.line(t,7,' [P] Pause/start  [C] Cancel unstarted race')
-  ui.line(t,9,' [F] Recognise added house diamonds')
+  ui.line(t,9,' [F] Recognise added stock  [M] Apply currency config')
   ui.line(t,11,' [R] Reconcile transfer  [U] Refund interrupted game')
   local y=13
-  for id,p in pairs(s.pending) do ui.line(t,y,' PENDING '..id..' '..p.kind..' '..p.amount); y=y+1 end
+  for id,p in pairs(s.pending) do ui.line(t,y,' PENDING '..id..' '..p.kind..' '..tostring(p.requestedItems or p.amount)); y=y+1 end
   for id,r in pairs(s.rounds) do if r.status=='open' and r.game~='derby' then ui.line(t,y,' OPEN '..id..' '..r.game); y=y+1 end end
   local _,h=t.getSize(); ui.line(t,h-1,message,colors.yellow); ui.line(t,h,' [Q] Stop host (all clients go offline)')
  end
@@ -2929,10 +3265,11 @@ function M.run(c)
    if a==keys.q then return
    elseif a==keys.p then result=host:operator('pause')
    elseif a==keys.c then result=host:operator('cancel')
+   elseif a==keys.m then result=host:operator('currency')
    elseif a==keys.f then result=host:operator('fund')
    elseif a==keys.r or a==keys.u then
     t.setCursorPos(1,15); t.clearLine(); write(a==keys.r and 'Transaction ID: ' or 'Round ID: '); local id=read()
-    if a==keys.r then write('Verified diamonds actually moved: '); result=host:operator('reconcile',id,tonumber(read()))
+    if a==keys.r then write('Verified items actually moved: '); result=host:operator('reconcile',id,tonumber(read()))
     else result=host:operator('refund',id) end
    end
    if result then message=result.ok and 'Saved and verified' or result.error; draw() end
@@ -2947,9 +3284,11 @@ local store=require('derby.store')
 local ledger=require('derby.ledger')
 local house=require('derby.house')
 local inventory=require('derby.inventory')
+local currency=require('derby.currency')
 local M={}
 function M.new(storage,config,wrap)
  local s=storage:get()
+ assert(s.version==1 or s.version==2,'Unsupported saved ledger version; restore compatible runtime/state offline')
  -- Reconstruct exact floating-point state instead of trusting JSON-rounded positions.
  if s.race and s.race.sim then
   local sim=require('derby.sim')
@@ -2958,7 +3297,26 @@ function M.new(storage,config,wrap)
   for _=1,s.race.sim.tick do sim.step(restored) end
   s.race.sim=restored
  end
+ if s.version==2 then
+  assert(config.bank~=config.intake and config.bank~=config.payout and config.intake~=config.payout,'Currency inventories must be distinct')
+  currency.validate(s.currency)
+  assert(s.bank==currency.value(s.currency,s.stock),'Saved currency stock/value mismatch')
+  assert(ledger.available(s)>=0,'Saved currency ledger is unbacked')
+ end
  local api={}
+ local function stock(name) return inventory.stock(assert(wrap(name),'Inventory unavailable: '..tostring(name)),s.currency) end
+ local function same(a,b) return currency.canonical(a)==currency.canonical(b) end
+ local function observations()
+  return {bank=stock(config.bank),intake=stock(config.intake),payout=stock(config.payout)}
+ end
+ local function verifiedMovement(p,moved)
+  local now=observations(); local expected=store.copy(p.observed)
+  local source=p.kind=='deposit' and 'intake' or 'bank'
+  local dest=p.kind=='deposit' and 'bank' or 'payout'
+  expected[source][p.entryId]=(expected[source][p.entryId] or 0)-moved
+  expected[dest][p.entryId]=(expected[dest][p.entryId] or 0)+moved
+  assert(same(now,expected),'Classified inventory deltas differ; isolate inventories and reconcile')
+ end
  local function commit(nextState)
   storage:save(nextState); s=nextState
  end
@@ -2966,20 +3324,45 @@ function M.new(storage,config,wrap)
  function api:state() return store.copy(s) end
  function api:request(q,role,owner)
   if type(q)~='table' or type(q.op)~='string' then return denied('Invalid request') end
+  if q.op=='currency' then return {ok=true,apiVersion=s.version,policy=s.version==2 and store.copy(s.currency) or nil} end
   if q.op=='snapshot' then return house.snapshot(s,q.account) end
   if q.op=='lookup' or q.op=='status' or q.op=='roundStatus' then return ledger.apply(s,q) end
   if role=='display' then return denied('Display is read only') end
   if type(q.id)~='string' or not q.id:match('^'..tostring(owner)..':') then return denied('Wrong transaction owner') end
-  if q.op=='create' or q.op=='deposit' or q.op=='withdraw' then
+  if q.op=='create' or q.op=='deposit' or q.op=='withdraw' or q.op=='exchange' then
    if role~='cashier' then return denied('Cashier operation') end
   elseif q.op~='bet' and q.op~='reserve' and q.op~='increase' and q.op~='settle' and q.op~='refund' then return denied('Operation not available remotely') end
   local nextState=store.copy(s)
   local request=store.copy(q); request.owner=tostring(owner)
   -- A repeated transfer must return its receipt without touching inventories again.
   local existed=nextState.transactions[request.id]~=nil
+  local observed
+  if request.op=='exchange' and not existed then
+   if s.version~=2 then return denied('Migrate host currency before using API 2') end
+   local ok,value=pcall(observations)
+   if not ok then return denied('Cannot classify inventories: '..tostring(value)) end
+   observed=value
+   if not same(observed.bank,s.stock) then return denied('Classified bank stock differs; reconcile before transfer') end
+  end
   local result=request.op=='bet' and house.bet(nextState,request) or ledger.apply(nextState,request)
   if not result.ok then return result end
+  if observed and result.pending then
+   local p=nextState.pending[q.id]; p.observed=observed
+   p.source=q.direction=='deposit' and config.intake or config.bank
+   p.destination=q.direction=='deposit' and config.bank or config.payout
+  end
   commit(nextState)
+  if q.op=='exchange' and not existed then
+   local p=s.pending[q.id]
+   local ok,moved=pcall(function()
+    assert(same(observations(),p.observed),'Inventories changed since durable intent')
+    local count=inventory.move(assert(wrap(p.source)),p.destination,p.requestedItems,p.entry)
+    verifiedMovement(p,count)
+    return count
+   end)
+   if not ok then return {ok=false,pending=true,error='Transfer uncertain; operator reconciliation required: '..tostring(moved)} end
+   nextState=store.copy(s); local receipt=ledger.complete(nextState,q.id,moved); commit(nextState); return receipt
+  end
   if (q.op=='deposit' or q.op=='withdraw') and not existed then
    -- Intent is durable before either physical side effect.
    local ok,moved=pcall(function()
@@ -3004,15 +3387,41 @@ function M.new(storage,config,wrap)
  end
  function api:operator(op,id,amount)
   local n=store.copy(s)
-  if op=='pause' then n.paused=not n.paused
+  if op=='currency' then
+   if config.bank==config.intake or config.bank==config.payout or config.intake==config.payout then return denied('Currency inventories must be distinct') end
+   if not s.paused or next(s.pending) then return denied('Pause host and reconcile pending transfers first') end
+   local policy=config.currency or currency.default()
+   local ok,value=pcall(function()
+    currency.validate(policy)
+    local bank=assert(wrap(config.bank))
+    if s.version==1 then assert(inventory.count(bank)==s.bank,'Legacy bank count differs; reconcile before migration') end
+    return ledger.changeCurrency(s,policy,inventory.stock(bank,policy))
+   end)
+   if not ok then return denied(tostring(value)) end
+   storage:changeCurrency(value); s=value; return {ok=true}
+  elseif op=='pause' then n.paused=not n.paused
   elseif op=='cancel' then local r=house.cancel(n); if not r.ok then return r end
   elseif op=='fund' then
    if next(n.pending) then return denied('Reconcile pending transfer first') end
+   if s.version==2 then
+    local classified=stock(config.bank)
+    for key,count in pairs(s.stock) do if (classified[key] or 0)<count then return denied('Bank item shortage; restore missing stock') end end
+    n.stock=classified; n.bank=currency.value(s.currency,classified)
+    if n.bank>1000000000 then return denied('Bank value exceeds supported credit limit') end
+    if ledger.available(n)<0 then return denied('Bank cannot cover liabilities') end
+    commit(n); return {ok=true}
+   end
    local count=inventory.count(assert(wrap(config.bank)))
    if count<n.bank then return denied('Bank shortage: restore missing diamonds before continuing') end
    local r=ledger.apply(n,{op='fund',id='fund:'..tostring(os.epoch('utc')),amount=count}); if not r.ok then return r end
   elseif op=='reconcile' then
    local p=n.pending[id]; if not p then return denied('No such pending transfer') end
+   if s.version==2 then
+    if type(amount)~='number' or amount%1~=0 or amount<0 or amount>p.requestedItems then return denied('Invalid moved item count') end
+    if p.source~=(p.kind=='deposit' and config.intake or config.bank) or p.destination~=(p.kind=='deposit' and config.bank or config.payout) then return denied('Restore original inventory configuration before reconciliation') end
+    local ok,err=pcall(verifiedMovement,p,amount); if not ok then return denied(tostring(err)) end
+    ledger.complete(n,id,amount); commit(n); return {ok=true}
+   end
    if type(amount)~='number' or amount%1~=0 or amount<0 or amount>p.amount then return denied('Invalid moved amount') end
    local expected=p.beforeBank+(p.kind=='deposit' and amount or -amount)
    if inventory.count(assert(wrap(config.bank)))~=expected then return denied('Count does not match bank; inspect intake/output and restore consistency') end
@@ -3182,7 +3591,7 @@ function M.copy(t)
 end
 function M.open(base, initial)
  local seq=0
- local state
+ local state,selectedChecksum
  local seen=false
  for slot=0,1 do
   local path=base..'.'..slot
@@ -3192,23 +3601,68 @@ function M.open(base, initial)
    local ok,v=pcall(textutils.unserializeJSON,data or '')
    if ok and type(v)=='table' and type(v.payload)=='string' and type(v.seq)=='number' and checksum(v.payload)==v.checksum then
     local good,p=pcall(textutils.unserializeJSON,v.payload)
-    if good and type(p)=='table' and v.seq>seq then state=p; seq=v.seq end
+    if good and type(p)=='table' and v.seq>seq then state=p; seq=v.seq; selectedChecksum=checksum(v.payload) end
    end
   end
  end
  assert(state or not seen,'Both saved state slots are invalid; restore backup. No new bank was created.')
  state=state or M.copy(initial)
+ local marker=base..'.currency-version'
+ if fs.exists(marker) then
+  local f=assert(fs.open(marker,'r')); local floor=textutils.unserializeJSON(f.readAll()); f.close()
+  assert(type(floor)=='table' and floor.version==2
+   and type(floor.revision)=='number' and floor.revision>=1 and floor.revision%1==0
+   and type(floor.seq)=='number' and floor.seq>=0 and floor.seq%1==0
+   and type(floor.checksum)=='number' and floor.checksum==selectedChecksum
+   and state.version==2 and state.currency and state.currency.revision==floor.revision and seq==floor.seq,
+   'Currency generation guard mismatch; restore verified versioned backup offline')
+ end
+ assert(state.version~=2 or fs.exists(marker),'Version 2 currency generation guard missing; offline recovery required')
  local api={}
  function api:get() return M.copy(state) end
  function api:save(value)
   local payload=textutils.serializeJSON(M.copy(value))
+  if value.version==2 then
+   -- A v2 generation rollback could erase an intent and replay physical movement.
+   -- Persist a fail-closed floor BEFORE every generation write. Interrupted writes
+   -- may require offline recovery, but never silently revive an older receipt.
+   local boundary=textutils.serializeJSON({version=2,revision=value.currency.revision,seq=seq+1,checksum=checksum(payload)})
+   fs.makeDir(fs.getDir(base))
+   local guard=assert(fs.open(marker,'w')); guard.write(boundary); guard.close()
+   guard=assert(fs.open(marker,'r')); local actual=guard.readAll(); guard.close()
+   assert(actual==boundary,'Currency generation guard readback failed')
+  end
   local path=base..'.'..((seq+1)%2)
   fs.makeDir(fs.getDir(base))
   local f=assert(fs.open(path,'w'),'Cannot persist '..path)
   f.write(textutils.serializeJSON({seq=seq+1,payload=payload,checksum=checksum(payload)})); f.close()
   local verify=assert(fs.open(path,'r')); local disk=textutils.unserializeJSON(verify.readAll()); verify.close()
-  assert(disk and disk.payload==payload and disk.checksum==checksum(payload),'Persistence readback failed')
+  assert(disk and disk.seq==seq+1 and disk.payload==payload and disk.checksum==checksum(payload),'Persistence readback failed')
   seq=seq+1; state=M.copy(value)
+ end
+ function api:changeCurrency(value)
+  assert(value.version==2,'Expected version 2 currency state')
+  -- Preserve both exact old generations before changing the interpretation of bank.
+  local tag=state.version==2 and ('v2-r'..state.currency.revision) or 'v1'
+  for slot=0,1 do
+   local source=base..'.'..slot
+   if fs.exists(source) then
+    local f=assert(fs.open(source,'r')); local bytes=f.readAll(); f.close()
+    local target=base..'.backup-'..tag..'.'..slot
+    if fs.exists(target) then
+     f=assert(fs.open(target,'r')); local old=f.readAll(); f.close()
+     assert(old==bytes,'Existing migration backup differs; archive it offline before retry')
+    else
+     f=assert(fs.open(target,'w')); f.write(bytes); f.close()
+     f=assert(fs.open(target,'r')); local verified=f.readAll(); f.close(); assert(verified==bytes,'Backup readback failed')
+    end
+   end
+  end
+  fs.makeDir(fs.getDir(base))
+  local f=assert(fs.open(marker,'w')); local boundary=textutils.serializeJSON({version=2,revision=value.currency.revision}); f.write(boundary); f.close()
+  f=assert(fs.open(marker,'r')); local verified=f.readAll(); f.close(); assert(verified==boundary,'Version marker readback failed')
+  -- Both generations must use the new interpretation before restart fallback is safe.
+  self:save(value); self:save(value)
  end
  return api
 end

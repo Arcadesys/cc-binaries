@@ -1,6 +1,11 @@
 # Configurable item-backed credits: proposed contract
 
-Status: design acceptance fixtures only. `contracts/currency_policy.lua` does not
+Historical design oracle. The versioned production implementation is now documented in
+[`derby/CURRENCY.md`](../derby/CURRENCY.md), with separate runtime and wire tests.
+The fixtures below remain independently authored proposal tests; their synthetic
+rates are not production defaults.
+
+Original proposal status: design acceptance fixtures only. `contracts/currency_policy.lua` does not
 implement a new cashier, inventory adapter, wallet, network protocol or migration.
 Its synthetic rates are examples for integer arithmetic, not selected production
 exchange rates. The user has requested configurable backing items; actual rates,
