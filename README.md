@@ -33,6 +33,7 @@ wget run https://raw.githubusercontent.com/Arcadesys/cc-binaries/main/cc-arcade/
 | `pinelanes` | [Pine Lanes](./computercraft_scripts/pine-lanes/README.md): bowling |
 | `pinedungeon` | [Pine Dungeon](./computercraft_scripts/pine-dungeon/README.md): dungeon crawler |
 | `pineface` | [Pine Face](./computercraft_scripts/pine-face/README.md): Faceball-style Smiley tag for up to four networked players, bots filling empty seats |
+| `wordle` | [Daily Wordle](./cc-arcade/wordle/README.md): the server's Minecraft word of the day in six guesses |
 
 To put every Pine game on one computer and choose between them, install `all`:
 
@@ -40,7 +41,7 @@ To put every Pine game on one computer and choose between them, install `all`:
 wget run https://raw.githubusercontent.com/Arcadesys/cc-binaries/main/cc-arcade/get.lua all --startup
 ```
 
-That boots into [Pine Arcade](./cc-arcade/pinearcade/README.md), a Pine3D carousel of the installed games (about 515 KiB in all; the games share one copy of Pine3D). Pick a game to play it, or to make it what the computer starts into; the STARTUP tile switches back to the menu or turns autostart off.
+That boots into [Pine Arcade](./cc-arcade/pinearcade/README.md), a Pine3D carousel of the installed games (about 665 KiB in all; the games share one copy of Pine3D). Pick a game to play it, or to make it what the computer starts into; the STARTUP tile switches back to the menu or turns autostart off.
 
 Run it with no program name to choose from a menu. Every install also includes `house`, which joins the computer to the house bank (`house setup station <modem> <host-id>`), and `config`, which teaches the three cabinet buttons. Games run on a practice meter until the computer is a house station.
 

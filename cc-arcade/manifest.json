@@ -87,7 +87,7 @@
     },
     {
      "path": "pinearcade/emblems.lua",
-     "size": 9758
+     "size": 10201
     },
     {
      "path": "pinearcade/render.lua",
@@ -531,6 +531,57 @@
     }
    ],
    "monitor": false
+  },
+  "wordle": {
+   "title": "Daily Wordle",
+   "entry": "wordle.lua",
+   "description": "The server's Minecraft word of the day in six guesses",
+   "files": [
+    {
+     "path": "casino/sound.lua",
+     "size": 564
+    },
+    {
+     "path": "derby/palette.lua",
+     "size": 432
+    },
+    {
+     "path": "derby/ui.lua",
+     "size": 1875
+    },
+    {
+     "path": "derby/vendor/betterblittle.lua",
+     "size": 6135
+    },
+    {
+     "path": "input.lua",
+     "size": 3606
+    },
+    {
+     "path": "wordle.lua",
+     "size": 643
+    },
+    {
+     "path": "wordle/app.lua",
+     "size": 10639
+    },
+    {
+     "path": "wordle/guesses.lua",
+     "size": 63147
+    },
+    {
+     "path": "wordle/render.lua",
+     "size": 8215
+    },
+    {
+     "path": "wordle/rules.lua",
+     "size": 2279
+    },
+    {
+     "path": "wordle/words.lua",
+     "size": 2529
+    }
+   ]
   },
   "house": {
    "title": "House setup",
@@ -1049,6 +1100,7 @@
   "pinelanes",
   "pinedungeon",
   "pineface",
+  "wordle",
   "house",
   "config"
  ]

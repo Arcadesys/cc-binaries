@@ -202,6 +202,17 @@ function E.pineface()
  box(m,-.5,.15,.75,.22,.22,.22,colors.white)
  return m
 end
+function E.wordle()
+ local m={}
+ -- Three guesses' worth of letter blocks, the last row solved, on a wooden board.
+ local c={gray=colors.gray,near=colors.yellow,hit=colors.lime}
+ local rows={{'gray','near','gray'},{'near','gray','hit'},{'hit','hit','hit'}}
+ box(m,-.1,.15,-.95,.35,2.05,1.9,colors.brown)
+ for r,row in ipairs(rows) do
+  for k,mark in ipairs(row) do box(m,-.3,2.25-r*.65,-.85+(k-1)*.6,.5,.52,.52,c[mark]) end
+ end
+ return m
+end
 -- The startup tile: a power symbol.
 function E.boot(lit)
  local m={}
