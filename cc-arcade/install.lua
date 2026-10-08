@@ -2277,6 +2277,7 @@ function M.display(client,t,demo,verify)
  local snapshot={phase='CONNECTING',positions={0,0,0},order={}}
  local race=demo and sim.new(1977); local tick=0
  local nextStep=os.epoch('utc'); local started=nextStep; local frames=0
+ local sfx=require('derby.sfx').new()
  local timer=os.startTimer(.05)
  while true do
   local e,a,b,c=os.pullEvent()
@@ -2297,6 +2298,7 @@ function M.display(client,t,demo,verify)
     local r=client:read({op='snapshot'})
     snapshot=r.ok and r or {phase='HOUSE OFFLINE',positions=snapshot.positions,order={},paused=true}
    end
+   sfx:hear(snapshot,os.epoch('utc'))
    render:draw(snapshot,camera,demo); frames=frames+1; timer=os.startTimer(.05)
   elseif e=='key' then
    if a==keys.q or a==keys.backspace then return
@@ -2333,13 +2335,194 @@ end
 return M
 ]])
 
+writeFile('derby/cage.lua', [[
+-- The cashier's cage: a Pine3D croupier's booth seen from the customer's side of the bars.
+-- Camera on -x looking +x; y is up and +z is screen right, like the casino tables.
+-- The brass pass-through tray in the middle of the bars carries the pile of diamonds
+-- you are about to move; the vault plaque at the back shows the card's balance.
+local pine=require('derby.vendor.Pine3D')
+local mesh=require('casino.mesh')
+local font=require('casino.font')
+local M={}
+M.minW,M.minH=39,19
+local tri,quad,box=mesh.tri,mesh.quad,mesh.box
+M.trayX,M.trayY=-3.6,1.42
+M.vaultX=4.4
+-- A cut gem centred on (cx,cy,cz) with half-width s: pale crown above, cyan pavilion below.
+local function gem(m,cx,cy,cz,s)
+ local top,bot={cx,cy+.55*s,cz},{cx,cy-.75*s,cz}
+ local ring={{cx+s,cy,cz},{cx,cy,cz+s},{cx-s,cy,cz},{cx,cy,cz-s}}
+ for i=1,4 do
+  local a,b=ring[i],ring[i%4+1]
+  local mid={(a[1]+b[1])/2,cy,(a[3]+b[3])/2}
+  local up={mid[1]-cx,.8,mid[3]-cz}; local down={mid[1]-cx,-.8,mid[3]-cz}
+  tri(m,a,b,top,i%2==0 and colors.white or colors.lightBlue,up)
+  tri(m,a,b,bot,colors.cyan,down)
+ end
+end
+-- A pyramid of n gems (at most 30) resting on y=0, filling the bottom layer first.
+function M.pile(n)
+ local m={}; local step,s=.5,.22
+ local layers={4,3,2,1}; local placed=0
+ for k,side in ipairs(layers) do
+  local off=-(side-1)*step/2
+  for row=0,side-1 do for col=0,side-1 do
+   if placed>=n then return m end
+   placed=placed+1
+   gem(m,off+row*step,s*.75+(k-1)*.3,off+col*step,s)
+  end end
+ end
+ return m
+end
+-- A stack of chips as stacked flat boxes, colour per stack.
+local function chipStack(m,x,z,n,color)
+ for i=0,n-1 do box(m,x,M.trayY-.12+i*.07,z,.42,.06,.42,i%2==0 and color or colors.white) end
+end
+-- Digits as lit glyphs on the vault plaque; blank (just the plaque) when there is no balance.
+function M.plaque(text)
+ local m={}
+ box(m,M.vaultX+1.46,2.05,-2.6,.04,1.7,5.2,colors.yellow)
+ box(m,M.vaultX+1.42,2.1,-2.5,.04,1.6,5,colors.black)
+ if text and text~='' then
+  local cell=math.min(.26,4.6/(#text*3.6))
+  local w=font.width(text)*cell
+  font.draw(m,text,-w/2,2.1+1.6/2+2.5*cell,cell,colors.lime,function(u,v) return {M.vaultX+1.41,v,u} end,{-1,0,0})
+ else
+  box(m,M.vaultX+1.41,2.7,-.6,.01,.1,1.2,colors.red)
+ end
+ return m
+end
+-- The fixed room: floor, panelled walls, croupier's table, safe, shelves, bars.
+function M.room()
+ local m={}
+ local dark,wood,gold=colors.gray,colors.brown,colors.yellow
+ box(m,-16,-.5,-9,28,.5,18,wood)
+ -- Back and side walls: panelled below a gold rail, plaster above.
+ box(m,M.vaultX+1.5,-.5,-9,.6,7,18,dark)
+ box(m,M.vaultX+1.4,0,-9,.1,1.4,18,wood)
+ box(m,M.vaultX+1.35,1.4,-9,.1,.12,18,gold)
+ box(m,-16,-.5,9,28,7,.6,dark); box(m,-16,-.5,-9.6,28,7,.6,dark)
+ box(m,-16,1.4,8.9,28,.12,.1,gold); box(m,-16,1.4,-8.9,28,.12,.1,gold)
+ -- Croupier's table inside the cage: felt top, wooden skirt, chip racks along its back.
+ box(m,-3.0,0,-5.6,4.6,1.3,11.2,wood)
+ box(m,-3.0,1.3,-5.6,4.6,.1,11.2,colors.green)
+ box(m,-3.0,1.3,-5.7,4.6,.2,.1,wood); box(m,-3.0,1.3,5.6,4.6,.2,.1,wood)
+ box(m,1.5,1.3,-5.6,.1,.2,11.2,wood)
+ local zs={-4.6,-3.8,-3.0,-2.2,2.2,3.0,3.8,4.6}
+ local cs={colors.white,colors.red,colors.blue,colors.lime,colors.black,colors.lime,colors.blue,colors.red}
+ for i,z in ipairs(zs) do chipStack(m,.4,z,3+i%4,cs[i]) end
+ -- Ledger and a banker's lamp on the felt.
+ box(m,-1.6,1.4,-4.4,1.1,.09,.8,colors.white); box(m,-1.6,1.4,-4.45,1.1,.1,.05,colors.red)
+ box(m,-1.0,1.4,3.9,.1,.6,.1,gold); box(m,-1.2,2.0,3.7,.5,.2,.5,colors.green)
+ -- Safe against the back wall, dial and handle toward the room.
+ box(m,M.vaultX-.3,0,3.2,1.8,3.1,3.4,colors.lightGray)
+ box(m,M.vaultX-.35,.3,3.4,.06,2.5,3.0,dark)
+ box(m,M.vaultX-.42,1.3,4.3,.08,.5,.5,gold); box(m,M.vaultX-.42,1.1,5.0,.08,.9,.14,colors.red)
+ -- Shelf of stored gems on the left of the back wall.
+ box(m,M.vaultX+.6,1.2,-8.2,.9,.12,4.4,wood); box(m,M.vaultX+.6,2.5,-8.2,.9,.12,4.4,wood)
+ for i=0,5 do
+  gem(m,M.vaultX+1.0,1.45,-7.6+i*.7,.2); gem(m,M.vaultX+1.0,2.75,-7.6+i*.7,.2)
+ end
+ -- The cage front: posts, a lintel with the diamond mark, a counter panel and brass bars.
+ local x=-3.7
+ for _,z in ipairs({-6.2,6.0}) do box(m,x,0,z,.3,5.2,.3,gold) end
+ box(m,x,4.4,-6.2,.3,.8,12.5,gold)
+ box(m,x-.02,4.55,-.5,.05,.5,1,colors.black)
+ quad(m,{x-.06,4.8,0},{x-.06,4.6,.35},{x-.06,4.4,0},{x-.06,4.6,-.35},colors.lightBlue,{-1,0,0})
+ box(m,x,0,-6.2,.3,1.3,12.5,wood)
+ box(m,x-.05,1.25,-6.3,.4,.07,12.7,gold)
+ local z=-5.6
+ while z<5.7 do
+  if math.abs(z)>1.75 then box(m,x+.1,1.3,z,.07,3.1,.07,gold) end
+  z=z+.62
+ end
+ -- The pass-through tray the diamonds ride on, with a low brass lip.
+ box(m,M.trayX-1.0,M.trayY-.2,-1.55,2.2,.1,3.1,gold)
+ box(m,M.trayX-1.0,M.trayY-.1,-1.55,2.2,.18,.08,gold); box(m,M.trayX-1.0,M.trayY-.1,1.47,2.2,.18,.08,gold)
+ box(m,M.trayX-1.0,M.trayY-.1,-1.55,.08,.18,3.1,gold)
+ return m
+end
+-- Pine3D view: v = {balance, count, dx, hidePile}. Text overlays are drawn below the scene.
+local function line(t,y,text,fg,bg)
+ local w,h=t.getSize(); if y<1 or y>h then return end
+ t.setCursorPos(1,y); t.setBackgroundColor(bg or colors.black); t.setTextColor(fg or colors.white)
+ t.write((tostring(text)..string.rep(' ',w)):sub(1,w))
+end
+M.line=line
+-- Three buttons across the bottom two rows; labels sit on the last row.
+function M.slots(w)
+ local third=math.floor(w/3)
+ return {{x1=1,x2=third},{x1=third+1,x2=2*third},{x1=2*third+1,x2=w}}
+end
+M.barColors={{colors.black,colors.lime},{colors.black,colors.yellow},{colors.white,colors.red}}
+function M.new(t)
+ assert(t.isColor(),'The cashier cage requires an advanced colour computer or monitor')
+ require('derby.palette').apply(t)
+ local old=term.redirect(t)
+ local w,h=t.getSize()
+ local f=pine.newFrame(1,2,w,math.max(1,h-6)); f:setBackgroundColor(colors.black); f:setFoV(48)
+ local roomObj=f:newObject(M.room(),0,0,0)
+ local plaqueObj,plaqueText=f:newObject(M.plaque(nil),0,0,0),nil
+ local piles,pileObj,pileKey={}, nil, nil
+ local function aim() mesh.look(f,-13,3.8,0,0,1.7,0) end
+ aim()
+ term.redirect(old)
+ local api={frame=f}
+ -- v: balance (number|nil), count, dx (pile offset toward the vault, 0 at the tray),
+ -- hidePile, title, info, prompt, status, hint, options={{label},{label},{label}}.
+ function api:draw(v)
+  local previous=term.redirect(t)
+  local ww,hh=t.getSize()
+  if ww~=w or hh~=h then w,h=ww,hh; f:setSize(1,2,w,math.max(1,h-6)); aim() end
+  if w<M.minW or h<M.minH then
+   t.setBackgroundColor(colors.black); t.clear(); line(t,2,'CASHIER: display needs 39 x 19'); line(t,4,'Resize or use a larger monitor.')
+   term.redirect(previous); return
+  end
+  local text=v.balance and tostring(v.balance) or nil
+  if text~=plaqueText then plaqueObj:setModel(M.plaque(text)); plaqueText=text end
+  local objects={roomObj,plaqueObj}
+  local n=math.max(1,math.min(30,v.count or 5))
+  if not v.hidePile then
+   local model=piles[n]; if not model then model=M.pile(n); piles[n]=model end
+   if not pileObj then pileObj=f:newObject(model,0,0,0); pileKey=n
+   elseif pileKey~=n then pileObj:setModel(model); pileKey=n end
+   pileObj:setPos(M.trayX+(v.dx or 0),M.trayY-.1,0)
+   objects[#objects+1]=pileObj
+  end
+  f:drawObjects(objects); f:drawBuffer()
+  line(t,1,' '..(v.title or 'DIAMOND CASHIER'),colors.white,colors.blue)
+  local right='1 DIAMOND = 1 CREDIT '
+  t.setCursorPos(math.max(1,w-#right+1),1); t.setTextColor(colors.yellow); t.setBackgroundColor(colors.blue); t.write(right)
+  line(t,h-5,' '..(v.info or ''),colors.white,colors.gray)
+  line(t,h-4,' '..(v.prompt or ''),colors.yellow,colors.black)
+  line(t,h-3,' '..(v.status or ''),colors.white,colors.black)
+  line(t,h-2,' '..(v.hint or ''),colors.lightGray,colors.black)
+  for i,s in ipairs(M.slots(w)) do
+   local label=v.options and v.options[i] or ''
+   local width=s.x2-s.x1+1; local lp=math.max(0,math.floor((width-#label)/2))
+   local fg,bg=M.barColors[i][1],M.barColors[i][2]
+   if label=='' then fg,bg=colors.gray,colors.black end
+   for row=h-1,h do
+    t.setCursorPos(s.x1,row); t.setTextColor(fg); t.setBackgroundColor(bg)
+    t.write(row==h and (string.rep(' ',lp)..label..string.rep(' ',width)):sub(1,width) or string.rep(' ',width))
+   end
+  end
+  term.redirect(previous)
+ end
+ return api
+end
+return M
+]])
+
 writeFile('derby/cashier.lua', [=[
 local ui=require('derby.ui')
 local currency=require('derby.currency')
 local M={}
+local slots=require('derby.cage').slots
 function M.run(client,t)
  local amounts={5,10,20,64}; local index=1; local status=''; local review
- local card,balance
+ local card,balance,anim
+ local cage
  local policy,entries,selected=nil,{},1
  local apiVersion
  local reviewItem,reviewUnits,reviewBalance
@@ -2355,27 +2538,29 @@ function M.run(client,t)
  end
  local function draw()
   if not ui.usable(t) then return end
-  ui.clear(t,policy and 'ITEM CREDIT CASHIER' or 'DIAMOND CASHIER')
+  cage=cage or require('derby.cage').new(t)
+  local now=os.epoch('utc')/1000
+  local dx,hide=0,false
+  if anim then
+   local u=(now-anim.t0)/anim.dur
+   if u>=1 then anim=nil
+   else dx=(anim.op=='deposit' and u or 1-u)*7.5; hide=anim.op=='deposit' and u>.85 end
+  end
   local entry=policy and policy.entries[entries[selected]]
-  ui.line(t,3,entry and (' '..entry.itemId..' = '..entry.unitsPerItem..' credits [Up/Down]') or ' 1 diamond = 1 credit',colors.yellow)
-  ui.line(t,5,' '..(card and (card.account or 'New card - issue an account') or 'Insert a floppy disk'))
-  ui.line(t,6,' Balance: '..tostring(balance or 'UNAVAILABLE'))
+  local v={balance=balance,count=review and (review.amount or review.requestedItems) or amounts[index],dx=dx,hidePile=hide,status=status,
+   info=(card and (card.account or 'New card: issue an account') or 'Insert a floppy disk')..'  |  Balance: '..tostring(balance or 'UNAVAILABLE')}
   if review then
    if review.op=='exchange' then
-    ui.line(t,8,' '..review.direction:upper()..' '..review.requestedItems..' '..reviewItem,colors.yellow)
-    local delta=reviewUnits
-    ui.line(t,9,' '..delta..' credits; expected balance '..reviewBalance)
-   else ui.line(t,8,' '..review.op:upper()..' '..review.amount..' DIAMONDS',colors.yellow) end
-   ui.button(t,10,'ENTER: CONFIRM',true,false)
-   ui.line(t,14,' Backspace: cancel')
+    v.prompt=review.direction:upper()..' '..review.requestedItems..' '..reviewItem..'?'
+    v.hint=reviewUnits..' credits; balance '..reviewBalance..'  Enter: confirm  Backspace: cancel'
+   else v.prompt=review.op:upper()..' '..review.amount..' DIAMONDS?'; v.hint='Enter: confirm  Backspace: cancel' end
+   v.options={'CONFIRM','','CANCEL'}
   else
-   ui.line(t,8,' Amount: '..amounts[index]..'  [Left/Right]',colors.yellow)
-   ui.button(t,9,'[D] DEPOSIT from intake chest',false,false)
-   ui.button(t,12,'[W] WITHDRAW to output chest',false,false)
-   ui.line(t,16,' [N] Issue new card | [R] Retry request')
+   v.prompt=(entry and (entry.itemId..' = '..entry.unitsPerItem..' credits [Up/Down]  ') or '')..'Amount: '..amounts[index]..'  [Left/Right]'
+   v.hint='[N] New card  [R] Retry  [Q] Exit'
+   v.options={'DEPOSIT',tostring(amounts[index]),'WITHDRAW'}
   end
-  ui.line(t,18,' [Q] Exit | Empty output after withdrawal')
-  local _,h=t.getSize(); ui.line(t,h,' '..status,colors.yellow)
+  cage:draw(v)
  end
  local function create()
   if not ui.usable(t) then return end
@@ -2415,12 +2600,13 @@ function M.run(client,t)
   if not current or current.account~=review.account then status='Card changed. Transfer not sent.'; review=nil; return end
   local r=client:mutate(review)
   status=r.ok and ('Transferred '..tostring(r.confirmedItems or r.moved or 0)..' items; balance '..tostring(r.balance)) or r.error
+  if r.ok and (r.confirmedItems or r.moved or 1)>0 then anim={op=(review.op=='exchange' and review.direction=='redeem') and 'withdraw' or (review.op=='exchange' and 'deposit' or review.op),t0=os.epoch('utc')/1000,dur=.9} end
   review=nil; refresh()
  end
- refresh(); draw(); local timer=os.startTimer(1)
+ refresh(); draw(); local timer=os.startTimer(.1); local ticks=0
  while true do
   local e,a,b,c=os.pullEvent()
-  if e=='timer' and a==timer then refresh(); timer=os.startTimer(1)
+  if e=='timer' and a==timer then ticks=ticks+1; if ticks%10==0 then refresh() end; timer=os.startTimer(.1)
   elseif e=='key' then
    if a==keys.q then return elseif a==keys.backspace then review=nil
    elseif a==keys.enter then confirm()
@@ -2430,9 +2616,11 @@ function M.run(client,t)
     elseif a==keys.n then create() elseif a==keys.d then choose('deposit') elseif a==keys.w then choose('withdraw') end
    end
   elseif e=='monitor_touch' or e=='mouse_click' then
-   if review and c>=10 and c<=12 then confirm()
-   elseif not review then
-    if c==3 and policy and #entries>0 then selected=selected%#entries+1 elseif c==8 then index=index%#amounts+1 elseif c>=9 and c<=11 then choose('deposit') elseif c>=12 and c<=14 then choose('withdraw') end
+   local w,h=t.getSize()
+   if c>=h-1 then
+    local slot; for i,s in ipairs(slots(w)) do if b>=s.x1 and b<=s.x2 then slot=i end end
+    if review then if slot==1 then confirm() elseif slot==3 then review=nil end
+    elseif slot==1 then choose('deposit') elseif slot==2 then index=index%#amounts+1 elseif slot==3 then choose('withdraw') end
    end
   end
   draw()
@@ -3439,6 +3627,64 @@ end
 return M
 ]])
 
+writeFile('derby/sfx.lua', [[
+-- Race-day sound for the display and the betting station. Notes go through casino.sound,
+-- which holds them until the frame loop plays them, so sound never sleeps the event loop.
+-- Times are milliseconds on os.epoch('utc'); the caller passes `now` and ticks the queue.
+local M={}
+local GALLOP=450
+local PLACES={24,19,14}
+function M.new(sound)
+ local self={sound=sound or require('casino.sound')(),phase=nil,second=nil,placed=0,gallopAt=0}
+ local function note(at,instrument,volume,pitch) self.sound:play(at,instrument,volume,pitch) end
+ -- The display calls this with every snapshot. Joining mid-race stays quiet until a
+ -- phase change is actually seen, so only real starts and finishes get fanfares.
+ function self:hear(v,now)
+  local phase=v.phase
+  if phase~=self.phase then
+   local was=self.phase
+   if phase=='RUNNING' and was=='LOCKED' then
+    for i,p in ipairs({12,16,19,24}) do note(now+(i-1)*90,'bell',1.2,p) end
+    note(now,'snare',1.2,12); note(now,'basedrum',1.2,8)
+    self.gallopAt=now+500
+   elseif phase=='RESULT' and was=='RUNNING' then
+    for i,p in ipairs({12,16,19,24,19,24}) do note(now+400+(i-1)*130,'bell',1,p) end
+    note(now+1100,'chime',1,24)
+   elseif phase=='CANCELLED' then
+    note(now,'bass',1,8); note(now+150,'bass',1,4); note(now+300,'bass',1,0)
+   end
+   self.phase=phase; self.second=nil; self.placed=#(v.order or {})
+  end
+  if phase=='LOCKED' and v.seconds and v.seconds>0 and v.seconds~=self.second then
+   self.second=v.seconds
+   if v.seconds<=3 then note(now,'pling',1,12+(3-v.seconds)*4) else note(now,'hat',.6,18) end
+  end
+  if phase=='RUNNING' then
+   if now>=self.gallopAt then
+    self.gallopAt=now+GALLOP
+    note(now,'basedrum',.6,3); note(now+110,'hat',.5,10); note(now+220,'hat',.5,10)
+   end
+   local order=v.order or {}
+   while self.placed<#order do
+    self.placed=self.placed+1
+    note(now,'bell',1.2,PLACES[self.placed] or 12); note(now,'snare',.8,16)
+   end
+  end
+  self.sound:tick(now)
+ end
+ -- Betting station feedback.
+ function self:move(now) note(now,'hat',.4,20); self.sound:tick(now) end
+ function self:ticket(accepted,now)
+  if accepted then note(now,'bell',1,12); note(now+100,'bell',1,16); note(now+200,'bell',1,19)
+  else note(now,'bass',1,6); note(now+120,'bass',1,3) end
+  self.sound:tick(now)
+ end
+ function self:tick(now) self.sound:tick(now) end
+ return self
+end
+return M
+]])
+
 writeFile('derby/sim.lua', [[
 -- Pure, versioned simulation. Distances and time do not depend on the renderer.
 local M = { version = 1, dt = .1, distance = 450 }
@@ -3505,6 +3751,8 @@ function M.run(client,t)
  local stakes={5,10,20}; local status=''; local review
  local snapshot={}; local account,balance,card
  local timer=os.startTimer(0)
+ local sfx=require('derby.sfx').new()
+ local tone=os.startTimer(.1)
  local function refresh()
   card=ui.card(); account=card and card.account
   local r=client:read({op='snapshot',account=account})
@@ -3541,7 +3789,7 @@ function M.run(client,t)
    local now=ui.card()
    if not now or now.account~=review.account then status='Card changed. Bet not sent.'; review=nil; return end
    local r=client:mutate({op='bet',account=review.account,race=review.race,horse=review.horse,stake=review.stake})
-   status=r.ok and 'Ticket accepted. Winnings reach your account.' or r.error; review=nil; refresh()
+   status=r.ok and 'Ticket accepted. Winnings reach your account.' or r.error; review=nil; sfx:ticket(r.ok,os.epoch('utc')); refresh()
   elseif focus<=3 then horse=focus
   elseif focus==4 then stakeIndex=stakeIndex%3+1
   elseif snapshot.ok and snapshot.phase=='OPEN' and not snapshot.paused and account and balance and not snapshot.ticket then
@@ -3552,14 +3800,18 @@ function M.run(client,t)
  while true do
   local e,a,b,c=os.pullEvent()
   if e=='timer' and a==timer then refresh(); timer=os.startTimer(1)
+  elseif e=='timer' and a==tone then sfx:tick(os.epoch('utc')); tone=os.startTimer(.1)
   elseif e=='key' then
    if a==keys.q then return
    elseif a==keys.r then local r=client:retry(); status=r.ok and 'Request acknowledged' or r.error; refresh()
    elseif a==keys.backspace then review=nil
    elseif a==keys.enter then activate()
    elseif not review then
+    local moved=true
     if a==keys.tab or a==keys.down then focus=focus%5+1 elseif a==keys.up then focus=(focus-2)%5+1
-    elseif a==keys.left then stakeIndex=(stakeIndex-2)%3+1 elseif a==keys.right then stakeIndex=stakeIndex%3+1 end
+    elseif a==keys.left then stakeIndex=(stakeIndex-2)%3+1 elseif a==keys.right then stakeIndex=stakeIndex%3+1
+    else moved=false end
+    if moved then sfx:move(os.epoch('utc')) end
    end
   elseif e=='monitor_touch' or e=='mouse_click' then
    local y=c
@@ -8061,9 +8313,24 @@ function M.items(state)
  return list
 end
 local KEYS_BACK={[keys.backspace]=true}
+-- Menu sounds: {seconds after the cue, instrument, volume, pitch}. A game launch is a single
+-- chord because the menu stops listening while the game has the screen.
+local CUES={
+ welcome={{0,'harp',1,12},{.12,'harp',1,16},{.24,'harp',1,19},{.36,'harp',1,24}},
+ left={{0,'hat',.5,14}},
+ right={{0,'hat',.5,20}},
+ choose={{0,'pling',.8,16},{.08,'pling',.8,21}},
+ back={{0,'hat',.5,8}},
+ launch={{0,'bell',1,12},{0,'bell',1,19},{0,'basedrum',1,10}},
+ bootOn={{0,'chime',1,19},{.1,'chime',1,24}},
+ bootOff={{0,'chime',.8,14},{.1,'chime',.8,9}},
+ denied={{0,'bass',1,6},{.12,'bass',1,3}},
+}
+M.cues=CUES
 -- opts: dir (install folder holding .get.json), target, args (as given to pinearcade),
 -- clock(), button(event,p1), launch(item,args) -> ok[, problem], pause(item) (waits after a
--- game stops, so its error can be read), setBoot(name|'off') -> ok
+-- game stops, so its error can be read), setBoot(name|'off') -> ok, sound (casino.sound's
+-- play(at,instrument,volume,pitch) and tick(now), timed by clock())
 function M.run(opts)
  local dir=opts.dir
  local state=readJSON(fs.combine(dir,STATE))
@@ -8094,6 +8361,12 @@ function M.run(opts)
   local ok=shell.run('/'..fs.combine(dir,'get.lua'),'boot',name,'--dir','/'..fs.combine(dir,''))
   term.redirect(old)
   return ok
+ end
+ local sound=opts.sound or require('casino.sound')()
+ local function cue(name)
+  local at=clock()
+  for _,n in ipairs(CUES[name]) do sound:play(at+n[1],n[2],n[3],n[4]) end
+  sound:tick(at)
  end
  local palette=require('casino.palette')
  local restore=require('derby.palette').save(t)
@@ -8139,7 +8412,8 @@ function M.run(opts)
    state=readJSON(fs.combine(dir,STATE)) or state
    local b=bootTitle()
    say(b and b..' NOW STARTS AT BOOT' or 'NOTHING STARTS AT BOOT NOW')
-  else say('COULD NOT CHANGE THE STARTUP') end
+   cue(b and 'bootOn' or 'bootOff')
+  else say('COULD NOT CHANGE THE STARTUP'); cue('denied') end
  end
  local function play(it)
   restore()
@@ -8152,6 +8426,7 @@ function M.run(opts)
     elseif a=='--monitor' then gameArgs[#gameArgs+1]=a; gameArgs[#gameArgs+1]=args[i+1] end
    end
   end
+  cue('launch')
   local ok,problem=launch(it,gameArgs)
   -- A failed run (a crash, or Ctrl+T) keeps its output up until a key is pressed.
   if not ok and not problem then pause(it) end
@@ -8163,10 +8438,10 @@ function M.run(opts)
  local function press(b)
   local it=item()
   if mode=='browse' then
-   if b=='LEFT' then index=index-1; spin=0
-   elseif b=='RIGHT' then index=index+1; spin=0
-   elseif b=='CENTER' then mode='card' end
-  elseif b=='LEFT' then mode='browse'
+   if b=='LEFT' then index=index-1; spin=0; cue('left')
+   elseif b=='RIGHT' then index=index+1; spin=0; cue('right')
+   elseif b=='CENTER' then mode='card'; cue('choose') end
+  elseif b=='LEFT' then mode='browse'; cue('back')
   elseif it.name=='boot' then
    changeBoot(b=='CENTER' and launcher() or 'off')
   elseif b=='CENTER' then play(it)
@@ -8182,6 +8457,7 @@ function M.run(opts)
  end
  local last=clock()
  local timer=os.startTimer(.05)
+ cue('welcome')
  local ok,err=pcall(function()
   while true do
    local e,p1,p2,p3=os.pullEventRaw()
@@ -8193,6 +8469,7 @@ function M.run(opts)
     if math.abs(index-1-pos)<.002 then pos=index-1 end
     zoom=zoom+((mode=='card' and 1 or 0)-zoom)*math.min(1,dt*8)
     spin=spin+dt*(mode=='card' and 2 or .8)
+    sound:tick(now)
     draw()
     timer=os.startTimer(.05)
    elseif e=='key' and KEYS_BACK[p1] and mode=='card' then b='LEFT'
@@ -8416,6 +8693,17 @@ function E.pineface()
  box(m,-.92,.96,-.58,.12,.14,.16,colors.black)
  box(m,-.92,.96,.42,.12,.14,.16,colors.black)
  box(m,-.5,.15,.75,.22,.22,.22,colors.white)
+ return m
+end
+function E.wordle()
+ local m={}
+ -- Three guesses' worth of letter blocks, the last row solved, on a wooden board.
+ local c={gray=colors.gray,near=colors.yellow,hit=colors.lime}
+ local rows={{'gray','near','gray'},{'near','gray','hit'},{'hit','hit','hit'}}
+ box(m,-.1,.15,-.95,.35,2.05,1.9,colors.brown)
+ for r,row in ipairs(rows) do
+  for k,mark in ipairs(row) do box(m,-.3,2.25-r*.65,-.85+(k-1)*.6,.5,.52,.52,c[mark]) end
+ end
  return m
 end
 -- The startup tile: a power symbol.
@@ -13398,6 +13686,748 @@ end
 
 -- Run the menu
 showMenu()
+]])
+
+writeFile('wordle/app.lua', [[
+-- Daily Wordle: guess the day's five-letter Minecraft word in six tries. Every computer
+-- on the server gets the same word on the same (UTC) day.
+-- Type on the keyboard, touch the on-screen keys, or use the cabinet buttons: LEFT and
+-- RIGHT move along the on-screen keys and CENTER presses the one lit up.
+local rules=require('wordle.rules')
+local render=require('wordle.render')
+local M={}
+local C=render.C
+M.palette=render.palette
+-- On-screen keys in reading order; the buttons walk this list.
+local ROWS={'QWERTYUIOP','ASDFGHJKL','>ZXCVBNM<'}
+local KEYS={}
+for r,row in ipairs(ROWS) do for c in row:gmatch('.') do KEYS[#KEYS+1]={row=r,value=c=='>' and 'ENTER' or c=='<' and 'DEL' or c} end end
+M.keys=KEYS
+local PRAISE={'GENIUS','MAGNIFICENT','IMPRESSIVE','SPLENDID','GREAT','PHEW'}
+-- {seconds after the cue, instrument, volume, pitch}
+local CUES={
+ type={{0,'hat',.4,16}},
+ erase={{0,'hat',.4,10}},
+ move={{0,'hat',.3,20}},
+ bad={{0,'bass',1,6},{.1,'bass',1,4}},
+ hit={{0,'bell',.8,18}},
+ near={{0,'pling',.8,14}},
+ miss={{0,'snare',.4,8}},
+ win={{0,'chime',1,12},{.15,'chime',1,16},{.3,'chime',1,19},{.45,'chime',1,24}},
+ lose={{0,'didgeridoo',1,8},{.3,'didgeridoo',1,4}},
+}
+M.cues=CUES
+-- Animation timings, in seconds.
+local FLIP=.25    -- between one tile starting to turn and the next
+local TURN=.35    -- one tile turning over
+local SHAKE=.5    -- a refused row shaking
+local POP=.12     -- a typed tile's outline flashing
+local HOP=.12     -- between solved tiles hopping
+local HOPTIME=.36 -- one hop
+-- Sizes, largest first: title rows tt, tiles tw x th with rg rows between them, keys
+-- kw x kh with kg rows between the keyboard rows. A three-row title is the blocky one.
+local SIZES={{3,7,3,1,5,3,1},{3,7,3,1,5,3,0},{3,7,3,1,5,1,0},{3,5,3,1,5,1,0},{1,5,3,1,5,1,0},{1,5,3,1,3,1,0},{1,3,1,1,3,1,0},{1,3,1,0,3,1,0}}
+function M.layout(w,h)
+ for _,s in ipairs(SIZES) do
+  local tt,tw,th,rg,kw,kh,kg=table.unpack(s)
+  local gridH=rules.TRIES*th+(rules.TRIES-1)*rg
+  local kbH=3*kh+2*kg
+  local gridW=rules.LENGTH*tw+rules.LENGTH-1
+  local kbW=10*kw+9
+  local used=tt+1+gridH+1+kbH+1+1
+  if used<=h and gridW<=w and kbW<=w then
+   local L={tt=tt,tw=tw,th=th,rg=rg,kw=kw,kh=kh,kg=kg,sw=(3*kw+1)/2}
+   -- Centre the board and keyboard in the rows between the title and the message line.
+   local spare=h-used
+   L.gridY=tt+2+math.floor(spare/3)
+   L.gridX=math.floor((w-gridW)/2)+1
+   L.kbY=L.gridY+gridH+1+math.floor(spare/3)
+   L.kbX=math.floor((w-kbW)/2)+1
+   -- Where each on-screen key sits, in characters.
+   L.keys={}
+   local x,y,row=L.kbX,L.kbY,1
+   for n,k in ipairs(KEYS) do
+    if k.row~=row then row=k.row; y=y+kh+kg; x=L.kbX+(row==2 and math.floor((kw+1)/2) or 0) end
+    local wd=(k.value=='ENTER' or k.value=='DEL') and L.sw or kw
+    L.keys[n]={x=x,y=y,w=wd,value=k.value}
+    x=x+wd+1
+   end
+   return L
+  end
+ end
+end
+local function centre(t,y,text,fg,bg)
+ local w=t.getSize()
+ t.setBackgroundColor(bg or C.bg); t.setCursorPos(1,y); t.clearLine()
+ t.setTextColor(fg or C.text); t.setCursorPos(math.max(1,math.floor((w-#text)/2)+1),y); t.write(text)
+end
+-- The bottom row: three button slots, as wide as the cabinet buttons are apart.
+local function slots(w)
+ local a=math.floor(w/3)
+ return {{x1=1,x2=a},{x1=a+1,x2=w-a},{x1=w-a+1,x2=w}}
+end
+M.slots=slots
+-- opts: target, args, clock() (seconds, for animation), now() (UTC milliseconds, for the
+-- day's word), button(event,p1), sound (casino.sound's play(at,instrument,volume,pitch) and
+-- tick(now)), random(a,b) for the confetti
+function M.run(opts)
+ local t=opts.target
+ local args=opts.args or {}
+ local clock=opts.clock or function() return os.epoch('utc')/1000 end
+ local now=opts.now or function() return os.epoch('utc') end
+ local button=opts.button or require('input').getButton
+ local sound=opts.sound or require('casino.sound')()
+ local random=opts.random or math.random
+ local monitorName
+ for i,a in ipairs(args) do if a=='--monitor' then monitorName=args[i+1] end end
+ if not monitorName and peripheral.getName then local ok,name=pcall(peripheral.getName,t); if ok then monitorName=name end end
+ local view=render.new(t)
+ local function cue(name)
+  local at=clock()
+  for _,n in ipairs(CUES[name]) do sound:play(at+n[1],n[2],n[3],n[4]) end
+  sound:tick(at)
+ end
+ local puzzle,rows,typed,cursor,done,flash,flashUntil,shakeUntil,reveal,popAt,wonAt,confetti
+ local function newGame()
+  puzzle=rules.daily(now())
+  rows={}; typed=''; done=nil; flash=nil; shakeUntil=0; reveal=nil; popAt=-1; wonAt=nil; confetti={}
+  cursor=cursor or 1
+ end
+ newGame()
+ local function say(text,secs) flash=text; flashUntil=clock()+(secs or 2) end
+ local function message(w)
+  if flash and clock()<flashUntil then return flash,C.text end
+  if reveal then return '',C.text end
+  if done then
+   local left=86400000-now()%86400000
+   local nextIn=('NEXT WORD IN %dH %02dM'):format(math.floor(left/3600000),math.floor(left%3600000/60000))
+   local text=done=='win' and ('%s! SOLVED %d/%d'):format(PRAISE[#rows],#rows,rules.TRIES) or 'THE WORD WAS '..puzzle.word
+   if #text+#nextIn+3<=w then text=text..' - '..nextIn end
+   return text,done=='win' and C.grass or C.near
+  end
+  return ('GUESS %d OF %d'):format(#rows+1,rules.TRIES),C.key
+ end
+ -- How far tile i of row r has turned over, 0..1.
+ local function flip(r,i)
+  if not reveal or r<#rows then return 1 end
+  return math.max(0,math.min(1,(clock()-reveal.start-(i-1)*FLIP)/TURN))
+ end
+ -- How many pixels tile i of the solved row is lifted.
+ local function bounce(r,i)
+  if not wonAt or r~=#rows then return 0 end
+  local p=(clock()-wonAt-(i-1)*HOP)/HOPTIME
+  if p<=0 or p>=1 then return 0 end
+  return math.floor(3*math.sin(math.pi*p)+.5)
+ end
+ local function animating()
+  local at=clock()
+  return reveal or (flash and at<flashUntil+.1) or at<shakeUntil or at<popAt+POP or (wonAt and at<wonAt+HOP*rules.LENGTH+HOPTIME) or #confetti>0
+ end
+ local L
+ local function draw()
+  local w,h=t.getSize()
+  L=M.layout(w,h)
+  if not L then
+   t.setBackgroundColor(C.bg); t.clear(); centre(t,1,'SCREEN TOO SMALL',C.bad); return
+  end
+  local at=clock()
+  local seen=rules.keyboard(reveal and {table.unpack(rows,1,#rows-1)} or rows)
+  local keys={}
+  for n,k in ipairs(L.keys) do
+   keys[n]={x=k.x,y=k.y,w=k.w,value=k.value,mark=seen[k.value],cursor=n==cursor and not done}
+  end
+  local shake=0
+  if at<shakeUntil then shake=math.floor(2*math.sin((shakeUntil-at)*50)+.5) end
+  view:draw({layout=L,puzzle=puzzle,rows=rows,typed=typed,done=done,tries=rules.TRIES,length=rules.LENGTH,
+   keys=keys,flip=flip,bounce=bounce,shake=shake,pop=at<popAt+POP and #typed or nil,confetti=confetti})
+  local text,fg=message(w)
+  centre(t,h-1,text,fg)
+  local bar=done and {'QUIT','NEXT PLAYER','QUIT'} or {'< KEY','PRESS '..KEYS[cursor].value,'KEY >'}
+  for i,s in ipairs(slots(w)) do
+   local wd=s.x2-s.x1+1
+   t.setBackgroundColor(i==2 and C.miss or C.stone); t.setTextColor(C.text)
+   t.setCursorPos(s.x1,h); t.write((' '):rep(wd))
+   t.setCursorPos(s.x1+math.floor((wd-#bar[i])/2),h); t.write(bar[i])
+  end
+ end
+ local function hitWhat(x,y)
+  if not L then return end
+  local w,h=t.getSize()
+  if y==h then for i,s in ipairs(slots(w)) do if x>=s.x1 and x<=s.x2 then return ({'LEFT','CENTER','RIGHT'})[i] end end end
+  for _,k in ipairs(L.keys) do if x>=k.x and x<k.x+k.w and y>=k.y and y<k.y+L.kh then return k.value end end
+ end
+ local function refuse(text) say(text); shakeUntil=clock()+SHAKE; cue('bad') end
+ local function submit()
+  if #typed<rules.LENGTH then return refuse('NOT ENOUGH LETTERS') end
+  if not rules.valid(typed) then return refuse('NOT IN WORD LIST') end
+  rows[#rows+1]={word=typed,marks=rules.score(typed,puzzle.word)}
+  typed=''
+  reveal={start=clock(),cued=0}
+ end
+ local function finish()
+  local last=rows[#rows]
+  if last.word==puzzle.word then
+   done='win'; wonAt=clock(); cue('win')
+   local w,h=t.getSize()
+   local shades={C.hit,C.hitLight,C.near,C.nearLight,C.grass,C.cursorLight,C.text}
+   for _=1,math.floor(w*1.2) do
+    confetti[#confetti+1]={x=random(1,w*2),y=-random(0,h*2),vx=(random()-.5)*12,vy=random()*20,c=shades[random(1,#shades)]}
+   end
+  elseif #rows>=rules.TRIES then done='lose'; cue('lose') end
+ end
+ -- One action: a letter, ENTER, DEL, or a cabinet button. Returns true to quit.
+ local function act(v)
+  if reveal then return end
+  if done then
+   if v=='CENTER' then newGame()
+   elseif v=='LEFT' or v=='RIGHT' then return true end
+   return
+  end
+  if v=='LEFT' then cursor=(cursor-2)%#KEYS+1; cue('move'); return end
+  if v=='RIGHT' then cursor=cursor%#KEYS+1; cue('move'); return end
+  if v=='CENTER' then v=KEYS[cursor].value end
+  if v=='ENTER' then submit()
+  elseif v=='DEL' then if #typed>0 then typed=typed:sub(1,-2); cue('erase') end
+  elseif #typed<rules.LENGTH then typed=typed..v; popAt=clock(); cue('type') end
+ end
+ local timer=os.startTimer(.05)
+ local last=clock()
+ local lastSecond=-1
+ draw()
+ while true do
+  local e,p1,p2,p3=os.pullEventRaw()
+  if e=='terminate' then return end
+  local v
+  if e=='timer' and p1==timer then
+   local at=clock()
+   local dt=math.min(.2,at-last); last=at
+   local changed=false
+   if reveal then
+    -- Each tile sounds its mark as it shows its new face, halfway over.
+    while reveal.cued<rules.LENGTH and at>=reveal.start+reveal.cued*FLIP+TURN/2 do
+     reveal.cued=reveal.cued+1; cue(rows[#rows].marks[reveal.cued])
+    end
+    if at>=reveal.start+(rules.LENGTH-1)*FLIP+TURN then reveal=nil; finish(); changed=true end
+   end
+   if #confetti>0 then
+    local _,h=t.getSize()
+    for n=#confetti,1,-1 do
+     local p=confetti[n]
+     p.vy=p.vy+40*dt; p.x=p.x+p.vx*dt; p.y=p.y+p.vy*dt
+     if p.y>h*3 then table.remove(confetti,n) end
+    end
+   end
+   sound:tick(at)
+   -- Redraw while something moves, and once a second for the countdown and messages.
+   local second=math.floor(at)
+   if changed or animating() or second~=lastSecond then draw(); lastSecond=second end
+   timer=os.startTimer(.05)
+  elseif e=='char' and p1:match('^%a$') then v=p1:upper()
+  elseif e=='char' then v=button(e,p1)
+  elseif e=='key' and p1==keys.enter then v='ENTER'
+  elseif e=='key' and p1==keys.backspace then v='DEL'
+  elseif e=='key' then
+   -- Letter keys arrive again as char events; anything else may be a cabinet button.
+   local name=keys.getName(p1) or ''
+   if not name:match('^%a$') then v=button(e,p1) end
+  elseif e=='redstone' then v=button(e,p1)
+  elseif e=='mouse_click' and not monitorName then v=hitWhat(p2,p3)
+  elseif e=='monitor_touch' and p1==monitorName then v=hitWhat(p2,p3)
+  elseif e=='term_resize' or e=='monitor_resize' then draw() end
+  if v then
+   if act(v) then return end
+   draw()
+  end
+ end
+end
+return M
+]])
+
+writeFile('wordle/guesses.lua', [[
+-- Generated by wordle/tools/guesses.py. Accepted guesses, five letters each, run together.
+return 'AALIIABACAABACKABACSABAFFABAFTABASEABASHABASKABATEABAVEABAZEABBASABBEYABBOTABDALABDATABEAMABEARABEDSABELEABETSABEYSABHORABIDEABIDIABILOABIRSABKARABLERABLESABLOWABLYSABMHOABNETABODEABODYABOHMABOILABOMAABOONABORDABORTABOUTABOVEABOXSABRETABRIMABRINABSITABUNAABURAABUSEABUTSABUZZABWABABYSMABYSSACANAACAPUACARAACARIACATEACCASACCOYACEDYACERBACHARACHERACHESACHORACHYSACIDSACIERACKERACKEYACLESACLYSACMESACMICACNESACOCKACOINACOLDACOMAACONEACORNACORSACREDACRESACRIDACRONACRYLACTASACTINACTONACTORACTUSACUTEACYLSADADSADAGEADAPTADATIADATSADAWEADAWNADAWSADAYSADDASADDAXADDEDADDERADDLEADEADADEEMADEEPADEPTADETSADFIXADIEUADIONADITSADJAGADLAYADLETADMANADMINADMISADMITADMIXADNEXADOBEADOPTADOREADORNADOWNADOXYADOZEADPAOADRIPADROPADRUEADRYSADULTADUNCADUSKADUSTADYTAADZERADZESAEGISAEONSAERICAERIEAEROSAERYSAEVIAAFACEAFARAAFARSAFEARAFFASAFFIXAFFYSAFIREAFLATAFLOWAFOAMAFOOTAFOREAFOULAFRETAFTERAGAINAGALSAGAMAAGAMIAGAMYAGAPEAGARSAGASPAGATEAGATYAGAZEAGEDSAGEESAGENSAGENTAGERSAGGERAGGRYAGGURAGHASAGILEAGINGAGIOSAGISTAGITAAGLASAGLETAGLEYAGLOWAGNELAGNUSAGOGEAGOGSAGOHOAGONEAGONSAGONYAGORAAGRAHAGRALAGREEAGRESAGRIAAGRINAGROMAGSAMAGUASAGUESAGUEYAGUSHAGUSTAHEADAHEAPAHEMSAHEYSAHINDAHINTAHONGAHOYSAHSANAHULLAHUMSAHUNTAHURAAHUSHAHWALAIDERAIDESAIELSAILESAILLTAIMERAINOIAINTSAIONSAIRANAIRERAIRESAIRTSAIRYSAISLEAITCHAIWANAIZLEAJAJAAJARIAJARSAJAVAAJHARAJOGSAKALAAKASAAKEBIAKEESAKEKIAKEYSAKIASAKINSAKNEEAKOVSAKPEKAKRASAKULEAKUNDALACKALADAALALAALAMOALANDALANIALANSALARMALARSALARYALATEALBANALBASALBEEALBESALBUMALBUSALCOSALDERALDIMALDOLALEAKALECSALEESALEFSALEFTALEMSALENSALEPHALERTALFASALFETALGAEALGALALGASALGICALGIDALGINALGORALGUMALIASALIBIALIENALIFSALIGNALIKEALIMAALINSALISHALISOALISPALISTALITEALITSALIVEALKYDALKYLALKYSALLANALLAYALLERALLEYALLOTALLOWALLOYALLYLALLYSALMASALMESALMONALMUDALMUGALODSALODYALOEDALOESALOFTALOGYALOIDALOINALOMAALONEALONGALOOFALOPSALOSEALOUDALOWEALOWSALPHAALSOSALTARALTERALTHOALTINALTOSALTUNALULAALUMSALUREALUTAALVARALVUSALWAYAMAASAMAGAAMAHSAMAINAMALAAMANGAMANIAMAPAAMARSAMASSAMAZEAMBANAMBARAMBASAMBAYAMBERAMBITAMBLEAMBONAMBOSAMBRYAMEEDAMEENAMELUAMENDAMENEAMENSAMENTAMHARAMICEAMICSAMIDEAMIDOAMIDSAMILSAMINEAMINIAMINOAMINSAMIRSAMISSAMITYAMLASAMLISAMMANAMMASAMMERAMMOSAMMUSAMNIAAMNICAMOKEAMOKSAMOLEAMONGAMORSAMORTAMOURAMOVEAMPERAMPLEAMPLYAMPULAMPYXAMRASAMSELAMUCKAMULAAMUSEAMUZEAMVISAMYLOAMYLSANABOANALSANAMAANAMSANANAANANSANAYSANBASANCONANDASANEARANELEANENDANENTANEWSANGELANGERANGLEANGORANGOSANGRYANGSTANIGHANILEANILSANIMAANIMEANIMIANIONANISEANJANANKEEANKERANKHSANKLEANKUSANNALANNASANNATANNETANNEXANNOYANNULANOASANODEANOILANOLEANOLIANOMYANONSANSARANSASANSUSANTALANTASANTESANTICANTISANTRAANTREANTUSANURYANVILAORTAAPACEAPAIDAPARSAPARTAPEAKAPERSAPERTAPERYAPEXSAPHIDAPIANAPIINAPIISAPINGAPIOSAPISHAPISMAPNEAAPODSAPOOPAPORTAPOUTAPPAYAPPETAPPLEAPPLYAPRONAPSESAPSISAPTLYAQUASAQUOSARABAARACAARADOARADSARAINARAKEARARAARARSARATIARBASARBORARCASARCHEARCHSARCHYARDEBARDORARDRIARDUSAREADAREALAREARAREASAREDSAREEKAREELARENAARENDARENGARENTARETEARGALARGELARGILARGOLARGONARGOSARGOTARGUEARHARARHATARIASARIDSARIELARILSARIOTARISEARISTARITEARJUNARLESARMEDARMERARMETARMILARMORARMYSARNASARNEEARNISARNUTAROARAROCKAROIDAROMAAROONAROSEAROWSARPENARRAHARRASARRAUARRAYARRIEARRISARROWARSESARSISARSLEARSONARSYLARTALARTARARTELARTHAARTYSARUISARUKEARUPAARUSAARVALARVELARYLSARZANARZUNASAKSASALEASANAASCANASCIIASCISASCONASCOTASCRYASCUSASDICASEMSASHENASHESASHETASHURASHYSASIDEASKARASKERASKEWASKIPASKOSASLOPASOAKASOKAASOKSASOPSASORSASPENASPERASPICASSAIASSAYASSESASSETASSISASTASASTAYASTERASTIRASTORASWAYASWIMASYLAATAPSATAVIATAXYATEFSATELOATHARATILTATIPSATLASATLEEATLESATMANATMASATMIDATMOSATOKEATOLLATOMSATOMYATONEATONYATOPSATOPYATOURATRIAATRIPATRYSATTARATTASATTERATTICATTIDATULEATUNEATWINATWOSATYPYAUBESAUCASAUDIOAUDITAUGENAUGERAUGESAUGHSAUGHTAUGURAULAEAULASAULDSAULICAULOIAULOSAULUSAUMILAUNESAUNTSAURAEAURALAURARAURASAURICAURINAURIRAURUMAURYLAUSUSAUTEMAUTESAUTOSAUXINAVAHIAVAILAVALSAVASTAVENSAVERAAVERSAVERTAVIANAVICKAVIDSAVINEAVISOAVOIDAVOWSAWABIAWAFTAWAGSAWAITAWAKEAWALDAWALTAWANEAWARDAWAREAWASHAWATSAWAVEAWAYSAWBERAWEEKAWEELAWEESAWESTAWETOAWFULAWFUSAWHETAWHIRAWIDEAWINGAWINKAWINSAWIWIAWNEDAWNERAWNYSAWOKEAWORKAWRYSAXALSAXEDSAXIALAXILEAXILSAXINEAXIOMAXIONAXITEAXLEDAXLESAXMANAXOIDAXONSAYAHSAYELPAYINSAYLETAYLLUAYONDAYONTAYOUSAZIDEAZINEAZOCHAZOFYAZOICAZOLEAZONSAZOTEAZOTHAZOXSAZOXYAZUREAZURYAZYMEBAALSBAARSBABAIBABASBABBYBABESBABOOBABULBABUSBABYSBACAOBACCABACHEBACHSBACKSBACONBADANBADESBADGEBADLYBAFFSBAFFYBAFTABAFTSBAGASBAGELBAGGYBAGOSBAGREBAHANBAHARBAHAYBAHOEBAHOOBAHOSBAHTSBAHURBAHUTBAILSBAINSBAIOCBAIRNBAITHBAITSBAIZEBAJANBAJRABAJRIBAKALBAKASBAKEDBAKENBAKERBAKESBAKIEBAKLIBAKUSBALAIBALAOBALASBALDSBALDYBALEIBALERBALESBALISBALKSBALKYBALLIBALLSBALLYBALMSBALMYBALOOBALOWBALSABALUSBALUTBALZABANAKBANALBANATBANCABANCOBANCSBANDABANDEBANDIBANDOBANDSBANDYBANESBANGABANGEBANGSBANIGBANISBANJOBANKSBANKYBANNSBANTSBANTYBANYABARADBARASBARBEBARBSBARDOBARDSBARDYBARERBARESBARFFBARGEBARGHBARIABARICBARIDBARIEBARISBARITBARKSBARKYBARMSBARMYBARNSBARNYBAROIBARONBARRABARRYBARSEBARTHBARUSBARYEBASALBASEDBASESBASHSBASICBASILBASINBASISBASKSBASONBASOSBASSOBASTABASTEBASTOBASTSBATADBATCHBATEABATEDBATELBATERBATESBATHEBATHSBATIKBATONBATTABATTSBATTYBATZSBAUCHBAUDSBAULSBAUNOBAUNSBAUTABAVINBAWDSBAWLSBAWNSBAYALBAYASBAYEDBAYOKBAYOUBAZESBAZOOBEACHBEADSBEADYBEAKSBEAKYBEALABEALSBEAMSBEAMYBEANOBEANSBEANTBEANYBEARDBEARMBEARSBEASTBEATABEATHBEATSBEAUSBEAUTBEAUXBEBARBEBATBEBAYBEBEDBEBOGBEBOPBECAPBECKSBECRYBECUTBEDADBEDAYBEDELBEDENBEDEWBEDIMBEDINBEDIPBEDOGBEDOTBEDUBBEDURBEDYEBEECHBEEFSBEEFYBEEKSBEENSBEERSBEERYBEESTBEETHBEETSBEETYBEEVEBEFANBEFITBEFOGBEFOPBEGADBEGARBEGATBEGAYBEGEMBEGETBEGINBEGOBBEGOSBEGUMBEGUNBEGUTBEHAPBEHENBEHNSBEICEBEIGEBEINGBEIRABEISABEJANBEJELBEJIGBEKAHBEKKOBELAHBELAMBELARBELASBELAYBELCHBELDSBELEEBELGABELIEBELLEBELLSBELLYBELOWBELTSBELVEBELYSBEMADBEMANBEMARBEMASBEMATBEMIXBEMUDBENABBENASBENCHBENDABENDSBENDYBENESBENETBENGSBENISBENJSBENJYBENNEBENNSBENNYBENOSBENSHBENTSBENTYBENZOBEODEBEPATBEPAWBEPENBEPUNBERATBERAYBERESBERETBERGSBERGYBERMSBERNEBERRIBERRYBERTHBERYLBESANBESASBESEEBESETBESINBESITBESOMBESOTBESPYBESRABESTSBETAGBETASBETELBETHSBETISBETSOBETTYBEVELBEVERBEVUEBEVYSBEWETBEWIGBEZELBEZZIBEZZOBHALUBHANGBHARABHATSBHAVABHOYSBHUTSBIABOBIBBSBIBISBICESBICHYBICKSBIDARBIDDYBIDERBIDESBIDETBIDRIBIELDBIENSBIERSBIFERBIFFSBIFIDBIGASBIGGSBIGHABIGHTBIGOTBIJASBIJOUBIKESBIKHSBILBOBILBYBILCHBILESBILGEBILGYBILICBILIOBILKSBILLABILLSBILLYBILOSBILSHBINALBINDSBINESBINGEBINGOBINGSBINGYBINHSBINKSBINNABINOSBINTSBIODSBIOMEBIONSBIOSEBIOTABIPEDBIPODBIRCHBIRDSBIRDYBIRISBIRKSBIRLEBIRLSBIRMABIRNSBIRNYBIRRSBIRSEBIRSYBIRTHBISONBISTIBITCHBITERBITESBITISBITOSBITTSBITTYBIUNEBIWASBIXINBIZETBIZZSBLABSBLACKBLADEBLADSBLADYBLAESBLAFFBLAHSBLAINBLAIRBLAKEBLAMEBLANCBLANDBLANKBLANSBLAREBLARTBLASEBLASHBLASTBLATEBLATSBLAWSBLAYSBLAZEBLAZYBLEAKBLEARBLEATBLEBSBLECKBLEDSBLEEDBLEESBLENDBLENTBLEOSBLESSBLESTBLETSBLIBEBLICKBLIMPBLIMYBLINDBLINKBLIPSBLISSBLITEBLITZBLIZZBLOATBLOBSBLOCKBLOCSBLOKEBLOODBLOOMBLOOPBLOREBLOTSBLOUTBLOWNBLOWSBLOWYBLUBSBLUERBLUESBLUETBLUEYBLUFFBLUNKBLUNTBLUPSBLURBBLURSBLURTBLUSHBLYPEBOARDBOARSBOASTBOATSBOBACBOBASBOBBYBOBOSBOCALBOCCABOCCEBOCESBOCKSBOCOYBODENBODERBODESBODGEBODHIBODLEBODYSBOGANBOGASBOGEYBOGGYBOGIEBOGLEBOGOSBOGUEBOGUMBOGUSBOGYSBOHEABOHORBOHOSBOIDSBOILSBOILYBOISTBOJOSBOKESBOKOMBOLARBOLASBOLDOBOLDSBOLEDBOLESBOLISBOLKSBOLLSBOLLYBOLOSBOLTIBOLTSBOLUSBOMASBOMBOBOMBSBONCEBONDSBONEDBONERBONESBONGOBONGSBONKSBONNYBONUSBONYSBONZEBOOBSBOOBYBOODSBOODYBOOFSBOOKSBOOKYBOOLSBOOLYBOOMSBOOMYBOONKBOONSBOORSBOORTBOOSEBOOSTBOOSYBOOTHBOOTSBOOTYBOOZEBOOZYBORAKBORALBORASBORAXBORDSBOREEBORERBORESBORGHBORGSBORHSBORICBORNEBORNSBORONBOROSBORTSBORTYBORTZBORYLBOSCHBOSERBOSESBOSHSBOSKSBOSKYBOSNSBOSOMBOSSYBOSUNBOTASBOTCHBOTESBOTHSBOTHYBOTTSBOUDSBOUGEBOUGHBOUKSBOULEBOUNDBOUNSBOURDBOURGBOURNBOUSEBOUSYBOUTOBOUTSBOUWSBOVIDBOWEDBOWELBOWERBOWETBOWIEBOWKSBOWLABOWLSBOWLYBOXENBOXERBOXTYBOXYSBOYARBOYERBOYLABOZALBOZASBOZOSBOZZEBRABSBRACABRACEBRACHBRACKBRACTBRADSBRAESBRAGSBRAIDBRAILBRAINBRAKEBRAKYBRANDBRANKBRANSBRANTBRASHBRASSBRATSBRAVEBRAVOBRAWLBRAWNBRAWSBRAXYBRAYSBRAZABRAZEBREADBREAKBREAMBREBABRECKBREDEBREDIBREDSBREEDBREEKBREESBREISBREMEBRENTBRETHBRETSBRETTBREVABREVEBREWSBREYSBRIARBRIBEBRICKBRIDEBRIEFBRIERBRIGSBRILLBRIMSBRINEBRINGBRINKBRINSBRINYBRISKBRISSBRITHBRITSBRIZZBROADBROBSBROCHBROCKBRODSBROGSBROILBROKEBROLLBROMABROMEBRONCBRONKBROODBROOKBROOLBROOMBROONBROOSBROSEBROSYBROTHBROTSBROWNBROWSBRUGHBRUINBRUITBRUKEBRUMEBRUNTBRUSHBRUTEBRUTSBRUZZBUALSBUAZEBUBALBUBASBUBBYBUBOSBUCCABUCHUBUCKOBUCKSBUCKYBUDASBUDDYBUDGEBUFFSBUFFYBUFOSBUGANBUGGYBUGLEBUGREBUHLSBUHRSBUILDBUILTBUISTBUKHSBULAKBULBSBULBYBULGEBULGYBULKSBULKYBULLABULLSBULLYBULSEBULTSBUMBOBUMPSBUMPYBUNASBUNCEBUNCHBUNDSBUNDYBUNGOBUNGSBUNGYBUNKOBUNKSBUNNYBUNTSBUNTYBUNYABUOYSBURANBURAOBURDSBURELBURESBURETBURGHBURGSBURINBURISBURKABURKEBURLSBURLYBURNSBURNTBURNYBUROSBURPSBURROBURRSBURRYBURSABURSEBURSTBURTSBURYSBUSBYBUSHIBUSHSBUSHYBUSKSBUSKYBUSSUBUSTSBUSYSBUTCHBUTICBUTTEBUTTSBUTTYBUTYLBUTYRBUXOMBUYERBUZZSBUZZYBYEESBYGOSBYLAWBYONSBYOUSBYRESBYSENBYTHSBYWAYCAAMACAAMSCABALCABANCABASCABBYCABDACABERCABINCABIOCABLECABOBCABOTCACAMCACAOCACHECACKSCACTICACURCADDYCADERCADESCADETCADEWCADGECADGYCADISCADOSCADRECADUACADUSCAECACAFFACAFHSCAFIZCAGEDCAGERCAGESCAGEYCAGGYCAGITCAHIZCAHOTCAHOWCAIDSCAINSCAIRDCAIRNCAJUNCAKERCAKESCAKEYCAKYSCALFSCALIDCALIXCALKSCALLICALLOCALLSCALMSCALMYCALORCALPSCALVECALXSCALYXCAMANCAMBSCAMELCAMEOCAMESCAMPOCAMPSCAMUSCANALCANCHCANDSCANDYCANELCANERCANESCANIDCANKSCANNACANNYCANOECANONCANSOCANTOCANTSCANTYCANUNCANYSCAOBACAPAXCAPEDCAPELCAPERCAPESCAPHSCAPONCAPOTCAPPYCAPSACARATCARBOCARDOCARDSCARERCARESCARETCARGACARGOCARIDCARKSCARLSCAROACAROBCAROLCAROMCARPSCARRSCARRYCARSECARTECARTSCARTYCARUACARVECARYLCASALCASCOCASEDCASERCASESCASHACASHSCASKSCASSECASTECASTSCATANCATCHCATERCATESCATTYCAUCHCAUDACAUKSCAULDCAULSCAUMACAUMSCAUPOCAUPSCAUSECAVAECAVALCAVASCAVELCAVESCAVIECAVILCAVUSCAVYSCAWKSCAWKYCAXONCAZASCEASECEBIDCEBILCEBURCEDARCEDERCEDESCEDRECEDRYCEIBOCEILECEILSCELLACELLOCELLSCELTSCENSECENTOCENTSCEORLCEPASCEPESCEQUICERALCERASCERCICEREDCERERCERESCERIACERICCERINCERNSCEROSCERTYCERYLCESTSCETICCETINCETISCETYLCHAASCHABSCHACKCHADSCHAFECHAFFCHAFTCHAINCHAIRCHAISCHAJACHAKACHALKCHALSCHAMPCHAMSCHANGCHANKCHANTCHAOSCHAPECHAPSCHAPTCHARDCHARECHARKCHARMCHARRCHARSCHARTCHARYCHASECHASMCHATICHATSCHAUKCHAUSCHAWKCHAWLCHAWSCHAYACHAYSCHEAPCHEATCHECKCHEEKCHEEPCHEERCHEESCHEETCHEFSCHEIRCHEKECHEKICHELACHELPCHENACHENGCHERTCHESSCHESTCHETHCHEVECHEVYCHEWSCHEWYCHIASCHICKCHICOCHICSCHIDECHIDSCHIEFCHIENCHIHSCHILDCHILECHILICHILLCHILSCHIMECHINACHINECHINGCHINKCHINOCHINSCHINTCHIPSCHIRKCHIRMCHIROCHIRPCHIRRCHITSCHIVECHLORCHOBSCHOCACHOCKCHOELCHOGACHOILCHOIRCHOKECHOKYCHOLACHOLDCHOLICHOLSCHOMPCHOOPCHOPACHOPSCHORDCHORECHORTCHOSECHOTTCHOUPCHOUSCHOWKCHOWSCHOYACHRIACHUBSCHUCKCHUFACHUFFCHUGSCHUMPCHUMSCHUNKCHUNSCHURLCHURMCHURNCHURRCHUTECHUTSCHYAKCHYLECHYMECIBOLCICADCICERCIDERCIGARCIGUACILIACIMEXCINCHCINCTCINELCINESCIONSCIPOSCIRCACIRRICISCOCISESCISTACISTSCITEECITERCITESCITUACITYSCIVESCIVETCIVICCIVILCIVVYCLACKCLADSCLAGSCLAIMCLAMBCLAMECLAMPCLAMSCLANGCLANKCLANSCLAPSCLAPTCLARKCLAROCLARTCLARYCLASHCLASPCLASSCLATSCLAUTCLAVACLAVECLAVYCLAWKCLAWSCLAYSCLEADCLEAMCLEANCLEARCLEATCLECKCLEDSCLEEKCLEESCLEFSCLEFTCLEGSCLEMSCLEPSCLERKCLEVECLEWSCLICKCLIFFCLIFTCLIMACLIMBCLIMECLINECLINGCLINKCLINTCLIPSCLIPTCLITECLITSCLIVECLOAKCLOAMCLOCKCLODSCLOFFCLOGSCLOITCLOMBCLONECLOOFCLOOPCLOOTCLOPSCLOSECLOSHCLOTECLOTHCLOTSCLOUDCLOURCLOUTCLOVECLOWNCLOWSCLOYSCLUBSCLUCKCLUESCLUFFCLUMPCLUNGCLUNKCLYERCLYPECNIDACOACHCOACTCOAIDCOAKSCOALSCOALYCOAPTCOARBCOASTCOATICOATSCOAXSCOAXYCOBBYCOBIACOBLECOBRACOCASCOCCICOCCOCOCKSCOCKYCOCOACOCOSCODASCODERCODESCODEXCODOLCODONCODOSCOEDSCOFFSCOFTSCOGONCOGUECOHOLCOHOSCOIFSCOIGNCOILSCOINSCOINYCOIRSCOKERCOKESCOKYSCOLASCOLDSCOLESCOLICCOLINCOLISCOLKSCOLLSCOLLYCOLONCOLORCOLPSCOLTSCOLYSCOLZACOMALCOMASCOMBSCOMBYCOMERCOMESCOMETCOMFYCOMICCOMMACOMPOCONALCONCHCONDSCONEDCONERCONESCONGACONICCONINCONKSCONKYCONNSCONTECONTOCONUSCONYSCOOBACOOEECOOERCOOFSCOOJACOOKSCOOKYCOOLSCOOLYCOOMBCOOMSCOOMYCOONSCOONYCOOPSCOOSTCOOTSCOPALCOPASCOPEICOPENCOPERCOPESCOPISCOPPYCOPRACOPRSCOPSECOPSYCOPUSCOPYSCOQUECORAHCORALCORAMCORASCORDSCORDYCOREDCORERCORESCORFSCORGECORGICORKECORKSCORKYCORMSCORNSCORNUCORNYCOROACOROLCORPSCORSECORTACORYLCOSECCOSETCOSHSCOSSECOSTACOSTSCOSYSCOTCHCOTESCOTHECOTHSCOTHYCOTOSCOTTACOTTECOTTYCOUACCOUCHCOUDECOUESCOUGHCOULDCOULSCOUMACOUNTCOUPECOUPSCOURBCOURTCOUTHCOVEDCOVERCOVESCOVETCOVEYCOVIDCOVINCOWALCOWERCOWLECOWLSCOWYSCOXALCOXASCOXYSCOYANCOYLYCOYOLCOYOSCOYPUCOZENCOZESCOZYSCRABSCRACKCRAFTCRAGSCRAINCRAKECRAMPCRAMSCRANECRANKCRANSCRAPECRAPSCRAPYCRARECRASHCRASSCRATECRAVECRAVOCRAWLCRAWMCRAWSCRAZECRAZYCREAKCREAMCREASCREATCREEDCREEKCREELCREEMCREENCREEPCREESCRENACREPECREPTCREPYCRESSCRESTCRETACREWSCRIBOCRIBSCRICKCRICSCRIEDCRIERCRIEYCRIGSCRILECRIMECRIMPCRINECRINKCRINSCRISPCRISSCRITHCROAKCROCICROCKCROCSCROFTCROMECRONECRONKCRONYCROODCROOKCROOLCROONCROPSCRORECROSACROSSCROUPCROUTCROWDCROWLCROWNCROWSCROYSCROZECRUCECRUCKCRUDECRUELCRUETCRUMBCRUMPCRUMSCRUNKCRUNTCRUORCRUSECRUSHCRUSTCRUTHCRUXSCRYPTCTENECUBBYCUBEBCUBERCUBESCUBICCUBISCUBITCUCKSCUDDYCUECACUFFSCUFFYCUIRSCUKESCULETCULLACULLSCULLYCULMSCULMYCULPACULTSCUMALCUMAYCUMBUCUMICCUMINCUMOLCUMPSCUMYLCUNYECUPAYCUPELCUPPYCURBSCURBYCURCHCURDSCURDYCURERCURESCURIECURINCURIOCURLSCURLYCURNSCURRSCURRYCURSECURSTCURTSCURUACURVECURVYCUSECCUSHSCUSHYCUSIECUSKSCUSPSCUSSOCUTCHCUTESCUTIECUTINCUTISCUTTYCUTUPCUVYSCUYASCYANSCYATHCYCADCYCLECYKESCYLIXCYMARCYMASCYMBACYMESCYNICCYPRECYRUSCYSTSCYTONCZARSDABBADABBSDABBYDACESDADAPDADASDADDYDADESDADOSDAERSDAFFSDAFFYDAFTSDAGGADAGGYDAILYDAINSDAIRADAIRIDAIRYDAISYDAIVADAKERDAKIRDALARDALERDALESDALISDALKSDALLEDALLYDALTSDAMANDAMASDAMESDAMIEDAMMEDAMNSDAMPSDAMPYDANCEDANDADANDSDANDYDANGSDANIODANKSDANLIDANTADARACDARAFDARATDARBYDARERDARESDARGSDARICDARISDARKSDARKYDARNSDAROODARRSDARSTDARTSDASHSDASHYDASISDASNTDASSYDATASDATCHDATERDATESDATILDATUMDAUBEDAUBSDAUBYDAUDSDAUNTDAUTSDAUWSDAVENDAVERDAVITDAVYSDAWDYDAWNSDAWNYDAWUTDAYALDAZEDDAZESDAZYSDEADSDEAFSDEAIRDEALSDEALTDEANSDEARSDEARYDEASHDEATHDEAVEDEBARDEBBYDEBENDEBITDEBTSDEBUSDEBUTDECADDECALDECANDECAPDECAYDECILDECKEDECKSDECOYDECRYDECUSDECYLDEDOSDEEDSDEEDYDEEMSDEEPSDEERSDEFATDEFERDEFOGDEFTSDEFYSDEGASDEGUMDEGUSDEICEDEIFYDEIGNDEINKDEISMDEISTDEITYDEKKODEKLEDELAYDELESDELFSDELFTDELLSDELTADELVEDEMALDEMESDEMISDEMITDEMOBDEMONDEMOSDEMYSDENATDENDADENESDENIMDENSEDENTSDENTYDENYSDEOTADEPASDEPOHDEPOTDEPTHDERAHDERATDERAYDERBYDERESDERICDERMADERMSDERNSDERRYDESEXDESISDESKSDESMADESSADESYLDETARDETAXDETERDETINDETURDEUCEDEULSDEVASDEVILDEVOWDEWANDEWAXDEWERDEWYSDHABBDHAISDHAKSDHANSDHAVADHAWSDHERIDHOBIDHOLEDHONIDHOONDHOTIDHOULDHOWSDHYALDIACTDIALSDIAMBDIANSDIARYDICERDICESDICHSDICKSDICKYDICOTDICTADIDDYDIDIEDIDLEDIDNADIDNTDIDSTDIDYMDIEBSDIEMSDIENEDIERSDIETSDIGHTDIGITDIKASDIKERDIKESDILDODILLIDILLSDILLYDILOSDIMERDIMESDIMITDIMLYDIMPSDINARDINERDINESDINGEDINGODINGSDINGYDINICDINKSDINKYDINTSDINUSDIODEDIOLSDIOSEDIOTADIOXYDIRDSDIRESDIRGEDIRKSDIRLSDIRTSDIRTYDISCSDISHSDISKSDISMEDISNADITALDITASDITCHDITERDITESDITTODITTYDIVANDIVASDIVELDIVERDIVESDIVOTDIVUSDIVVYDIXIEDIXITDIXYSDIZENDIZZYDJAVEDOABSDOATSDOBBYDOBESDOBLADOBRADOBYSDOCKSDODDSDODDYDODGEDODGYDODOSDOERSDOESTDOFFSDOGALDOGESDOGGODOGGYDOGIEDOGLYDOGMADOGYSDOIGTDOILYDOINADOINGDOITSDOKESDOLASDOLESDOLIADOLISDOLLSDOLLYDOLORDOLTSDOMALDOMBADOMERDOMESDOMICDOMNSDOMPTDOMYSDONAXDONEEDONESDONEYDONGADONGSDONNADONORDONTSDONUMDOOBSDOOJADOOKSDOOLIDOOLSDOOLYDOOMSDOONSDOORSDOPASDOPERDOPESDOPEYDORABDORADDOREEDORIADORJEDORMSDORMYDORNSDORPSDORTSDORTYDORYSDOSASDOSERDOSESDOSISDOTALDOTEDDOTERDOTESDOTTYDOTYSDOUARDOUBTDOUCEDOUCSDOUGHDOUMSDOUPSDOURSDOUSEDOUTSDOVERDOVESDOWDSDOWDYDOWEDDOWELDOWERDOWFSDOWIEDOWLSDOWNSDOWNYDOWPSDOWRYDOWSEDOXASDOXYSDOZEDDOZENDOZERDOZESDOZYSDRABSDRAFFDRAFTDRAGODRAGSDRAILDRAINDRAKEDRAMADRAMMDRAMSDRANGDRANKDRANTDRAPEDRATEDRATSDRAWKDRAWLDRAWNDRAWSDRAYSDREADDREAMDREARDREEPDREESDREGSDRENGDRESSDRESTDREWSDRIASDRIBSDRIEDDRIERDRIFTDRILLDRINKDRINNDRIPSDRISKDRIVEDROGHDROITDROLLDROMEDRONADRONEDRONYDROOLDROOPDROPSDROPTDROSSDROUDDROUKDROVEDROVYDROWNDROWSDRUBSDRUGSDRUIDDRUMSDRUNGDRUNKDRUPEDRUSEDRUSYDRUXYDRYADDRYASDRYLYDRYTHDUADSDUALIDUALSDUBBADUBBSDUBBYDUCALDUCATDUCESDUCHYDUCKSDUCTSDUDESDUELSDUERSDUETSDUFFSDUGALDUHATDUIMSDUITSDUJANDUKESDUKHNDULERDULIADULLSDULLYDULSEDULTSDULYSDUMASDUMBADUMBSDUMMYDUMPSDUMPYDUNALDUNCEDUNCHDUNESDUNGSDUNGYDUNKSDUNNEDUNNYDUNSTDUNTSDUNYSDUOLEDUPERDUPESDUPLADUPLEDUPPYDURALDURASDURAXDURESDURNSDUROSDURRADURRYDURSTDURYLDUSHSDUSIODUSKSDUSKYDUSTSDUSTYDUTCHDUTRADUTYSDUVETDWALEDWALMDWANGDWARFDWELLDWELTDWINEDYADSDYCESDYERSDYINGDYKERDYKESDYNESEACHSEAGEREAGLEEAGREEAREDEARLSEARLYEARNSEARTHEASELEASEREASESEASTSEASYSEATENEATEREAVEDEAVEREAVESEBOESEBONSEBONYECADSECHEAECHESECHOSECIZEECLATECOIDECOLEECRUSECTADECTALEDDEREDDOSEDDYSEDEASEDEMAEDGEDEDGEREDGESEDGYSEDICTEDIFYEDITSEDUCEEDUCTEELEREELYSEERIEEGADSEGESTEGGEREGGYSEGMASEGOLSEGRETEHEUSEIDEREIGHTEIGNEEIMEREJECTEJOOSEKAHAEKERSEKINGEKKASELAINELANDELATEELBOWELDERELDINELECTELEGYELEMIELFICELFINELIDEELITEELLESELMYSELODSELOGEELOPEELOPSELSESELSINELUDEELUTEELVANELVERELVESELVETEMAILEMBAREMBAYEMBEDEMBEREMBOGEMBOWEMBOXEMBUSEMCEEEMEEREMENDEMERYEMIRSEMITSEMMASEMMEREMMETEMOJIEMOTEEMPTSEMPTYEMYDSENACTENAGEENAMSENAPTENARMENATEENCUPENDEDENDERENDEWENDOWENDUEENEMAENEMYENGEMENHATENIACENJOYENNUIENOILENOLSENORMENOWSENRAYENRIBENROLENRUTENSESENSKYENSUEENTADENTALENTERENTIAENTRYENUREENVOYENVYSENZYMEOANSEOSINEPACTEPEESEPHAHEPHASEPHODEPHOREPICSEPOCHEPODEEPOPTEPULOEQUALEQUIDEQUIPERADEERALSERASEERBIAERECTEREPTERGALERGONERGOTERIASERICSERIKAERIZOERNESERODEEROSEERRORERTHSERUCAERUCSERUCTERUPTESCASESEREESHINESKERESNESESPYSESSAYESSEDESTERESTOCESTOPESTREESTUSETCHSETHALETHELETHERETHICETHIDETHOSETHYLETNASETTLEETUASETUDEETUISETYMSEUGESEUPADEUSOLEVADEEVASEEVENSEVENTEVERSEVERTEVERYEVICTEVILSEVOESEVOKEEWDEREWERSEWERYEWRYSEXACTEXALTEXAMSEXCELEXDIEEXEATEXERTEXILEEXISTEXITEEXITSEXLEXEXODEEXODYEXONSEXPELEXTEREXTOLEXTRAEXUDEEXULTEYAHSEYEDSEYENSEYERSEYEYSEYINGEYNESEYOTSEYOTYEYRASEYRESEYRIEEYRIREZBASFABESFABLEFACEDFACERFACESFACETFACIAFACKSFACTSFACTYFACYSFADDYFADEDFADENFADERFADESFADGEFADYSFAERYFAFFSFAFFYFAGERFAGESFAGOTFAHAMFAILSFAINSFAINTFAIRMFAIRSFAIRYFAITHFAKERFAKESFAKIRFAKYSFALLSFALLYFALSEFALXSFAMESFANALFANAMFANASFANCYFANDSFANGSFANGYFANONFANTSFAONSFARADFARCEFARCYFARDEFARDHFARDOFARERFARESFARLSFARMSFARMYFAROSFARSEFASHSFASTSFATALFATEDFATESFATILFATLYFATTYFATWAFAUGHFAULDFAULTFAUNSFAUSEFAUSTFAUVEFAVNSFAVORFAVUSFAWNSFAWNYFAZESFEAKSFEALSFEARSFEASTFEATSFEATYFEAZEFECALFECESFECKSFEEDSFEEDYFEELSFEEREFEERSFEEZEFEIFSFEIGNFEILSFEINTFEISTFELIDFELLSFELLYFELONFELTSFELTYFEMESFEMICFEMURFENCEFENDSFENDYFENKSFENNYFENTSFEODSFEOFFFERALFERIAFERIEFERKSFERLYFERMEFERNSFERNYFERRIFERRYFERUSFESTSFETALFETCHFETIDFETORFETUSFEUARFEUDSFEUEDFEVERFEZZYFIARDFIARSFIATSFIBERFIBRYFICESFICHEFICHUFICOSFIDESFIDGEFIELDFIENDFIENTFIERYFIFERFIFESFIFIEFIFOSFIFTHFIFTYFIGGYFIGHTFIKESFIKIEFILAOFILARFILCHFILERFILESFILETFILLSFILLYFILMSFILMYFILOSFILTHFINALFINCHFINDSFINERFINESFINISFINKSFINNYFIORDFIQUEFIRCAFIREDFIRERFIRESFIRKSFIRMSFIRNSFIRRYFIRSTFIRTHFISCSFISESFISHSFISHYFISTSFISTYFITCHFITLYFITTYFIVERFIVESFIXEDFIXERFIZZSFIZZYFJELDFLACKFLAFFFLAGSFLAILFLAIRFLAKEFLAKSFLAKYFLAMBFLAMEFLAMSFLAMYFLANEFLANKFLANSFLAPSFLAREFLARYFLASHFLASKFLATSFLAVOFLAWNFLAWSFLAWYFLAXSFLAXYFLAYSFLEAMFLEASFLEAYFLECKFLEDSFLEERFLEESFLEETFLESHFLETSFLEWSFLEXSFLEYSFLICKFLIERFLIMPFLINGFLINTFLIPEFLIPSFLIRTFLISKFLITEFLITSFLIXSFLOATFLOBSFLOCKFLOCSFLOESFLOEYFLOGSFLONGFLOODFLOORFLOPSFLORAFLORYFLOSHFLOSSFLOTAFLOTSFLOURFLOUTFLOWNFLOWSFLUBSFLUEDFLUERFLUESFLUEYFLUFFFLUIDFLUKEFLUKYFLUMEFLUMPFLUNGFLUNKFLUORFLURNFLURRFLUSHFLUSKFLUTEFLUTYFLUXSFLYERFLYPEFOALSFOALYFOAMSFOAMYFOCALFOCISFOCUSFODDAFODERFODGEFOEHNFOGEYFOGGYFOGLEFOGONFOGOSFOGOUFOGUSFOGYSFOHATFOILSFOISTFOLDSFOLDYFOLESFOLIAFOLIEFOLIOFOLKSFOLKYFOLLYFOMESFONDSFONDUFONLYFONOSFONTSFOODSFOODYFOOLSFOOTSFOOTYFOPPYFORASFORAYFORBSFORBYFORCEFORDOFORDSFORDYFORELFORESFORGEFORGOFORKSFORKYFORMEFORMSFORMYFORTEFORTHFORTSFORTYFORUMFOSHSFOSIEFOSSAFOSSEFOTCHFOTUIFOUDSFOULSFOUNDFOUNSFOUNTFOURSFOUTEFOUTHFOVEAFOWKSFOWLSFOXERFOXYSFOYERFOZYSFRABSFRACKFRAESFRAIDFRAIKFRAILFRAMEFRANCFRANKFRAPSFRASEFRASSFRATSFRAUDFRAWNFRAYNFRAYSFRAZEFREAKFREAMFRECKFREEDFREERFREESFREETFREIRFREITFREMDFRESHFRETSFRETTFRIARFRIBSFRIEDFRIERFRIGSFRIKEFRILLFRIMSFRISKFRISTFRITHFRITSFRITTFRIZEFRIZSFRIZZFROCKFROESFROGSFROMSFRONDFRONTFROOMFROREFRORYFROSHFROSTFROTHFROTSFROWLFROWNFROWSFROWYFROZEFRUITFRUMPFRUSHFRYERFUBBYFUBSYFUCISFUCUSFUDERFUDGEFUDGYFUELSFUFFSFUFFYFUGALFUGGYFUGLEFUGUEFUGUSFUJISFULKSFULLSFULLYFULTHFULWAFUMERFUMESFUMETFUMYSFUNDIFUNDSFUNGIFUNGOFUNISFUNKSFUNKYFUNNYFUNTSFURALFURANFURCAFURILFURLSFURORFURRYFURYLFURYSFURZEFURZYFUSCSFUSEDFUSEEFUSESFUSHTFUSILFUSSYFUSTSFUSTYFUTESFUTWAFUYESFUZESFUZZSFUZZYFYKESFYRDSGABBYGABISGABLEGABYSGADDIGADESGADGEGADIDGAENSGAETSGAFFEGAFFSGAGEEGAGERGAGESGAGORGAILYGAINEGAINSGAIRSGAITSGAIZEGALAHGALASGALEAGALEEGALESGALETGALEYGALISGALLAGALLSGALLYGALOPGALPSGALTSGAMBAGAMBSGAMERGAMESGAMICGAMINGAMMAGAMMYGAMPSGAMUTGAMYSGANAMGANCHGANEFGANESGANGAGANGEGANGSGANJAGANSYGANTAGANTSGANZAGAOLSGAPASGAPERGAPESGAPOSGAPPYGAPYSGARADGARASGARBSGARCEGARDYGAREHGARESGARLEGARNSGAROOGARSEGARTHGARUMGASHSGASHYGASPSGASPYGASSYGASTSGATASGATCHGATEDGATERGATESGATORGAUBSGAUBYGAUDSGAUDYGAUGEGAULTGAUMSGAUMYGAUNSGAUNTGAUPSGAURSGAUSSGAUTSGAUZEGAUZYGAVELGAVESGAWBYGAWKSGAWKYGAWMSGAWNSGAYALGAZEEGAZELGAZERGAZESGAZISGAZONGAZYSGEALSGEANSGEARSGEASEGEATSGEBURGECKOGECKSGEEKSGEESEGEESTGEETSGEGGSGEINSGEIRAGELDSGELIDGELLSGELLYGELTSGEMELGEMMAGEMMYGEMOTGEMULGENALGENASGENEPGENESGENETGENICGENIEGENIIGENINGENIPGENOMGENOSGENREGENROGENTSGENTYGENUAGENUSGENYSGEODEGEOIDGEOTYGERAHGERBEGERBSGERIMGERIPGERMSGERMYGESSOGESTEGESTSGETAHGETASGETUPGEUMSGEYANGHASTGHATSGHAZIGHEESGHOOMGHOSTGHOULGIANTGIBBYGIBELGIBERGIBESGIBUSGIDDYGIEDSGIENSGIFTSGIGOTGILDSGILIAGILIMGILLSGILLYGILOSGILPYGILSEGILTSGIMELGIMPSGINGSGINKSGINNYGIPONGIRBAGIRDSGIRLSGIRLYGIRNSGIRNYGIROSGIRRSGIRSEGIRSHGIRTHGIRTSGISHSGISLAGISTSGITHSGIVENGIVERGIVESGIVEYGIZZSGLACEGLACKGLADEGLADSGLADYGLAGAGLAIKGLAIRGLAKYGLAMSGLANDGLANSGLAREGLARSGLARYGLASSGLAUMGLAURGLAZEGLAZYGLEAMGLEANGLEBAGLEBEGLEDEGLEDYGLEEDGLEEKGLEESGLEETGLEGSGLENSGLENTGLIALGLIASGLIBSGLIDEGLIFFGLIMEGLINKGLINTGLISKGLOAMGLOATGLOBEGLOBYGLOEAGLOMEGLOMSGLOOMGLOPSGLOREGLORSGLORYGLOSSGLOSTGLOUTGLOVEGLOWSGLOYSGLOZEGLUBSGLUCKGLUEDGLUERGLUESGLUEYGLUGSGLUMAGLUMEGLUMPGLUMSGLUTSGLYPHGNARLGNARSGNASHGNATSGNAWNGNAWSGNOMEGOADSGOAFSGOALSGOATSGOATYGOAVEGOBANGOBBEGOBBYGOBISGOBOSGOBYSGODESGODETGODLYGOELSGOERSGOETYGOFFSGOGGAGOGOSGOINGGOLASGOLDSGOLDYGOLEEGOLEMGOLFSGOLISGOLLYGOLOEGOLPEGOMERGONADGONALGONERGONESGONGSGONIAGONIDGONNEGONYSGOODSGOODYGOOFSGOOFYGOOKSGOOLSGOOMAGOONSGOOSEGOOSYGORALGORANGORASGORBSGORCEGORERGORESGORGEGORICGORRAGORRYGORSEGORSYGORYSGOSHSGOSSYGOTCHGOTESGOTRAGOUGEGOUMIGOUPSGOURDGOUTSGOUTYGOVESGOWANGOWFSGOWKSGOWLSGOWNSGOYIMGOYINGOYLEGRABSGRACEGRADEGRADSGRAFFGRAFTGRAILGRAINGRAIPGRAMAGRAMEGRAMPGRAMSGRANDGRANEGRANKGRANOGRANTGRAPEGRAPHGRAPYGRASPGRASSGRATEGRATSGRAVEGRAVYGRAYSGRAZEGREATGREBEGRECEGREEDGREENGREESGREETGREGEGREGOGREINGREWSGREYSGRICEGRIDEGRIDSGRIEFGRIFFGRIFTGRIGSGRIKEGRILLGRIMEGRIMPGRIMSGRIMYGRINDGRINSGRIPEGRIPSGRIPYGRISTGRITHGRITSGROANGROATGROFFGROGSGROINGROOMGROOPGROOTGROPEGROSSGROSZGROTSGROUFGROUPGROUTGROVEGROVYGROWLGROWNGROWSGRUBSGRUELGRUESGRUFFGRUMEGRUMPGRUMSGRUNSGRUNTGRUSHGRUSSGRYDEGUABAGUACOGUAKAGUAMAGUANAGUANOGUANSGUAOSGUARAGUARDGUARSGUASAGUAVAGUAZAGUBBOGUCKIGUDESGUDGEGUDOKGUESSGUESTGUFASGUFFSGUFFYGUGALGUGUSGUHRSGUIBAGUIBSGUIDEGUIGEGUIJOGUILDGUILEGUILTGUILYGUISEGULAEGULARGULASGULCHGULESGULFSGULFYGULIXGULLSGULLYGULPSGULPYGUMBOGUMBYGUMLYGUMMAGUMMYGUMPSGUNASGUNDIGUNDYGUNGEGUNJSGUNKSGUNLSGUNNEGUNNYGUPPYGURGEGURKSGURLSGURLYGURRSGURRYGURTSGURUSGUSHSGUSHYGUSLAGUSLEGUSTOGUSTSGUSTYGUTTAGUTTEGUTTIGUTTSGUTTYGUYERGUZESGWAGSGWEEDGWELYGWINEGYLESGYMELGYNESGYNICGYPESGYPSYGYRALGYRESGYRICGYRISGYRONGYROSGYRUSGYTESGYVESHAABSHAAFSHABITHABUSHACHEHACKSHACKYHADDOHADESHADJIHADJSHAECSHAEMSHAETSHAFFSHAFIZHAFTSHAGGYHAGIAHAGISHAIKSHAILSHAILYHAINEHAINSHAIREHAIRSHAIRYHAJESHAJIBHAKAMHAKESHAKIMHAKOSHAKUSHALALHALASHALCHHALERHALESHALFSHALLSHALMAHALOSHALSEHALTSHALVEHAMALHAMELHAMESHAMISHAMMYHAMSAHAMUSHAMZAHANCEHANCHHANDSHANDYHANGEHANIFHANKSHANKYHANNAHANSAHANSEHANTSHAOLEHAOMAHAORIHAPLYHAPPYHAPUSHARBIHARDSHARDYHAREMHARESHARKAHARKSHARLSHARMSHARNSHARPSHARRSHARRYHARSHHARTSHASANHASHSHASHYHASKSHASKYHASPSHASTAHASTEHASTYHATCHHATERHATESHATHIHATHSHATTSHATTYHAUGHHAULDHAULMHAULSHAUNTHAUSEHAVELHAVENHAVERHAVESHAVOCHAWERHAWKSHAWKYHAWMSHAWOKHAWSEHAYASHAYEYHAYZSHAZELHAZENHAZERHAZESHAZLEHAZYSHEADSHEADYHEAFSHEALDHEALSHEAPSHEAPYHEARSHEARTHEATHHEATSHEAVEHEAVYHECHSHECKSHECTEHEDERHEDGEHEDGYHEEDSHEEDYHEELSHEERSHEEZEHEEZYHEFTSHEFTYHEIAUHEIGHHEIISHEIRSHELESHELIOHELIXHELLOHELLSHELLYHELMSHELOEHELPSHELVEHEMADHEMALHEMENHEMESHEMICHEMINHEMLSHEMOLHEMPSHEMPYHENADHENCEHENDSHENNAHENNYHENRYHENTSHEPARHERBSHERBYHERDSHEREMHERESHERLSHERMAHERNEHERNSHERONHEROSHERSEHERTZHESTSHEUAUHEUGHHEVISHEWELHEWERHEWNSHEWTSHEXADHEXASHEXERHEXISHEXYLHIANTHIATEHICKSHIDEDHIDERHIDESHIELDHIGHSHIGHTHIKERHIKESHILCHHILLSHILLYHILSAHILTSHILUMHILUSHIMPSHINAUHINCHHINDSHINGEHINGSHINNYHINTSHIPERHIPESHIPPOHIPPYHIREDHIRERHIRESHIROSHIRSEHISHSHISNSHISTSHITCHHITHEHIVERHIVESHIZZSHOARDHOARSHOARYHOASTHOAXSHOBBYHOBOSHOCCOHOCKSHOCKYHOCUSHODDYHOERSHOGANHOGASHOGGYHOICKHOINSHOISEHOISTHOITSHOJUSHOKEYHOKUMHOLDSHOLERHOLESHOLEYHOLIAHOLLAHOLLOHOLLSHOLLYHOLMSHOLTSHOLYSHOMERHOMESHOMEYHOMOSHOMYSHONDAHONDOHONESHONEYHONGSHONKSHONORHOOCHHOODSHOOEYHOOFSHOOFYHOOKSHOOKYHOOLYHOONSHOOPSHOOSEHOOSHHOOTSHOOVEHOPEDHOPERHOPESHOPISHOPPYHORALHORASHORDEHORMEHORNSHORNYHORSEHORSTHORSYHORYSHOSEDHOSELHOSESHOSTSHOTCHHOTELHOTISHOTLYHOUGHHOUNDHOURIHOURSHOUSEHOUSYHOVELHOVENHOVERHOVESHOWDYHOWELHOWESHOWFFHOWKSHOWLSHOWSOHOYLEHUACAHUACOHUBBAHUBBSHUBBYHUCHOHUCKSHUEDSHUERSHUFFSHUFFYHUGESHUIASHUKESHULASHULKSHULKYHULLSHULUSHUMANHUMBOHUMETHUMICHUMIDHUMINHUMORHUMPHHUMPSHUMPYHUMUSHUNCHHUNDIHUNGSHUNHSHUNKSHUNKYHUNTSHURASHURDSHURESHURLSHURLYHURONHURRSHURRYHURSTHURTSHURTYHUSESHUSHOHUSHSHUSKSHUSKYHUSOSHUSSYHUTCHHUTIAHUZZAHUZZSHYDROHYENAHYINGHYKESHYLEGHYLESHYLICHYMENHYMNSHYNDEHYNESHYOIDHYPERHYPHAHYPHOHYPOSHYRAXHYSONIAMBIIAMBSIBEXSIBIDSIBOTAICACOICEDSICHORICHOSICHUSICICAICILYICINGICONSICTICICTUSIDANTIDDATIDEALIDEASIDGAHIDICSIDIOMIDIOTIDITEIDLERIDLESIDLYSIDOLAIDOLSIDOSEIDRYLIDYLSIFFYSIGLOOIHRAMIIWISIJMASIKATSIKEYSIKONAIKRASILEACILEONILEUMILEUSILEXSILIACILIALILIASILIAUILIMAILIUMILKASILLTHILLYSILOTSIMAGEIMAGOIMAMSIMBANIMBATIMBEDIMBERIMBESIMBUEIMIDEIMINEIMINOIMMEWIMMISIMMITIMMIXIMPARIMPELIMPENIMPISIMPLYIMPOTIMPYSIMSHIINAJAINANEINAPTINARMINBESINBYSINCHSINCOGINCURINCUSINCUTINDANINDESINDEXINDICINDRIINDUEINDYLINDYSINEPTINERMINERTINFERINFITINFIXINFRAINGLEINGOTINIALINIONINKENINKERINKETINKLEINKYSINLAWINLAYINLETINLYSINNERINNETINOMAINONEINORBINPUTINROSINRUBINRUNINSEAINSEEINSETINTERINTILINTOSINTUEINULAINUREINURNINWITIODICIODOLIODOSIONICIOTASIPIDSIPILSIRADEIRATEIRENEIRIANIRIDSIROKOIROKSIRONEIRONSIRONYISBASISLAYISLESISLETISLOTISMALISMYSISSEIISSUEISTLEITCHSITCHYITCZEITEMSITEMYITERSITHERITMOSIVIEDIVINSIVORYIZARDIZARSIZLESIZOTEIZTLEJABIAJABOTJABULJACALJACKOJACKSJACUSJADEDJADESJADYSJAGATJAGERJAGGYJAGIRJAGLAJAGUAJAILSJAKESJAKOSJALAPJAMANJAMASJAMBOJAMBSJAMISJAMMYJANESJANKSJANNSJANTUJANUAJAOBSJAPANJAPERJAPESJARASJARGSJARLSJARRAJARRYJASEYJATHAJATISJATOSJAUKSJAUNSJAUNTJAUPSJAVERJAWABJAWEDJAWYSJAZZSJAZZYJEANSJEELSJEEPSJEERSJEERYJEFFSJEHUPJEHUSJELABJELLSJELLYJEMMYJENNAJENNYJEREZJERIBJERKSJERKYJERLSJERMSJERRYJERTSJESTSJETESJETTYJEWELJHEELJHOOLJHOWSJIBBYJIBESJIBISJIBOAJIFFSJIFFYJIGGYJIHADJILTSJIMMYJIMPSJINASJINGOJINGSJINJAJINKSJINNIJINNSJINNYJINXSJIQUIJIRGAJITISJITROJIVASJIVESJIXIEJOBOSJOCHSJOCKOJOCKSJOCUMJOCUSJODELJOEYSJOINSJOINTJOISTJOKERJOKESJOKULJOKYSJOLLSJOLLYJOLTSJOLTYJOOLAJOOMSJOREEJORUMJOSHIJOSHSJOSIEJOTASJOTTYJOUGHJOUGSJOUKSJOULEJOURSJOUSTJOWARJOWELJOWERJOWLSJOWLYJOWPYJUBASJUBBEJUBESJUCKSJUDEXJUDGEJUDOSJUFTIJUGALJUGERJUGUMJUICEJUICYJUJUSJUKESJULEPJULIDJULIOJUMBAJUMBOJUMBYJUMMAJUMPSJUMPYJUNESJUNKSJUNTAJUNTOJUNTSJUPESJUPONJURALJURATJURELJURESJURORJURYSJUSTOJUSTSJUTESJUTKAJUTTYJUVIAJYNXSKABELKADOSKAFIRKAFIZKAFTAKAGOSKAGUSKAHARKAHASKAHAUKAHUSKAIDSKAIKSKAILSKAIWIKAKARKAKASKAKISKAKKEKALASKALESKALISKALONKALOSKAMAOKAMASKAMESKAMIKKANAEKANAPKANASKANATKANDEKANEHKANGAKANGSKAPAIKAPASKAPOKKAPPAKAPPEKAPPSKAPURKAPUTKARBIKARCHKARMAKAROSKAROUKARRIKARSTKASASKASHIKASMSKASSUKATARKATHAKATHSKATUNKAURIKAVASKAYAKKAYOSKAZISKAZOOKEACHKEAWEKEBABKECKSKECKYKEDGEKEECHKEEKSKEELSKEENAKEENSKEEPSKEESTKEETSKEEVEKEFIRKEITAKELDSKELEHKELEKKELEPKELESKELKSKELLAKELLSKELLYKELPSKELPYKELTSKELTYKEMBSKEMPSKEMPTKEMPYKENAFKENCHKENDSKENNOKENOSKENTSKEPISKEPTSKERATKERELKERFSKERNSKERRYKETALKETASKETCHKETENKETOLKETOSKETTEKETTYKETYLKEUPSKEVELKEXYSKEYEDKHADIKHAIRKHAJAKHAKIKHANSKHARSKHASSKHATSKHETSKHIRSKHOJAKHOKAKHOTSKHULAKHVATKIACKKIAKIKIANGKIBEIKIBESKIBYSKICKSKIDDYKIELSKIERSKIEYEKIKARKIKESKIKISKIKUSKILAHKILANKILEHKILEYKILIMKILLSKILLYKILNSKILOSKILPSKILTSKINAHKINASKINCHKINDSKINGSKINKSKINKYKINOSKIOEAKIOSKKIPESKIPPYKIRISKIRKSKIRNSKIRVEKISHSKISHYKISRAKISSYKISTSKISWAKITABKITARKITESKITHEKITHSKITTYKIVASKIVERKIVUSKIWISKIYASKIYISKLAMSKLIPSKLOMSKLOPSKLOSHKMETSKNABSKNACKKNAGSKNAPEKNAPSKNARKKNARSKNAVEKNEADKNEEDKNEELKNEESKNELLKNELTKNETSKNEWSKNEZIKNEZSKNIAZKNICKKNIFEKNITSKNOBSKNOCKKNOLLKNOPSKNOSPKNOTSKNOUTKNOWEKNOWNKNOWSKNUBSKNURLKNURSKNUTSKNYAZKOAESKOALAKOALIKOBANKOBISKOBUSKODAKKODASKODROKOELSKOFFSKOFTSKOHLSKOHUAKOILAKOILSKOINEKOKAMKOKANKOKILKOKIOKOKOSKOKRAKOKUMKOKUSKOLASKOLEAKOLOSKOMBUKONAKKONASKONGUKOOKAKOPHSKOPISKOPPAKORASKORECKORESKORINKORISKOSINKOTALKOTOSKOUZAKOVILKOYANKOZOSKRAALKRAFTKRAITKRALSKRAMAKRANSKRAUTKREISKREMSKRENGKRINAKROMEKRONAKRONEKROONKROSAKUANSKUBASKUBBAKUDOSKUDUSKUDZUKUEISKUGELKUGESKUKRIKUKUIKUKUSKULAHKULAKKULASKULMSKUMBIKUNAIKUNGSKUNKSKURUSKUSAMKUSASKUSHAKUSTIKUSUMKVASSKVINTKWANSKYACKKYAHSKYARSKYATSKYLESKYLIXKYTESLAANGLABBALABELLABIALABISLABORLABRALACCALACEDLACERLACESLACETLACHELACISLACKSLACTOLACYSLADENLADERLADESLADLELADYSLAETILAETSLAGANLAGENLAGERLAGNALAICHLAICSLAIDSLAIGHLAINELAINSLAIRDLAIRSLAIRYLAITYLAKERLAKESLAKIELAKYSLALLSLALOSLAMASLAMBALAMBSLAMBYLAMELLAMESLAMIALAMINLAMMYLAMPSLANASLANAZLANCELANDSLANESLANEYLANGILANKSLANKYLANTSLANUMLANXSLAPELLAPISLAPONLAPSELAPSILARCHLARDSLARDYLARGELARGOLARIDLARINLARISLARKSLARKYLARRYLARVALARVELASASLASERLASHSLASKSLASSOLASTSLASTYLATAHLATASLATCHLATEDLATENLATERLATESLATEXLATHELATHSLATHYLATROLATUSLAUANLAUDSLAUGHLAUIALAUNDLAUNSLAURALAURSLAVASLAVERLAVESLAVICLAWKSLAWNSLAWNYLAWZYLAXLYLAYERLAYNELAZARLAZESLAZYSLEACHLEADSLEADYLEAFSLEAFYLEAKSLEAKYLEALSLEAMSLEANSLEANTLEAPSLEAPTLEARNLEARSLEASELEASHLEASTLEATHLEATSLEAVELEAVYLEBANLECHSLECKSLEDENLEDESLEDGELEDGYLEDOLLEECHLEEDSLEEKSLEEKYLEEPSLEERSLEERYLEETSLEFTSLEGALLEGERLEGESLEGGYLEGITLEGOALEGUALEHRSLEHUALEKHALEMANLEMELLEMMALEMONLEMURLENADLENCHLENDSLENESLENISLENOSLENTHLENTOLENTSLEPASLEPERLEPRALEROTLERPSLESIYLESSNLESTSLETCHLETESLETUPLEUCHLEUCOLEUDSLEUKSLEUMALEVEELEVELLEVERLEVINLEVIRLEVOSLEVYSLEWDSLEWISLEWTHLEXIALIANALIANGLIARDLIARSLIBELLIBERLIBRALICCALICESLICHILICHSLICITLICKSLIDOSLIEDSLIEFSLIEGELIENSLIERSLIESHLIEUELIEUSLIEVELIFERLIFESLIFEYLIFOSLIFTSLIGASLIGHTLIGNELIINSLIJASLIKENLIKERLIKESLIKINLILACLILESLILLSLILTSLILYSLIMANLIMBOLIMBSLIMBYLIMENLIMERLIMESLIMEYLIMITLIMMALIMMULIMNSLIMOSLIMPSLIMPYLIMSYLIMUSLIMYSLINASLINCHLINDOLINEALINEDLINENLINERLINESLINGALINGELINGOLINGSLINGYLINHALINIELININLINJALINJELINKSLINKYLINNSLINONLINOSLINTSLINTYLINYSLIONSLIPASLIPINLIPPYLIRASLIRESLISHSLISKSLISLELISPSLISTSLITASLITCHLITERLITESLITHELITHILITHOLITHSLITHYLITRALITUSLITZSLIVEDLIVENLIVERLIVESLIVIDLIVORLIVRELIWANLLAMALLANOLLYNSLOACHLOADSLOAFSLOAMSLOAMYLOANSLOATHLOAVELOBALLOBARLOBBYLOBEDLOBESLOBOSLOCALLOCASLOCHSLOCHYLOCISLOCKSLOCKYLOCOSLOCUMLOCUSLODESLODGELOESSLOFTSLOFTYLOGESLOGIALOGICLOGIELOGINLOGOILOGOSLOGYSLOHANLOINSLOIRSLOKAOLOKASLOKESLOKETLOLLSLOLLYLOMASLONESLONGALONGELONGSLOOBYLOODSLOOFSLOOKSLOOMSLOONSLOONYLOOPSLOOPYLOOSELOOTSLOPERLOPESLOPPYLORALLORANLORASLORDSLORDYLOREDLORESLORICLORISLORNSLOROSLORRYLORUMLORYSLOSELLOSERLOSESLOSHSLOSTSLOTASLOTESLOTICLOTTOLOTUSLOUCHLOUDSLOUEYLOUGHLOUKSLOULULOUPELOUPSLOURSLOUSELOUSYLOUTSLOUTYLOVERLOVESLOWANLOWASLOWERLOWLYLOWNSLOWTHLOWYSLOXIALOXICLOYALLUBESLUBRALUCESLUCETLUCIDLUCKSLUCKYLUCRELUCYSLUDOSLUFFSLUGERLUGESLUKESLULABLULLSLULUSLUMENLUMMYLUMPSLUMPYLUNARLUNASLUNCHLUNESLUNGELUNGILUNGSLUNGYLUNNSLUNTSLUPESLUPISLUPUSLURALLURASLURCHLURERLURESLURGSLURIDLURKSLURKYLURRYLUSHSLUSHYLUSKSLUSKYLUSTSLUSTYLUTEOLUTERLUTESLUXESLUXUSLYAMSLYARDLYCIDLYERYLYINGLYMPHLYNCHLYNXSLYRASLYRESLYRICLYSESLYSINLYSISLYSSALYTICLYTTAMAAMSMABISMACANMACAOMACAWMACCOMACERMACESMACHIMACKSMACLEMACOSMACROMADAMMADESMADIDMADLYMADOSMAFICMAFOOMAGASMAGESMAGICMAGISMAGMAMAGOTMAHARMAHASMAHOEMAHUAMAIDSMAIDYMAIIDMAILSMAIMSMAINSMAINTMAIREMAIZEMAJORMAJOSMAKERMAKESMAKISMAKOSMAKUKMALARMALASMALAXMALEOMALESMALICMALIKMALISMALLSMALMSMALMYMALOSMALTSMALTYMAMBAMAMBOMAMMAMAMMYMAMOSMANALMANASMANDSMANEDMANEIMANESMANEYMANGAMANGEMANGIMANGOMANGSMANGYMANIAMANICMANIDMANISMANIUMANKSMANLYMANNAMANNYMANOCMANORMANOSMANSEMANSOMANTAMANTOMANTSMANULMANUSMANYSMAPAUMAPLEMAPOSMAPPYMAQUIMARAEMARALMARCHMARCOMARCSMARDYMARESMARGEMARIAMARIDMARISMARKAMARKSMARLIMARLSMARLYMARMSMAROKMAROSMARRYMARSHMARTSMARUSMARYSMASASMASHAMASHSMASHYMASKSMASONMASSAMASSEMASSYMASTSMASTYMASUSMATAIMATAXMATCHMATERMATESMATEYMATHSMATINMATKAMATRAMATSUMATTAMATTEMATTIMATYSMATZOMAUDSMAUGHMAULSMAUNDMAUNSMAUVEMAUXSMAVISMAWKSMAWKYMAWPSMAXIMMAYASMAYBEMAYNTMAYORMAZASMAZEDMAZERMAZESMAZICMAZUTMAZYSMBORIMEADSMEAKSMEALSMEALYMEANSMEANTMEASEMEATSMEATYMECONMEDALMEDIAMEDICMEDIOMEECEMEEDSMEEKSMEESEMEETSMEILEMEINSMEIOSMEITHMELAMMELASMELCHMELDSMELEEMELESMELICMELLSMELOEMELONMELOSMELTSMEMOSMENDSMENGSMENSAMENSEMENSKMENUSMENYSMERCHMERCYMERELMERESMERGEMERGHMERILMERITMERKSMERLEMERLSMEROPMEROSMERRYMERSEMESADMESALMESASMESEMMESESMESHSMESHYMESICMESNEMESONMESOSMESSEMESSYMETADMETALMETASMETELMETERMETESMETICMETISMETRAMETZEMEUSEMEUTEMEWERMEWLSMEZZOMIANSMIAOWMIASMMIAULMICASMICESMICHEMICHTMICKSMICOSMICROMIDDYMIDESMIDGEMIDGYMIDSTMIENSMIFFSMIFFYMIGHTMIJLSMIKESMIKIEMILASMILCHMILDSMILERMILESMILHAMILKSMILKYMILLAMILLEMILLSMILOSMILPAMILTSMILTYMIMASMIMEOMIMERMIMESMIMICMIMLYMIMPSMINARMINASMINCEMINDSMINEDMINERMINESMINGEMINGSMINGYMINIMMINKSMINNYMINORMINOSMINOTMINTSMINTYMINUSMINXSMINYSMIQRAMIRDSMIRESMIRIDMIRKSMIROSMIRTHMIRYSMIRZAMISDOMISERMISESMISGOMISKYMISSYMISTSMISTYMITERMITESMITISMITRAMITREMITTSMITTYMITYSMIXEDMIXENMIXERMIXYSMIZZYMNEMEMOANSMOATSMOBBYMOBEDMOBLEMOCHAMOCKSMODALMODELMODEMMODESMOFFSMOGGYMOGOSMOHARMOHASMOHELMOHOSMOHRSMOHURMOILSMOIOSMOIREMOISEMOISTMOITSMOITYMOJOSMOKESMOKISMOKOSMOKUMMOKYSMOLALMOLARMOLASMOLDSMOLDYMOLERMOLESMOLKAMOLLEMOLLSMOLLYMOLPEMOLTSMOLYSMOMESMOMMEMOMMYMOMOSMONADMONALMONASMONELMONERMONESMONEYMONGSMONKSMONNYMONOSMONTEMONTHMOOCHMOODSMOODYMOOLSMOONSMOONYMOOPSMOORNMOORSMOORYMOOSAMOOSEMOOSTMOOTHMOOTSMOPERMOPESMOPHSMOPLAMOPPYMOPSYMOPUSMORALMORASMORATMORAYMORELMORESMORGAMORGSMORICMORINMORMOMORNEMORNSMOROCMORONMOROSMORPHMORSEMORTHMORTSMOSEYMOSSYMOSTEMOSTSMOTEDMOTELMOTERMOTESMOTETMOTEYMOTHSMOTHYMOTIFMOTORMOTTEMOTTOMOTTSMOUDSMOUDYMOULDMOULEMOULSMOULYMOUNDMOUNTMOUPSMOURNMOUSEMOUSYMOUTHMOUTSMOVERMOVESMOVIEMOWCHMOWERMOWHAMOWIEMOWNSMOWRAMOWSEMOWTHMOWTSMOXASMOYENMOYLEMOYOSMPRETMUANGMUCHSMUCICMUCIDMUCINMUCKSMUCKYMUCORMUCROMUCUSMUDARMUDDEMUDDSMUDDYMUDEEMUDIRMUDRAMUFFSMUFFYMUFTIMUFTYMUGASMUGGSMUGGYMUIDSMUIRSMUISTMUKTIMULCHMULCTMULESMULEYMULGAMULKSMULLAMULLSMULSEMULTSMUMMYMUMPSMUNCHMUNDSMUNGAMUNGEMUNGOMUNGSMUNGYMUNJSMUNTSMURALMURASMURESMUREXMURGAMURIDMURKSMURKYMURLYMURRAMURREMURVAMURZAMUSALMUSARMUSEDMUSERMUSESMUSHAMUSHSMUSHYMUSICMUSIEMUSKSMUSKYMUSSYMUSTSMUSTYMUTASMUTCHMUTESMUTHSMUTICMUTTSMUZZSMUZZYMYALLMYALSMYNASMYOIDMYOMAMYOPEMYOPSMYOPYMYRONMYRRHMYSELMYSIDMYSTSMYTHSMYXASMYXOSNAAMSNABAKNABKSNABLANABLENABOBNACESNACHSNACRENACRYNADIRNAELSNAGASNAGGYNAGHTNAGORNAIADNAIDSNAIFSNAIGSNAIKSNAILSNAILYNAINSNAIOSNAIRYNAISHNAIVENAKEDNAKERNAKESNAKOONAKOSNAMAZNAMDANAMERNAMESNANASNANCYNANDINANDUNANESNANGANANNYNANTSNAPALNAPASNAPESNAPOONAPPENAPPYNAPUSNARDSNARESNARICNARKSNARKYNARRANARRSNARYSNASABNASALNASCHNASHSNASISNASTSNASTYNASUSNATALNATCHNATESNATHENATRSNATTYNAUMKNAUNTNAUTSNAVALNAVARNAVELNAVESNAVETNAVEWNAVVYNAVYSNAWABNAWTSNAZESNAZIMNAZIRNEALSNEAPSNEARSNEATHNEATSNEBBYNEBELNECKSNEDDYNEEDSNEEDYNEELDNEELENEEMSNEEPSNEERSNEESENEETSNEEZENEFFYNEGERNEGRONEGUSNEIFSNEIGHNEISTNEMASNENTANEONSNEOZANEPERNERFSNERVENERVYNESESNESHSNESTSNESTYNETERNETESNETHSNETISNETOPNETTYNEUMANEUMENEVELNEVERNEVESNEVOSNEVOYNEVUSNEWELNEWLYNEWSYNEWTSNEXALNEXTSNEXUMNEXUSNGAIONGAISNGAPINIATANIBBYNICESNICHENICKSNICKYNIDALNIDESNIDGENIDISNIDORNIDUSNIECENIEPANIEVENIFESNIFICNIFLENIFTYNIGHSNIGHTNIGRENIGUANIKAUNIMBINIMBSNINESNINNYNINONNINTHNINTUNINUTNIOGSNIOTANIPASNIPPYNISEINISSENISUSNITCHNITERNITIDNITONNITOSNITRONITTYNIVALNIXIENIZAMNIZYSNJAVENOBBYNOBLENOBLYNOCKSNODALNODDYNODEDNODESNODISNODUSNOELSNOGALNOHOWNOILSNOILYNOINTNOIRSNOISENOISYNOKTANOLLENOLLSNOLOSNOMADNOMASNOMESNOMICNOMOSNONCENONDANONDONONESNONETNONICNONLYNONYANONYLNOOBSNOOKSNOOKYNOONSNOOPSNOOSENOPALNOPESNORIANORIENORISNORMANORMSNORTHNOSEDNOSERNOSESNOSEYNOSHSNOSYSNOTALNOTANNOTCHNOTEDNOTERNOTESNOTUMNOUNSNOUPSNOVASNOVELNOVEMNOWAYNOWEDNOWELNOWTSNOWYSNOXALNOXASNOYAUNUBBYNUBIANUCALNUCHANUCINNUDESNUDGENUKESNULLONULLSNUMBSNUMDANUMENNUMMINUMUDNUNCHNUNKYNUNNINUQUENURLYNURSENURSYNUTTYNYLONNYMILNYMPHNYXISOADALOAKENOAKUMOAKYSOAREDOARICOARYSOASALOASESOASISOASTSOATENOATHSOATYSOBANSOBEAHOBESEOBEXSOBEYSOBITSOBLEYOBOESOBOLEOBOLSOCCUROCEANOCHEROCHROOCHTSOCOTEOCQUEOCREAOCTADOCTANOCTETOCTICOCTYLOCUBYODALSODDLYODELSODEONODEUMODICSODISTODIUMODOOMODORSODSOSODUMSODYLSOECUSOENINOFFALOFFEROFTENOFTEROFTLYOGAMSOGEEDOGEESOGHAMOGIVEOGLEROGLESOGMICOGRESOGUMSOHELOOHIASOHMICOHOYSOILEDOILEROILYSOIMESOINTSOISINOKAPIOKEESOKETSOKIASOKRASOKRUGOLAMSOLDENOLDEROLDIEOLEICOLEINOLENAOLENTOLEOSOLIDSOLIOSOLIVAOLIVEOLLASOLOGYOLONAOLPESOMAOSOMBEROMEGAOMENSOMERSOMINAOMITSOMLAHONCASONCESONCIAONCINONDYSONERSONERYONIONONIUMONKOSONLAYONLYSONSETONTALONTOSONYMSONYMYONYXSONZASOOFYSOOIDSOOLAKOOLLYOONTSOOPAKOOPODOORDSOOTIDOOZESOOZYSOPAHSOPALSOPENSOPERAOPHICOPINEOPIUMOPSYSOPTICORACHORADSORAGEORALSORANGORANTORARYORATEORBEDORBICORBITORBYSORCINORDERORDUSOREADORGANORGIAORGICORGUEORGYSORIBIORIELORLESORLETORLOPORLOSORMERORNASORNISORRISORSELORTETORTHOOSCINOSELAOSHACOSIDEOSIEROSMICOSMINOSONEOSSALOSSESOTARYOTATEOTHEROTICSOTKONOTTAROTTEROTTOSOUABEOUCHSOUGHSOUGHTOUKIAOULAPOUNCEOUNDSOUPHEOURIEOUSTSOUTBYOUTDOOUTEDOUTENOUTEROUTGOOUTLYOUTREOUZELOVALSOVANTOVARYOVATEOVENSOVERSOVERTOVESTOVEYSOVILEOVINEOVISMOVISTOVOIDOVOLOOVULEOVUMSOWERSOWGHTOWINGOWLEROWLETOWLYSOWNEROWSENOWSEROWSESOXANEOXANSOXBOWOXBOYOXEASOXENSOXERSOXEYEOXFLYOXIDEOXIMEOXLIPOXMANOXTEROXYLSOYERSOZENAOZONEPAALSPAARSPAAUWPABLOPACASPACAYPACEDPACERPACESPACKSPACOSPACTSPADDYPADGEPADLEPADREPAEANPAEONPAGANPAGASPAGERPAGESPAGUSPAHASPAHISPAHMIPAHOSPAIKSPAILSPAINSPAINTPAIPSPAIRSPAISAPALARPALASPALAYPALCHPALEAPALEDPALERPALESPALETPALISPALLAPALLIPALLSPALLYPALMAPALMOPALMSPALMYPALPIPALPSPALSYPALTSPALUSPALYSPANAXPANDAPANDSPANDYPANEDPANELPANESPANGIPANGSPANICPANKSPANNEPANSEPANSYPANTOPANTSPANTYPAOLOPAONSPAPALPAPASPAPAWPAPERPAPESPAPEYPAPPIPAPPYPAPYRPARAHPARAMPARAOPARASPARCHPARDOPARDSPARELPARENPARERPARESPARGEPARGOPARISPARKAPARKSPARKYPARLEPARLYPARMAPAROLPARRSPARRYPARSEPARTOPARTSPARTYPASANPASHAPASHMPASHSPASISPASMOPASSEPASSOPASTEPASTSPASTYPASULPATAOPATASPATCHPATELPATENPATERPATESPATHSPATHYPATIOPATLYPATOSPATTAPATTEPATTUPATTYPATUSPATYSPAUPSPAUSEPAUTSPAUXIPAVANPAVERPAVESPAVIDPAVISPAVYSPAWERPAWKSPAWKYPAWLSPAWNSPAYEDPAYEEPAYERPAYORPEACEPEACHPEAGEPEAGSPEAISPEAKSPEAKYPEALSPEANSPEARLPEARSPEARTPEASYPEATSPEATYPEAVYPEBASPECANPECHSPECHTPECKSPECKYPEDALPEDASPEDEEPEDESPEDROPEDUMPEEDSPEEKSPEELEPEELSPEENSPEEOYPEEPSPEEPYPEERSPEERYPEEVEPEGASPEGGYPEHOSPEINEPEISEPEKANPEKINPEKOEPELFSPELLSPELONPELTAPELTSPELUSPENALPENCEPENDAPENDSPENGOPENISPENKSPENNAPENNIPENNYPENSYPENTAPENTSPEONSPEONYPEPOSPEPPYPERCHPERDUPERESPERILPERISPERITPERKSPERKYPERLEPERMSPERNSPERRYPERSEPERTSPERTYPESASPESKYPESOSPESTEPESTSPETALPETERPETESPETITPETOSPETREPETTYPEUHLPEWEEPEWITPEWYSPFUISPFUNDPHAGEPHANOPHAREPHASEPHASMPHEALPHENEPHEONPHEWSPHIALPHITSPHIZSPHOBYPHOCAPHOHSPHONEPHONOPHONSPHONYPHOOSPHOSEPHOTOPHOTSPHUTSPHYLAPHYLEPHYMAPIABAPIALSPIANOPIANSPICALPICASPICESPICHIPICKSPICKYPICOSPICOTPICRAPICTSPICULPIDANPIECEPIEDSPIENDPIENSPIERSPIETSPIETYPIEZOPIFFSPIGGYPIGLYPIKASPIKEDPIKELPIKERPIKESPIKEYPIKISPIKLEPIKYSPILARPILAUPILCHPILEDPILERPILESPILINPILISPILLSPILMSPILMYPILONPILOTPILUMPILUSPILYSPIMPSPINASPINAXPINCHPINDAPINDSPINDYPINEDPINERPINESPINEYPINGSPINICPINKSPINKYPINNAPINNYPINONPINOSPINTAPINTEPINTOPINTSPINYLPINYSPIOUSPIPALPIPASPIPEDPIPERPIPESPIPETPIPISPIPITPIPPYPIPYSPIQUEPIRLSPIRNSPIRNYPIROLPIRRSPISAYPISCOPISESPISHSPISHUPISKSPISKYPISOSPISTSPITASPITAUPITCHPITHSPITHYPITYSPIURIPIVOTPIXELPIXIEPIXYSPIZESPIZZAPLACEPLACKPLAGAPLAGEPLAIDPLAINPLAITPLAKSPLANEPLANGPLANKPLANSPLANTPLAPSPLASHPLASMPLASSPLATEPLATSPLATYPLAUDPLAYAPLAYSPLAZAPLEADPLEASPLEATPLEBEPLEBSPLECKPLEDSPLENYPLEONPLEWSPLEXSPLICAPLIEDPLIERPLIESPLIMSPLOATPLOCEPLOCKPLODSPLOMBPLOOKPLOPSPLOTEPLOTSPLOUKPLOUTPLOWSPLOYSPLUCKPLUDSPLUFFPLUGSPLUMAPLUMBPLUMEPLUMPPLUMSPLUMYPLUNKPLUPSPLUSHPLYERPOACHPOBBYPOCHEPOCKSPOCKYPOCOSPODALPODDYPODEXPODGEPODGYPOEMSPOESYPOETSPOGGEPOGGYPOGYSPOHASPOHNAPOILSPOILUPOINDPOINTPOISEPOKEDPOKERPOKESPOKEYPOKYSPOLARPOLERPOLESPOLEYPOLIOPOLISPOLKAPOLKSPOLLSPOLOSPOLTSPOLYPPOLYSPOMBEPOMBOPOMESPOMEYPOMMEPOMMYPOMPAPOMPSPONCEPONDSPONDYPONESPONEYPONGAPONGSPONJAPONTOPONTSPONYSPOOASPOOCHPOOFSPOOHSPOOKAPOOKSPOOLIPOOLSPOOLYPOONSPOOPSPOORSPOOTSPOPALPOPESPOPPAPOPPYPORALPORCHPOREDPORERPORESPORGEPORGYPORKSPORKYPOROSPORRSPORRYPORTAPORTOPORTSPORTYPORUSPORYSPOSCAPOSERPOSESPOSEYPOSHSPOSITPOSSEPOSTSPOSYSPOTCHPOTERPOTESPOTOOPOTTOPOTTSPOTTYPOUCEPOUCHPOUFSPOULPPOULTPOUNDPOURSPOUTSPOUTYPOWERPOXYSPOYOUPRAAMPRADSPRAMSPRANAPRANKPRASEPRATEPRATSPRAUSPRAWNPRAYAPRAYSPREENPREPSPRESSPRESTPREXYPREYSPRICEPRICHPRICKPRIDEPRIDYPRIEDPRIERPRIGSPRILLPRIMAPRIMEPRIMPPRIMSPRIMYPRINEPRINKPRINTPRIONPRIORPRISMPRISSPRIUSPRIVYPRIZEPROALPROASPROBEPROBSPRODSPROEMPROFSPROGSPROKEPRONEPRONGPROOFPROOSPROPSPROREPROSEPROSOPROSSPROSYPROTEPROTOPROVEPROWLPROWSPROXYPRUDEPRUHSPRUNEPRUNTPRUTSPRYERPRYSEPSALMPSHASPSHAWPSOASPSORAPSYCHPUANSPUBALPUBESPUBICPUBISPUCESPUCKAPUCKSPUDDYPUDGEPUDGYPUDICPUDSYPUDUSPUFFSPUFFYPUGGIPUGGYPUGHSPUGILPUISTPUJASPUKASPUKERPUKESPUKKAPUKUSPUKYSPULERPULESPULISPULKAPULKSPULLIPULLSPULPSPULPYPULSEPULUSPULYSPUMASPUMPSPUNASPUNCHPUNCTPUNGAPUNGIPUNGSPUNKSPUNKYPUNTAPUNTIPUNTOPUNTSPUNTYPUNYSPUPALPUPASPUPILPUPPYPURDYPUREDPUREEPURERPURESPURGAPURGEPURLSPURREPURRSPURRYPURSEPURSYPUSHSPUSSYPUTIDPUTTSPUTTYPUXYSPYALSPYCHEPYGALPYGMYPYICSPYINSPYKESPYLARPYLASPYLICPYLONPYOIDPYRALPYRANPYRESPYREXPYROSPYXIEPYXISQERESQERISQOPHSQUABSQUACKQUADSQUAFFQUAGSQUAILQUAKEQUAKYQUALEQUALMQUANSQUANTQUAREQUARKQUARLQUARSQUARTQUASHQUASIQUATAQUATSQUAUKQUAVEQUAWKQUAWSQUAYSQUBBAQUEAKQUEALQUEANQUEENQUEERQUEETQUEGHQUEISQUELLQUEMEQUERLQUERNQUERYQUESTQUETSQUEUEQUEYSQUIBSQUICAQUICKQUIDSQUIETQUIFFQUILAQUILLQUILTQUINAQUINKQUINSQUINTQUIPOQUIPSQUIPUQUIRAQUIREQUIRKQUIRLQUIRTQUITEQUITSQUIZSQUODSQUOINQUOITQUOPSQUOTAQUOTEQUOTHQUOTSRAADSRAASHRABATRABBIRABICRABIDRACERRACESRACHERACHSRACKSRACONRACYSRADARRADASRADIIRADIORADIXRADONRAFFERAFFSRAFTSRAFTYRAGASRAGERRAGESRAGGYRAIASRAIDSRAILSRAINSRAINYRAISERAJAHRAJASRAKANRAKERRAKESRAKHSRAKISRAKITRAKUSRALESRALLYRALPHRAMALRAMEDRAMESRAMETRAMEXRAMIERAMISRAMMYRAMPSRAMUSRANALRANASRANCERANCHRANDSRANDYRANESRANGERANGSRANGYRANIDRANISRANKSRANNSRANNYRANTSRANTYRAPERRAPESRAPHERAPICRAPIDRAPPERAPTSRARESRASASRASENRASERRASESRASHSRASPSRASPYRASSERATALRATASRATCHRATEDRATELRATERRATESRATHERATHSRATIORATTIRATTYRATWARAUKSRAULIRAUNSRAUPORAVELRAVENRAVERRAVESRAVINRAYASRAYEDRAYONRAZEERAZERRAZESRAZOORAZORRAZZSREAALREACHREACTREADDREADSREADYREAKSREALMREALSREAMSREAMYREAPSREARMREARSREASKREASYREAVEREBABREBAGREBANREBARREBECREBEDREBEGREBELREBIAREBIDREBOBREBOPREBOXREBUDREBUSREBUTREBUYRECAPRECCERECCORECCYRECKSRECONRECTARECTIRECTORECTSRECURRECUTREDANREDDSREDDYREDESREDIAREDIDREDIGREDIPREDLYREDOSREDOXREDRYREDUBREDUEREDUXREDYEREEDSREEDYREEFSREEFYREEKSREEKYREELSREEMSREENSREESEREESKREESTREETSREEVEREFANREFELREFERREFITREFIXREFLYREFTSREGALREGESREGETREGIAREGINREGLEREGMAREGURREHOEREIFSREIFYREIGNREIMSREINAREINSREITSRELAPRELAXRELAYRELETRELICRELOTRELYSREMANREMAPREMEXREMITREMIXREMOPRENALRENDSRENEGRENESRENETRENEWRENINRENKSRENKYRENNERENTSREOILREOWNREPAYREPEGREPELREPENREPEWREPICREPINREPLYREPOTREPPSREREERERIGREROBREROWRERUBRERUNRESAWRESAYRESEERESETRESEWRESEXRESHSRESINRESOWRESPSRESTSRESTYRESUERESUNRESUPRETAGRETANRETAXRETCHRETEMRETHERETIARETIERETINRETIPRETRYREUNEREUSEREVELREVERREVESREVETREVIEREVUEREWAXREWEDREWETREWINREXENRHAMNRHEASRHEENRHEICRHEINRHEMARHEMERHEUMRHINERHINORHOMBRHUMBRHYMERHYMYRIALSRIANTRIATARIBATRIBBYRIBESRICERRICESRICEYRICHSRICHTRICINRICKSRIDENRIDERRIDESRIDGERIDGYRIEMSRIERSRIFESRIFFSRIFLERIFTSRIFTYRIGHTRIGIDRIGOLRIGORRIKKSRILESRILEYRILLSRILLYRIMALRIMASRIMERRIMESRIMPIRIMUSRIMYSRINCHRINDSRINDYRINESRINGERINGSRINGYRINKARINKSRINSERIOTSRIPALRIPASRIPENRIPERRIPESRIPUPRISENRISERRISESRISHIRISKSRISKYRISPSRISTSRITASRITESRITZYRIVALRIVASRIVELRIVENRIVERRIVESRIVETRIXYSRIYALROACHROADSROAMSROANSROARSROASTROBERROBESROBINROBLEROBOTROBURROCKSROCKYROCTARODDSRODEORODESRODGEROEDSROERSROEYSROGANROGERROGUEROHANROHOBROHUNROIDSROILSROILYROITSROKASROKEEROKERROKESROKEYROKYSROLEOROLESROLLSROMALROMPSROMPUROMPYRONCORONDERONDORONDSRONESROODSROOFSROOFYROOKSROOKYROOLSROOMSROOMYROONSROOSAROOSTROOTSROOTYROOVEROPERROPESROPPSROPYSROQUERORALRORICRORTYRORYSROSALROSEDROSELROSESROSETROSINROSYSROTALROTANROTASROTCHROTERROTESROTGEROTORROTOSROUBSROUDSROUESROUGEROUGHROUGYROUKYROUNDROUNSROUPSROUPYROUSEROUSTROUTEROUTHROUTSROVERROVESROVETROWANROWDYROWEDROWELROWENROWERROWETROWTYROWYSROXYSROYALROYETROYTSROZUMRUACHRUANARUBLERUBORRUBYSRUCHERUCKSRUCKYRUDASRUDDSRUDDYRUDESRUDGERUENSRUERSRUFFSRUFUSRUGASRUGGYRUINGRUINSRUKHSRULERRULESRULLSRUMALRUMBORUMENRUMLYRUMMYRUMORRUMPSRUNBYRUNCHRUNEDRUNERRUNESRUNGSRUNICRUNNYRUNTSRUNTYRUPASRUPEERUPIARUPIERURALRURUSRUSESRUSHSRUSHYRUSKSRUSKYRUSMARUSOTRUSTSRUSTYRUTCHRUTHSRUTICRUTINRUTTYRUTYLRUVIDRYALSRYBATRYDERRYENSRYMESRYNDSRYNTSRYOTSRYPESSABERSABESSABLESABLYSABOTSABRASABZISACKSSACOSSACRASACROSADESSADHESADHSSADHUSADICSADLYSADOSSADRSSAFENSAFESSAFTSSAGASSAGESSAGGYSAGOSSAGUMSAGYSSAHHSSAHIBSAHMESAICSSAIDSSAIGASAILSSAILYSAIMSSAIMYSAINSSAINTSAIPSSAIRSSAIRYSAJOUSAKERSAKESSAKISSALADSALALSALARSALATSALAYSALEPSALESSALICSALIXSALLESALLYSALMASALOLSALONSALPASALPSSALSESALTASALTSSALTYSALVESALVOSALVYSAMAJSAMANSAMBASAMBOSAMELSAMENSAMESSAMHSSAMMYSAMPISAMPSSANAISANCTSANDSSANDYSANESSANGASANGSSANKSSANSISANTSSAPANSAPASSAPEKSAPIDSAPINSAPLESAPORSAPOSSAPPYSARAFSARDSSARESSARGOSARIFSARIPSARISSARKSSARNASARODSARONSAROSSARPOSARRASARSASARTSSARUSSASANSASASSASHSSASINSASSYSATANSATESSATINSATYRSAUCESAUCYSAUFSSAUGHSAULDSAULTSAUMSSAUNASAURSSAURYSAUTESAUTSSAUTYSAUVESAVEDSAVERSAVESSAVINSAVORSAVOYSAVVYSAWAHSAWEDSAWERSAWNSSAWTSSAYASSAYERSAYIDSAZENSCABSSCADSSCAFFSCALASCALDSCALESCALLSCALPSCALTSCALYSCAMPSCAMSSCANSSCANTSCAPESCAPSSCARESCARFSCARNSCARPSCARSSCARTSCARYSCASESCATSSCAULSCAUMSCAUPSCAURSCAUTSCAWDSCAWLSCAWSSCEATSCENASCENDSCENESCENTSCHOSSCHUHSCHWASCINDSCIONSCLAWSCLERSCLIMSCOADSCOBSSCOFFSCOGSSCOKESCOLBSCOLDSCONESCOONSCOOPSCOOTSCOPASCOPESCOPSSCORESCORNSCOTESCOTSSCOUKSCOUPSCOURSCOUTSCOVESCOVYSCOWLSCOWSSCRABSCRAESCRAGSCRAMSCRANSCRAPSCRATSCRAWSCRAYSCREESCREWSCRIMSCRINSCRIPSCROBSCRODSCROGSCROOSCROWSCRUBSCRUFSCRUMSCRYSSCUDISCUDOSCUDSSCUFFSCUFTSCUGSSCULKSCULLSCULPSCUMSSCUNSSCUPSSCURFSCURSSCUSESCUTASCUTESCUTSSCYESSCYTSSEAHSSEAKSSEALSSEAMSSEAMYSEARSSEARYSEATSSEAVESEAVYSEAXSSEBUMSECHSSECKSSECOSSECRESECTSSEDANSEDGESEDGYSEDUMSEECHSEEDSSEEDYSEEGESEEKSSEELSSEELYSEEMSSEENSSEEPSSEEPYSEERSSEGOLSEGOSSEGUESEINESEISESEISMSEITSSEITYSEIZESEKOSSELAHSELESSELFSSELLASELLSSELLYSELTSSELVASEMENSEMESSEMICSEMISSENAMSENCESENDSSENNASENSASENSESENSOSENTSSEPADSEPALSEPIASEPICSEPOYSEPTASEPTSSEQUASERABSERAISERALSERASSERAUSERAWSEREHSERESSERFSSERGESERIFSERINSERIOSERMOSERONSEROSSEROWSERRASERRYSERTASERTSSERUMSERUTSERVESERVOSESMASESTISETAESETALSETASSETHSSETONSETTSSETUPSEUGHSEVENSEVERSEWANSEWEDSEWENSEWERSEWNSSEXEDSEXLYSEXTOSEXTSSEXYSSFOOTSHABSSHACKSHADESHADSSHADYSHAFTSHAGSSHAHISHAHSSHAKESHAKOSHAKUSHAKYSHALESHALLSHALTSHALYSHAMASHAMESHAMSSHANKSHANSSHANTSHAPESHAPSSHAPYSHARDSHARESHARKSHARNSHARPSHATSSHAULSHAUPSHAVESHAWLSHAWMSHAWSSHAWYSHAYSSHEAFSHEALSHEARSHEASSHEATSHEDSSHEENSHEEPSHEERSHEESSHEETSHEIKSHELASHELDSHELFSHELLSHENDSHENGSHERSSHETHSHEVASHEWASHICESHIDESHIEDSHIELSHIERSHIESSHIFTSHIHSSHIKOSHILFSHILLSHIMSSHINESHINSSHINYSHIPSSHIRESHIRKSHIRLSHIRRSHIRTSHISHSHISNSHITASHIVESHIVSSHIVYSHOADSHOALSHOATSHOCKSHODESHODSSHOERSHOESSHOGISHOGSSHOJISHOLASHOLESHONESHOODSHOOISHOOKSHOOLSHOOPSHOORSHOOSSHOOTSHOPSSHOQSSHORESHORNSHORSSHORTSHOTESHOTSSHOTTSHOUSSHOUTSHOVESHOWNSHOWSSHOWYSHOYASHRABSHRAFSHRAGSHRAMSHRAPSHREDSHREESHREWSHRIPSHROGSHRUBSHRUGSHUBASHUCKSHUFFSHUGSSHULSSHUNESHUNSSHUNTSHURESHURFSHUSHSHUTSSHYERSHYLYSIAKSSIALSSIBBYSIBYLSICCASICESSICKSSIDEDSIDERSIDESSIDHESIDISSIDLESIDTHSIDYSSIEGESIERSSIEVESIEVYSIFACSIFESSIFTSSIGHSSIGHTSIGILSIGLASIGMASIGNSSIKARSIKASSIKESSIKETSILENSILESSILEXSILKSSILKYSILLSSILLYSILOSSILTSSILTYSILVASILYLSIMALSIMARSIMASSIMESSIMPSSINALSINASSINCESINDSSINESSINEWSINGESINGHSINGSSINHSSINKSSINKYSINUSSIOLSSIONSSIPERSIPESSIPIDSIRENSIRESSIRIHSIRISSIRKISIRKYSIROCSIRUPSISALSISELSISESSISHSSISISSISSYSISTSSITAOSITARSITCHSITESSITHESITHSSITIOSITUSSIVASSIVERSIXERSIXTESIXTHSIXTYSIZALSIZARSIZEDSIZERSIZESSIZYSSIZZSSKAFFSKAGSSKAIRSKALSSKARTSKATESKATSSKAWSSKEANSKEEDSKEEGSKEELSKEENSKEERSKEESSKEETSKEGSSKEIFSKEINSKELFSKELLSKELPSKELSSKEMPSKENESKENSSKEOSSKEPSSKERESKERSSKETESKEWLSKEWSSKEWYSKEYSSKICESKIDSSKIEDSKIERSKIESSKIFFSKIFTSKILLSKILSSKIMESKIMPSKIMSSKINKSKINSSKIPSSKIRLSKIRPSKIRRSKIRTSKITESKITSSKIVESKIVSSKOALSKOOSSKOUTSKUASSKULKSKULLSKULPSKUNKSKUNSSKUSESKYEYSKYRESLABSSLACKSLADESLADSSLAESSLAGSSLAINSLAITSLAKESLAKYSLAMPSLAMSSLANESLANGSLANKSLANTSLAPESLAPSSLARESLARTSLASHSLATESLATHSLATSSLATYSLAUMSLAVESLAWSSLAYSSLECKSLEDSSLEEKSLEEPSLEERSLEESSLEETSLENTSLEPTSLETESLEWSSLEYSSLICESLICHSLICKSLIDESLIDSSLIMESLIMSSLIMYSLINESLINGSLINKSLIPESLIPSSLIRTSLISHSLITESLITSSLIVESLOANSLOBSSLOCKSLODSSLOESSLOGSSLOKASLOKESLONESLONKSLONSSLOOMSLOOPSLOOSSLOPESLOPSSLOPYSLORPSLOSHSLOTESLOTHSLOTSSLOURSLOWSSLOYDSLUBSSLUDSSLUERSLUESSLUGSSLUIGSLUITSLUMPSLUMSSLUNGSLUNKSLURPSLURSSLUSHSLUTSSLYLYSLYPESMACKSMAIKSMALLSMALMSMALTSMARMSMARTSMASHSMAZESMEARSMEEKSMEERSMEESSMELLSMELTSMETHSMEWSSMICHSMILESMILYSMIRKSMITESMITHSMITSSMOCKSMOGSSMOKESMOKYSMOLTSMOOKSMOOTSMORESMOTESMOUSSMOUTSMUGSSMURRSMURSSMUSESMUSHSMUTSSMYTHSNABSSNACKSNAFFSNAFUSNAGSSNAILSNAKESNAKYSNAPESNAPSSNAPYSNARESNARKSNARLSNARYSNATHSNAWSSNEADSNEAKSNEAPSNEBSSNECKSNEDSSNEERSNEESSNELLSNERPSNEWSSNIBSSNICKSNIDESNIFFSNIFTSNIGSSNIPESNIPSSNIPYSNIRLSNIRTSNITESNIVYSNOBSSNOCKSNODSSNOEKSNOGASNOGSSNOKESNOODSNOOKSNOOPSNOOTSNOPSSNORESNORKSNORTSNOTSSNOUTSNOWKSNOWLSNOWSSNOWYSNUBSSNUCKSNUFFSNUGSSNUMSSNUPSSNURLSNURPSNURSSNURTSOAKSSOAKYSOAMSSOAPSSOAPYSOARSSOARYSOBBYSOBERSOCESSOCHTSOCIISOCKSSOCKYSOCLESOCOSSODASSODDYSODICSODIOSODYSSOFARSOFASSOFTASOFTSSOFTYSOGERSOGETSOGGYSOHOSSOILSSOILYSOJASSOKASSOKENSOKESSOLANSOLARSOLASSOLAYSOLDISOLDOSOLDSSOLEASOLENSOLERSOLESSOLIDSOLIOSOLISSOLODSOLONSOLOSSOLUMSOLVESOMALSOMASSOMESSOMMASONARSONDSSONGSSONGYSONICSONKSSONLYSONNYSONSYSOOKSSOOKYSOOLSSOONSSOORDSOOTHSOOTSSOOTYSOPESSOPHSSOPHYSOPORSOPPYSORALSORASSORBSSORDASOREESORESSORGOSORISSORNSSORRASORRYSORTSSORTYSORUSSORVASORYSSOSHSSOSOSSOTIESOTOLSOUDSSOUGHSOULSSOULYSOUMSSOUNDSOUPSSOUPYSOURSSOURYSOUSESOUTHSOWANSOWARSOWELSOWERSOWLESOWLSSOWNSSOWSESOWTESOWTSSOYASSOZINSPACESPACKSPACYSPADESPADSSPAERSPAESSPAHISPAIDSPAIKSPAKSSPALDSPALESPALLSPALTSPAMSSPANESPANGSPANKSPANNSPANSSPARESPARKSPARMSPARSSPARTSPARYSPASMSPATESPATSSPAVESPAWNSPAYSSPEAKSPEALSPEANSPEARSPECESPECKSPECSSPEDSSPEEDSPEELSPEENSPEERSPELKSPELLSPELTSPENDSPENTSPEOSSPERMSPETSSPEWSSPEWYSPEXSSPICASPICESPICKSPICYSPIEDSPIELSPIERSPIFFSPIGSSPIKESPIKYSPILESPILLSPILTSPINASPINESPINKSPINSSPINYSPIRESPIROSPIRTSPIRYSPISESPITESPITSSPITZSPIVSSPLATSPLAYSPLETSPLITSPODESPOILSPOKESPOKYSPOLESPONGSPOOFSPOOKSPOOLSPOOMSPOONSPOORSPOOTSPORESPORSSPORTSPOSHSPOTSSPOUTSPRADSPRAGSPRATSPRAYSPREESPRETSPREWSPRIGSPRITSPRODSPRUESPRUGSPRYSSPUDSSPUGSSPUKESPUMESPUMYSPUNGSPUNKSPUNSSPURLSPURNSPURSSPURTSPUTASPUTSSPYERSQUABSQUADSQUAMSQUATSQUAWSQUIBSQUIDSQUINSQUITSRUTISTAABSTABSSTACKSTADESTAFFSTAGESTAGSSTAGYSTAIASTAIDSTAINSTAIOSTAIRSTAKESTALESTALKSTALLSTAMPSTAMSSTANDSTANESTANGSTANKSTAPSSTARESTARKSTARNSTARSSTARTSTARYSTASHSTATESTAUKSTAUNSTAUPSTAVESTAWNSTAWSSTAYSSTCHISTEADSTEAKSTEALSTEAMSTEANSTECHSTEEDSTEEKSTEELSTEENSTEEPSTEERSTEGSSTEIDSTEINSTELASTELESTELLSTEMASTEMSSTENDSTENGSTENOSTENSSTENTSTEPSSTEPTSTERESTERISTERKSTERNSTEROSTERTSTETSSTEVESTEWSSTEWYSTEYSSTIBSSTICHSTICKSTIDSSTIFESTIFFSTILESTILLSTILTSTIMESTIMSSTIMYSTINESTINGSTINKSTINTSTIONSTIPESTIRKSTIRPSTIRSSTITESTITHSTIVESTIVYSTOASSTOATSTOBSSTOCKSTODSSTOEPSTOFFSTOFSSTOGASTOGSSTOGYSTOICSTOKESTOLASTOLESTOMASTOMPSTONDSTONESTONGSTONYSTOODSTOOFSTOOKSTOOLSTOONSTOOPSTOOTSTOPASTOPESTOPSSTORESTORKSTORMSTORYSTOSHSTOSSSTOTSSTOUNSTOUPSTOURSTOUTSTOVESTOWSSTRADSTRAESTRAGSTRAMSTRAPSTRASSTRAWSTRAYSTREESTRESSTRETSTREWSTREYSTRIASTRIDSTRIGSTRIPSTRITSTRIXSTROMSTROPSTROWSTROYSTRUBSTRUESTRUMSTRUTSTRUVSTUBBSTUBSSTUCKSTUDESTUDSSTUDYSTUESSTUFFSTUGSSTULLSTULMSTUMPSTUMSSTUNGSTUNKSTUNSSTUNTSTUPASTUPESTUPPSTURKSTURTSTUSSSTUTSSTYANSTYCASTYLESTYLOSUADESUANTSUAVESUBAHSUBERSUCCISUCHSSUCKSSUCRESUDDSSUDDYSUDSYSUEDESUERSSUETSSUETYSUFFSSUGANSUGARSUGHSSUGISSUIDSSUINESUINGSUINTSUISTSUITESUITSSUITYSUJISSULDSSULEASULFASULKASULKSSULKYSULLASULLSSULLYSUMACSUMPHSUMPSSUNESSUNGSSUNKSSUNNSSUNNYSUNTSSUNUPSUPASSUPERSUPESSURAHSURALSURASSURATSURDSSURESSURFSSURFYSURGESURGYSURLYSURMASURRASUSISSUSUSSUTORSUTRASUUMSSUWESSWABSSWACKSWADSSWAGESWAGSSWAINSWALESWAMISWAMPSWAMSSWANGSWANKSWANSSWAPESWAPSSWARDSWARESWARFSWARMSWARTSWASHSWATHSWATSSWAYSSWEALSWEARSWEATSWEEPSWEERSWEETSWEGOSWELLSWELPSWELTSWEPSSWEPTSWERDSWICKSWIFTSWIGSSWILESWILLSWIMSSWIMYSWINESWINGSWINKSWIPESWIPYSWIRDSWIRESWIRLSWISHSWISSSWITHSWIZSSWOBSSWOMSSWOONSWOOPSWORDSWORESWORNSWOSHSWOTSSWOWSSWUMSSWUNGSWURESYCEESYCESSYLIDSYLPHSYLVASYNCHSYNCSSYNESSYNODSYRESSYRMASYRTSSYRUPTAARSTABBYTABESTABETTABICTABIDTABLATABLETABOGTABOOTABORTABUSTABUTTACHETACHSTACITTACKSTACKYTACSOTACTSTADESTAELSTAENSTAFFYTAFIATAFTSTAGGYTAGUATAHASTAHILTAHINTAHRSTAHUATAICHTAIGATAILSTAILYTAINSTAINTTAIPOTAIRNTAISETAITSTAKARTAKENTAKERTAKESTAKINTAKTSTAKYRTAKYSTALAKTALAOTALARTALASTALCSTALDSTALEDTALERTALESTALISTALKSTALKYTALLSTALLYTALMATALONTALUKTALUSTAMASTAMBOTAMERTAMESTAMISTAMMYTAMPSTANAKTANANTANASTANESTANGATANGITANGOTANGSTANGYTANHATANHSTANIATANKATANKSTANOATANSYTANTITANZYTAPASTAPENTAPERTAPESTAPETTAPIATAPIRTAPISTAPOATAPPATAPULTAPUSTAQUATARAFTARASTARAUTARDYTAREATARESTARFATARGETARIETARINTARISTARNSTAROCTAROKTAROSTAROTTARPSTARRITARRSTARRYTARSETARSITARTSTARVETASCOTASHSTASKSTASSETASTETASTYTASUSTATERTATESTATHSTATIETATOUTATTATATTYTATUSTAULATAUMSTAUNSTAUNTTAUPETAUPOTAURSTAUTSTAVERTAVESTAWASTAWERTAWIETAWNSTAWNYTAWPITAWSETAXEDTAXERTAXISTAXONTAXORTAXYSTAYERTAYIRTAYRATAZIATCHAITCHESTCHUSTEACHTEADSTEAERTEAEYTEAKSTEALSTEAMSTEANSTEAPSTEARSTEARTTEARYTEASETEASYTEATSTEATYTEAVETEAZETECASTECHSTECHYTECKSTECONTECUMTEDGETEELSTEEMSTEENSTEENYTEERSTEESTTEETHTEETSTEETYTEFFSTEGUATEILSTEINDTEJONTEJUSTEKKETEKYATELARTELESTELICTELISTELLSTELLTTELTSTELYNTEMANTEMBETEMINTEMPITEMPOTEMPSTEMPTTEMSETENAITENCHTENDSTENETTENGSTENGUTENIOTENNETENONTENORTENSETENTHTENTSTENTYTEPALTEPEETEPIDTEPORTERAPTERASTEREKTEREUTERMATERMSTERNATERNETERNSTERPSTERRYTERSETERZOTESTATESTETESTSTESTYTETCHTETELTETESTETHSTETRATEUKSTEWELTEWERTEWITTEWLYTEXTSTHACKTHANATHANETHANKTHANSTHARFTHARMTHARSTHATNTHATSTHAVETHAWNTHAWSTHAWYTHEAHTHEATTHEBSTHECATHEEKTHEERTHEESTHEETTHEFTTHEGNTHEIRTHEMATHEMETHEMSTHENSTHEOWTHERETHERMTHESETHETATHEWSTHEWYTHEYSTHICKTHIEFTHIGHTHIGSTHILKTHILLTHINETHINGTHINKTHINSTHIOLTHIOSTHIRDTHIRLTHIRSTHIRTTHISNTHOBSTHOFSTHOFTTHOKETHOLETHOLITHONETHONGTHONSTHOOMTHOOSTHORETHORNTHOROTHORPTHORTTHOSETHOUSTHOWSTHOWTTHRAMTHRAPTHRAWTHREETHREWTHRIPTHROBTHROETHROSTHROUTHROWTHRUMTHRUVTHUDSTHUGSTHULRTHUMBTHUMPTHUNGTHUOCTHURLTHURMTHURTTHYMETHYMYTIANGTIAOSTIARATIARSTIBBYTIBETTIBEYTIBIATICALTICCATICERTICESTICKSTICKYTICULTIDALTIDDYTIDEDTIDESTIDYSTIEDSTIENSTIERSTIFFSTIFFYTIFTSTIGERTIGESTIGHTTIKKATIKORTIKURTILDETILEDTILERTILESTILLSTILLYTILTHTILTSTILTYTIMARTIMBETIMBOTIMEDTIMERTIMESTIMIDTIMONTIMORTINCTTINDSTINEATINEDTINESTINGETINGITINGSTINKSTINNYTINTATINTSTINTYTINYSTIPESTIPLETIPPYTIPSYTIPUPTIREDTIRERTIRESTIRLSTIRMATIRRSTIRVETISARTITARTITERTITESTITHETITISTITLETITRETITTYTIVERTIVYSTIZASTIZZYTLACOTMEMATOADSTOADYTOASTTOATSTOBESTOBYSTOCKSTOCOSTODAYTODDYTODESTODYSTOEDSTOFFSTOFFYTOFTSTOFUSTOGASTOGTSTOGUETOHERTOHOSTOILSTOISETOITSTOITYTOKAYTOKENTOKESTOKOSTOLANTOLDOTOLDSTOLESTOLLSTOLLYTOLTSTOLUSTOLYLTOMANTOMBETOMBSTOMESTOMINTOMMYTONALTONEDTONERTONESTONGATONGSTONICTONKSTONUSTONYSTOOKSTOOLSTOOMSTOONSTOOPSTOOSHTOOTHTOOTSTOPAZTOPEETOPERTOPESTOPHSTOPIATOPICTOPISTOPOSTOPPYTOPSLTOQUETORAHTORALTORANTORASTORCHTORCSTOREDTORESTORICTORIITORMATORNSTOROSTORSETORSKTORSOTORTATORTSTORUSTORVETORYSTOSHSTOSHYTOSSYTOSTSTOSYSTOTALTOTEMTOTERTOTESTOTOSTOTTYTOTUMTOTYSTOUCHTOUGHTOUGSTOULDTOUPSTOURNTOURSTOUSETOUSYTOUTSTOVARTOWAITOWANTOWDSTOWELTOWERTOWNSTOWNYTOWYSTOXASTOXICTOXINTOXONTOYERTOYONTOZEETOZERTOZESTRACETRACKTRACTTRADETRADYTRAGITRAGSTRAHSTRAIKTRAILTRAINTRAITTRAMATRAMETRAMPTRAMSTRANKTRANTTRAPSTRASHTRASSTRASYTRAVETRAWLTRAYSTREADTREATTREEDTREENTREESTREEYTREFSTREKSTRENDTRESSTRESTTRETSTREWSTREYSTRIADTRIALTRIBETRICATRICETRICKTRIEDTRIERTRIFATRIGSTRIKETRILLTRIMSTRINETRINKTRINSTRIORTRIOSTRIPETRIPSTRIPYTRISTTRITETROATTROCATROCKTROCOTRODETRODSTROFTTROGSTROKETROLLTROMPTRONATRONCTRONETRONSTROOPTROOTTROPETROTHTROTSTROUTTROVETROWSTROYSTRUBSTRUBUTRUCETRUCKTRUERTRUESTRUFFTRUGSTRULLTRULYTRUMPTRUNKTRUNSTRUSHTRUSSTRUSTTRUTHTRYMATRYPATRYPSTRYSTTRYTSTSARSTSERETSIASTSINETSUBATSUBOTSUNSTUANSTUARNTUARTTUATHTUBAETUBALTUBARTUBASTUBBATUBBYTUBERTUBESTUBIGTUBIKTUCKSTUCKYTUCUMTUDELTUFANTUFASTUFFSTUFTSTUFTYTUGUITUIKSTUISMTUKESTUKRATULASTULESTULIPTULLETULSITUMESTUMIDTUMMYTUMORTUMPSTUNASTUNCATUNDSTUNEDTUNERTUNESTUNGOTUNGSTUNICTUNKSTUNNATUNNYTUNOSTUNUSTUNYSTUPEKTUPIKTUQUETURBOTURBSTURCOTURDSTURFSTURFYTURGYTURIOTURKSTURMATURMSTURNSTURPSTURRSTURSETURUSTUSHSTUSKSTUSKYTUTEETUTESTUTHSTUTINTUTLYTUTORTUTTITUTTYTUTUSTUWISTUZASTWAESTWAINTWALETWALSTWALTTWANGTWANKTWANTTWATSTWAYSTWEAGTWEAKTWEEDTWEEGTWEELTWEENTWEESTWEETTWEILTWERETWERPTWICETWICKTWIGSTWILLTWILTTWINETWINKTWINSTWINYTWIRETWIRKTWIRLTWISTTWITETWITSTWIXTTYDIETYEESTYINGTYKENTYKESTYLUSTYMPSTYNDSTYPALTYPERTYPESTYPICTYPOSTYPPSTYPYSTYRESTYROSTYSTEUANGSUAYEBUCKIAUDALSUDASIUDDERUDELLUGLYSUHLANUHLLOUILYSUINALUKASEULCERULEMAULEXSULLASULLERULMICULMINULMOSULNADULNAEULNARULNASULOIDULTRAULUASULUHIULULUUMBELUMBERUMBLEUMBOSUMBRAUMIAKUMIRIUMPHSUMPTYUNACTUNADDUNALSUNAMOUNAPTUNARKUNARMUNARYUNAUSUNBAGUNBARUNBAYUNBEDUNBESUNBETUNBIDUNBITUNBOGUNBOWUNBOXUNBOYUNBUDUNCAPUNCASUNCIAUNCISUNCLEUNCOSUNCOYUNCUSUNCUTUNDAMUNDENUNDERUNDESUNDIDUNDIGUNDIMUNDOGUNDONUNDOSUNDRYUNDUBUNDUEUNDUGUNDYEUNDYSUNEYEUNFARUNFEDUNFEWUNFITUNFIXUNFURUNGAGUNGETUNGKAUNGODUNGOTUNGUMUNHADUNHAPUNHATUNHEXUNHIDUNHITUNHOTUNIATUNICEUNIESUNIFYUNINNUNIONUNIOSUNITEUNITSUNITYUNJAMUNKEDUNKENUNKETUNKEYUNKIDUNKINUNLAPUNLAWUNLAYUNLEDUNLETUNLIDUNLIEUNLITUNMADUNMANUNMETUNMEWUNMIXUNNEWUNODEUNOILUNOLDUNORNUNOWNUNPEGUNPENUNPINUNPOTUNPUTUNRAMUNRAYUNREDUNRIDUNRIGUNRIPUNROWUNRUNUNSADUNSAYUNSEEUNSETUNSEWUNSEXUNSHYUNSINUNSLYUNSONUNSTYUNSUNUNTAPUNTARUNTAXUNTIEUNTILUNTINUNTOPUNTOSUNTZSUNURNUNUSEUNWANUNWAXUNWEBUNWEDUNWETUNWIGUNWONUNZENUNZESUPARMUPBARUPBAYUPBIDUPBUYUPCRYUPCUTUPDOSUPDRYUPEATUPENDUPFLYUPGETUPGOSUPHERUPJETUPLASUPLAYUPLEGUPMIXUPONSUPPERUPPOPUPRIDUPRIPUPRUNUPSETUPSEYUPSITUPSUNUPSUPUPTIEUPWAXUPWAYURALIURALSURANSURAOSURAREURARIURASEURATEURBANURBICURDEEURDESUREALUREASUREDOUREICUREIDURENTURGERURGESURIALURICSURINEURITEURLARURLEDURMANURNAEURNALURNASURSALURSONURSUKURUBUURUCUURVASUSAGEUSARAUSARSUSEDSUSEESUSENTUSERSUSHERUSNEAUSNICUSQUEUSTERUSUALUSUREUSURPUSURYUTAISUTCHSUTCHYUTEESUTERIUTICKUTILEUTRUMUTSUKUTTERUTUMSUVALSUVATEUVEALUVEASUVICSUVIDSUVIOLUVITOUVROUUVULAUVVERUZANSUZARAVACHEVACOAVADESVADYSVAGALVAGASVAGESVAGUEVAGUSVAILSVAINSVAIREVAIRSVAIRYVAJRAVAKIAVAKILVALESVALETVALIDVALISVALLSVALORVALSEVALUEVALVAVALVEVALYLVAMPSVANEDVANESVANGSVAPIDVAPORVARANVARASVARDYVARECVARESVARISVARIXVARNAVARUSVARVEVARYSVASALVASASVASESVASTSVASTYVASUSVATICVAUDYVAULTVAUNTVEALSVEALYVEDROVEENSVEEPSVEERSVEERYVEILSVEILYVEINSVEINYVELALVELARVELASVELDTVELICVELLSVELOSVELTEVELUMVENALVENDSVENIEVENINVENOMVENTSVENUEVERASVERBSVERBYVERDSVEREKVERGEVERGIVERISVERREVERSEVERSOVERSTVERTSVERVEVERYSVESTSVETASVETCHVETOSVEUVEVEXEDVEXERVEXILVEXTSVIALSVIANDVIBEXVIBIXVICARVICESVIDEOVIDRYVIDYAVIERSVIEWSVIEWYVIFDAVIGASVIGIAVIGILVIGORVIJAOVILASVILESVILLAVILLEVILLSVIMENVINALVINASVINEAVINEDVINERVINESVINICVINNYVINOSVINTAVINTSVINYLVINYSVIOLAVIOLSVIPERVIRALVIREOVIRESVIRGAVIRIDVIRLSVIRONVIRTUVIRUSVISASVISESVISIEVISITVISNEVISONVISORVISTAVISTOVITALVITASVITTAVIUVAVIVASVIVAXVIVERVIVESVIVIDVIXENVLEISVOARSVOCALVODKAVOETSVOGUEVOICEVOIDSVOILEVOLARVOLESVOLETVOLTSVOLVAVOMERVOMITVOTALVOTASVOTERVOTESVOUCHVOUGEVOWEDVOWELVOWERVRAICVUGGYVULNSVULVAVYINGWAAGSWAAPAWAARSWABBYWABESWACESWACKEWACKSWACKYWADDYWADERWADESWADISWADNAWAEGSWAERSWAFERWAFFSWAFTSWAFTYWAGEDWAGERWAGESWAGGYWAGONWAHOOWAIFSWAIKSWAILSWAILYWAINSWAIRDWAISEWAISTWAITSWAIVEWAKANWAKASWAKENWAKERWAKESWAKFSWAKIFWAKONWAKYSWALEDWALERWALESWALISWALKSWALLSWALLYWALSHWALTHWALTSWALTZWAMELWAMESWAMPSWAMUSWANDSWANDYWANEDWANESWANGAWANGSWANLEWANLYWANNYWANTSWANTYWANYSWAPPSWARCHWARDSWARESWARFSWARKSWARLSWARLYWARMSWARNSWARNTWARPSWARSEWARSTWARTHWARTSWARTYWARVEWARYSWASELWASESWASHSWASHYWASNTWASPSWASPYWASTEWASTSWASTYWATAPWATCHWATERWATHSWATTSWAUCHWAUFSWAUGHWAULSWAUNSWAUPSWAURSWAUVEWAVEDWAVERWAVESWAVEYWAVYSWAWAHWAWASWAXENWAXERWAXYSWEAKSWEAKYWEALDWEALSWEAMSWEANSWEARSWEARYWEAVEWEBBYWEBERWECHTWEDESWEDGEWEDGYWEEDAWEEDSWEEDYWEEKSWEELSWEENSWEENYWEEPSWEEPYWEESHWEETSWEEZEWEFTSWEFTYWEIGHWEIRDWEIRSWEISMWEKASWEKAUWEKISWELDSWELKSWELLSWELLYWELSHWELTSWENCHWENDEWENDSWENESWENNYWENTSWEPTSWERESWERFSWERISWERTSWESESWESTEWESTSWESTYWETASWETLYWEVESWEVETWHACKWHALEWHALMWHALPWHALYWHAMEWHAMPWHAMSWHANDWHANGWHANKWHANSWHAPSWHAREWHARFWHARLWHARPWHARSWHARTWHASEWHATAWHATSWHAUKWHAUPWHAURWHAUSWHEALWHEAMWHEATWHEELWHEEMWHEENWHEEPWHEERWHEESWHEFTWHEINWHEKIWHELKWHELMWHELPWHENSWHEREWHETSWHEWLWHEWSWHEWTWHEYSWHIBAWHICHWHICKWHIDSWHIFFWHIFTWHIGSWHILEWHILKWHILLWHILSWHIMSWHINEWHINGWHINSWHINYWHIPSWHIPTWHIRLWHIRSWHISHWHISKWHISPWHISTWHITEWHITSWHITYWHIZSWHOASWHOLEWHOMSWHONEWHOOFWHOOPWHOOSWHOPSWHOREWHORLWHORTWHOSEWHUDSWHUFFWHULKWHUNSWHUPSWHUSHWHUTEWHUZSWHYOSWICESWICHTWICKSWICKYWIDDYWIDENWIDESWIDOWWIDTHWIDUSWIELDWIFESWIFIEWIGANWIGGYWIGHTWILDSWILESWILGAWILKSWILLSWILLYWILTSWILYSWIMESWIMPSWINCEWINCHWINDSWINDYWINEDWINERWINESWINGSWINGYWINKSWINLYWINNAWINTSWINYSWINZEWIPERWIPESWIRDSWIREDWIRERWIRESWIRLSWIRRAWIRRSWIRYSWISENWISERWISESWISHAWISHSWISHTWISPSWISPYWISSEWISTEWISTSWITANWITCHWITESWITHEWITHSWITHYWITTYWIVERWIVESWIZENWLOKAWOADSWOADYWOAKSWOALDWOANSWODESWODGEWODGYWOFTSWOIBEWOKASWOKESWOLDSWOLDYWOLFSWOLVEWOMANWOMBSWOMBYWONESWONGAWONGSWONKYWONNAWONTSWOODSWOODYWOOERWOOFSWOOFYWOOLDWOOLSWOOMSWOONSWOOSHWOOTZWOOZYWORDSWORDYWORESWORKSWORKYWORLDWORMSWORMYWORNSWORRYWORSEWORSTWORTHWORTSWOTESWOUCHWOUFSWOUGHWOULDWOUNDWOVENWOVESWOWTSWRACKWRAMPWRANGWRANSWRAPSWRATHWRAWLWRAWSWREAKWREATWRECKWRENSWRESTWRICKWRIDEWRIEDWRIERWRIGSWRINGWRISTWRITEWRITHWRITSWRIVEWROKEWRONGWROTEWROTHWROXSWRUNGWRYLYWUDGEWUDUSWUGGSWULKSWULLSWUNNAWUSHSWUSPSWUSTSWUZUSWUZZYWYDESWYKESWYLESWYNDSWYNESWYNNSWYPESWYSONWYVERWYVESXEBECXENIAXENONXENYLXERICXOANAXURELXYLANXYLASXYLEMXYLICXYLOLXYLONXYLYLXYRIDXYSTIXYSTSYABASYABBIYABBYYABUSYACALYACCAYACHTYADESYAFFSYAGISYAGUAYAHANYAHOOYAIRDYAIRSYAJESYAKINYAKKAYALBSYALESYALISYALLAYAMENYAMPAYAMPHYAMPSYANGSYANKSYANKYYAPASYAPLYYAPOKYAPPSYAPPYYARAKYARAYYARBSYARDSYARESYARKEYARKSYARLSYARLYYARMSYARNSYARRSYARTHYATESYATISYAUDSYAULDYAVASYAWLSYAWNSYAWNYYAWPSYAWYSYAYASYCIESYDAYSYEAHSYEANSYEARAYEARDYEARNYEARSYEASTYEATSYEDESYEELSYEGGSYELDSYELKSYELLSYELMSYELPSYELTSYENISYERBAYERBSYERDSYERESYERGAYERKSYERNSYERTHYESESYESOSYESSOYESTSYESTYYETASYETHSYEUKSYEUKYYEVENYEZZYYGAPOYIELDYIGHSYILLSYILTSYINCEYINSTYIRDSYIRKSYIRMSYIRNSYIRRSYIRTHYITESYOBISYOCCOYOCKSYODELYODHSYOGASYOGHSYOGINYOGISYOICKYOJANYOKELYOKERYOKESYOKYSYOLKSYOLKYYOMERYONDSYONTSYOOKSYOOPSYORESYORKSYOTESYOUDSYOUFFYOULSYOUNGYOUPSYOURNYOURSYOUSEYOUTHYOUVEYOUZEYOVENYOWIEYOWLSYOWTSYUANSYUCASYUCCAYUCKSYUCKYYUFTSYULANYULESYUMMYYURTAYURTSYUTUSZABRAZABTIZAINSZAMANZAMBOZANTEZANTSZANYSZANZEZAPASZARFSZARPSZATISZAYATZAYINZEALSZEBRAZEBUBZEBUSZEEDSZEINSZEISMZEISTZEMISZEMMIZEMNIZENUSZERDAZEROSZESTSZESTYZETASZIARAZIBETZIEGAZIFFSZIHARZIMBIZIMBSZIMMEZIMMIZINCOZINCSZINGSZINKSZIPPYZIRAIZIRASZIZZSZLOTYZOBOSZOCCOZOEALZOEASZOGANZOGOSZOICSZOIDSZOISMZOISTZOKORZOLLEZOLLSZOMBIZONALZONARZONEDZONESZONICZOOIDZOOKSZOOMSZOONSZORILZORROZOWIEZUDDAZUZASZYGALZYGASZYGONZYMESZYMICZYMIN'
+]])
+
+writeFile('wordle/render.lua', [[
+-- Daily Wordle screen, drawn in teletext subpixels (2 x 3 per character): bevelled
+-- block tiles with 5x7 letters on a stone backdrop, a blocky WORDLE title, and the
+-- animations (tiles flipping, a refused row shaking, a solved row bouncing, confetti).
+-- Small screens fall back to flat tiles with text letters. The message line and the
+-- button bar are always plain text.
+local blittle=require('derby.vendor.betterblittle')
+local M={}
+-- Palette slots while the game runs. Tests and the app refer to these names.
+M.C={bg=colors.black,stone=colors.purple,shadow=colors.brown,text=colors.white,
+ hit=colors.green,hitLight=colors.magenta,near=colors.yellow,nearLight=colors.orange,
+ miss=colors.gray,missLight=colors.pink,key=colors.lightGray,keyLight=colors.cyan,
+ cursor=colors.lightBlue,cursorLight=colors.blue,bad=colors.red,grass=colors.lime}
+local C=M.C
+M.palette={[C.bg]=0x121213,[C.stone]=0x1e1e21,[C.shadow]=0x08080a,[C.text]=0xf8f8f8,
+ [C.hit]=0x538d4e,[C.hitLight]=0x79b46c,[C.near]=0xb59f3b,[C.nearLight]=0xd8c15a,
+ [C.miss]=0x3a3a3c,[C.missLight]=0x58585c,[C.key]=0x818384,[C.keyLight]=0xa6a7a9,
+ [C.cursor]=0x3d7cc9,[C.cursorLight]=0x6fa6e8,[C.bad]=0xc0392b,[C.grass]=0x8fd14f}
+-- Face and highlight for each kind of filled block.
+local FACE={hit={C.hit,C.hitLight},near={C.near,C.nearLight},miss={C.miss,C.missLight},
+ key={C.key,C.keyLight},cursor={C.cursor,C.cursorLight},bad={C.bad,C.bad}}
+local G={
+ A={'.###.','#...#','#...#','#####','#...#','#...#','#...#'},B={'####.','#...#','#...#','####.','#...#','#...#','####.'},
+ C={'.###.','#...#','#....','#....','#....','#...#','.###.'},D={'####.','#...#','#...#','#...#','#...#','#...#','####.'},
+ E={'#####','#....','#....','####.','#....','#....','#####'},F={'#####','#....','#....','####.','#....','#....','#....'},
+ G={'.###.','#...#','#....','#.###','#...#','#...#','.####'},H={'#...#','#...#','#...#','#####','#...#','#...#','#...#'},
+ I={'.###.','..#..','..#..','..#..','..#..','..#..','.###.'},J={'..###','...#.','...#.','...#.','...#.','#..#.','.##..'},
+ K={'#...#','#..#.','#.#..','##...','#.#..','#..#.','#...#'},L={'#....','#....','#....','#....','#....','#....','#####'},
+ M={'#...#','##.##','#.#.#','#.#.#','#...#','#...#','#...#'},N={'#...#','#...#','##..#','#.#.#','#..##','#...#','#...#'},
+ O={'.###.','#...#','#...#','#...#','#...#','#...#','.###.'},P={'####.','#...#','#...#','####.','#....','#....','#....'},
+ Q={'.###.','#...#','#...#','#...#','#.#.#','#..#.','.##.#'},R={'####.','#...#','#...#','####.','#.#..','#..#.','#...#'},
+ S={'.####','#....','#....','.###.','....#','....#','####.'},T={'#####','..#..','..#..','..#..','..#..','..#..','..#..'},
+ U={'#...#','#...#','#...#','#...#','#...#','#...#','.###.'},V={'#...#','#...#','#...#','#...#','#...#','.#.#.','..#..'},
+ W={'#...#','#...#','#...#','#.#.#','#.#.#','#.#.#','.#.#.'},X={'#...#','#...#','.#.#.','..#..','.#.#.','#...#','#...#'},
+ Y={'#...#','#...#','.#.#.','..#..','..#..','..#..','..#..'},Z={'#####','....#','...#.','..#..','.#...','#....','#####'},
+ ENTER={'......#','......#','..#...#','.##...#','#######','.##....','..#....'},
+ DEL={'.......','..#....','.##....','#######','.##....','..#....','.......'},
+}
+M.glyphs=G
+-- Fixed speckle for the stone backdrop, the same on every screen.
+local function speckle(x,y)
+ local n=(x*73856093+y*19349663)%1000
+ return n<90 and C.stone or n<100 and C.shadow or C.bg
+end
+function M.new(t)
+ local view={}
+ local w,h,W,H,buf
+ local function resize()
+  w,h=t.getSize(); W,H=w*2,h*3; buf={}
+  for y=1,H do buf[y]={} end
+ end
+ resize()
+ for slot,hex in pairs(M.palette) do t.setPaletteColor(slot,hex) end
+ blittle.recomputeColorDistances(t)
+ local function px(x,y,c) if x>=1 and x<=W and y>=1 and y<=H then buf[y][x]=c end end
+ local function rect(x,y,rw,rh,c) for yy=y,y+rh-1 do for xx=x,x+rw-1 do px(xx,yy,c) end end end
+ local function glyph(g,x,y,c) for r,line in ipairs(g) do for k=1,#line do if line:byte(k)==35 then px(x+k-1,y+r-1,c) end end end end
+ -- One tile or key, rw x rh pixels at (x, y): style 'empty' (an outline), 'typed'
+ -- (bright outline), 'pop' (white outline) or a FACE name (a bevelled block). squash
+ -- 0..1 is how flat it is mid-flip. Big blocks are bevelled and carry their letter (a G
+-- key) in pixels; small ones are flat so the app's text can sit on them.
+ local function block(x,y,rw,rh,style,letter,big,squash)
+  local hh=math.max(0,math.floor(rh*(1-(squash or 0))+.5))
+  if hh==0 then return end
+  local y0=y+math.floor((rh-hh)/2)
+  local face=FACE[style]
+  local g=big and letter and G[letter]
+  local gx,gy=math.floor((rw-#(g and g[1] or '.....'))/2),math.floor((rh-7)/2)
+  for row=0,hh-1 do
+   local v=math.floor((row+.5)*rh/hh) -- source row in the unsquashed tile
+   for u=0,rw-1 do
+    local c
+    if face and not big then c=face[1]
+    elseif face then
+     c=(v==0 or u==0) and face[2] or (v==rh-1 or u==rw-1) and C.shadow or face[1]
+    else
+     local edge=u==0 or v==0 or u==rw-1 or v==rh-1
+     c=edge and (style=='pop' and C.text or style=='typed' and C.key or C.miss) or C.bg
+    end
+    if g and u>=gx then local line=g[v-gy+1]; if line and line:byte(u-gx+1)==35 then c=C.text end end
+    px(x+u,y0+row,c)
+   end
+  end
+ end
+ -- s: everything the app knows; see wordle.app.
+ function view:draw(s)
+  local tw,th=t.getSize()
+  if tw~=w or th~=h then resize() end
+  local L=s.layout
+  for y=1,H do local row=buf[y]; for x=1,W do row[x]=speckle(x,y) end end
+  local texts={}
+  local function text(cx,cy,str,fg,bg) texts[#texts+1]={cx,cy,str,fg,bg} end
+  local function cell(cx,cy) return (cx-1)*2+1,(cy-1)*3+1 end
+  -- Title band.
+  rect(1,1,W,L.tt*3,C.bg)
+  if L.tt==3 then
+   local word,cols='WORDLE',{C.hit,C.near,C.key,C.hit,C.near,C.hit}
+   local x=math.floor((W-(#word*6-1))/2)+1
+   for k=1,#word do
+    local g=G[word:sub(k,k)]
+    glyph(g,x+1,2+1,C.shadow); glyph(g,x,2,cols[k])
+    x=x+6
+   end
+   text(2,2,'DAILY #'..s.puzzle.number,C.key,C.bg)
+   if w>=#s.puzzle.date+40 then text(w-#s.puzzle.date,2,s.puzzle.date,C.key,C.bg) end
+  else
+   local title=('DAILY WORDLE #%d'):format(s.puzzle.number)
+   text(math.max(1,math.floor((w-#title)/2)+1),1,title,C.text,C.bg)
+   if w>=#title+2*#s.puzzle.date+4 then text(w-#s.puzzle.date,1,s.puzzle.date,C.key,C.bg) end
+  end
+  -- Board.
+  local big=L.th==3
+  local TW,TH=L.tw*2,L.th*3
+  for r=1,s.tries do
+   local row=s.rows[r]
+   local current=not row and r==#s.rows+1 and not s.done
+   local dx=current and s.shake or 0
+   for i=1,s.length do
+    local cx,cy=L.gridX+(i-1)*(L.tw+1),L.gridY+(r-1)*(L.th+L.rg)
+    local x,y=cell(cx,cy)
+    local style,letter,squash='empty',nil,0
+    local dy=0
+    if row then
+     letter=row.word:sub(i,i)
+     local p=s.flip(r,i) -- 0 before turning, 1 once turned
+     squash=math.sin(math.pi*p)
+     style=p>=.5 and row.marks[i] or 'typed'
+     dy=s.bounce(r,i)
+     if not big then dy=dy>=2 and 3 or 0 end -- small tiles hop a whole row, letter and all
+    elseif current then
+     letter=s.typed:sub(i,i); if letter=='' then letter=nil end
+     style=letter and (s.shake~=0 and 'bad' or s.pop==i and 'pop' or 'typed') or 'empty'
+    end
+    if not big and style~='empty' and FACE[style]==nil then
+     -- Small tiles are flat, so their letter can be text.
+     style=style=='typed' and 'key' or style=='pop' and 'cursor' or style
+    end
+    block(x+dx,y-dy,TW,TH,style,letter,big,squash)
+    if letter and not big and squash<.5 and dy%3==0 and dx%2==0 then
+     text(cx+dx/2+math.floor(L.tw/2),cy-dy/3,letter,C.text,FACE[style][1])
+    end
+   end
+  end
+  -- Keyboard.
+  local bigKeys=L.kh==3
+  for _,k in ipairs(s.keys) do
+   local x,y=cell(k.x,k.y)
+   local style=k.cursor and 'cursor' or k.mark or 'key'
+   local label=k.value
+   block(x,y,k.w*2,L.kh*3,style,label,bigKeys,0)
+   if not bigKeys then
+    if #label>k.w then label=label=='ENTER' and 'ENT' or label:sub(1,k.w) end
+    local f=FACE[style]
+    text(k.x+math.floor((k.w-#label)/2),k.y,label,C.text,f and f[1])
+   end
+  end
+  -- Confetti.
+  for _,p in ipairs(s.confetti) do px(math.floor(p.x),math.floor(p.y),p.c) end
+  blittle.drawBuffer(buf,t)
+  for _,tx in ipairs(texts) do
+   t.setCursorPos(tx[1],tx[2]); t.setTextColor(tx[4]); t.setBackgroundColor(tx[5] or C.bg); t.write(tx[3])
+  end
+ end
+ return view
+end
+return M
+]])
+
+writeFile('wordle/rules.lua', [=[
+-- Daily Wordle rules: which word is today's, which guesses count, and how a guess scores.
+local M={}
+M.LENGTH=5
+M.TRIES=6
+M.words=require('wordle.words')
+local DAY=86400000
+-- Days since 1970-01-01 for a 'YYYY-MM-DD' date (civil-from-days, run backwards).
+local function dayOf(date)
+ local y,m,d=date:match('^(%d+)-(%d+)-(%d+)$')
+ y,m,d=tonumber(y),tonumber(m),tonumber(d)
+ if m<=2 then y=y-1 end
+ local era=math.floor(y/400)
+ local yoe=y-era*400
+ local doy=math.floor((153*((m+9)%12)+2)/5)+d-1
+ local doe=yoe*365+math.floor(yoe/4)-math.floor(yoe/100)+doy
+ return era*146097+doe-719468
+end
+M.dayOf=dayOf
+-- Today's puzzle for a UTC time in milliseconds: {number, date, word}. Puzzle 1 is the
+-- first date in the list; past the last date the list wraps around.
+function M.daily(ms)
+ local list=M.words
+ local first=dayOf(list[1][1])
+ local today=math.floor(ms/DAY)
+ local n=today-first
+ local k=n%#list+1
+ return {number=n+1,date=os.date('!%Y-%m-%d',today*86400),word=list[k][2]}
+end
+local accepted
+-- Is word (upper case) something the game takes as a guess?
+function M.valid(word)
+ if not accepted then
+  accepted={}
+  for w in require('wordle.guesses'):gmatch('%u%u%u%u%u') do accepted[w]=true end
+  for _,e in ipairs(M.words) do accepted[e[2]]=true end
+ end
+ return accepted[word]==true
+end
+-- Marks for each letter of guess: 'hit' (right place), 'near' (in the word, elsewhere) or
+-- 'miss'. A letter guessed more often than the answer holds it is marked only that many
+-- times, hits first, so LLAMA against PLANK marks the second L a hit and the first a miss.
+function M.score(guess,answer)
+ local marks,spare={},{}
+ for i=1,#answer do
+  local g,a=guess:sub(i,i),answer:sub(i,i)
+  if g==a then marks[i]='hit' else spare[a]=(spare[a] or 0)+1 end
+ end
+ for i=1,#answer do
+  if not marks[i] then
+   local g=guess:sub(i,i)
+   if (spare[g] or 0)>0 then marks[i]='near'; spare[g]=spare[g]-1 else marks[i]='miss' end
+  end
+ end
+ return marks
+end
+-- Best mark seen so far for each letter, for colouring the keyboard.
+local RANK={miss=1,near=2,hit=3}
+function M.keyboard(rows)
+ local best={}
+ for _,r in ipairs(rows) do
+  for i=1,#r.word do
+   local c,m=r.word:sub(i,i),r.marks[i]
+   if not best[c] or RANK[m]>RANK[best[c]] then best[c]=m end
+  end
+ end
+ return best
+end
+return M
+]=])
+
+writeFile('wordle/tests/run.lua', [=[
+-- Daily Wordle checks: the dated word list, scoring, the guess list, the layout at every
+-- supported size, and a game played through the real event loop with a fake clock.
+-- python3 derby/tools/run.py wordle.tests.run
+local rules=require('wordle.rules')
+local app=require('wordle.app')
+local passed=0
+local function check(v,msg) assert(v,msg); passed=passed+1 end
+local function eq(a,b,msg) check(a==b,(msg or '')..' expected '..tostring(b)..', got '..tostring(a)) end
+local DAY=86400000
+-- Ninety answers on consecutive dates, five capital letters each, no repeats, all guessable.
+local words=rules.words
+eq(#words,90,'Answers')
+eq(words[1][1],'2026-10-08','First date')
+local seen={}
+for i,e in ipairs(words) do
+ eq(rules.dayOf(e[1]),rules.dayOf(words[1][1])+i-1,'Date '..i..' follows on')
+ check(e[2]:match('^%u%u%u%u%u$'),e[2]..' is five capitals')
+ check(not seen[e[2]],e[2]..' repeated'); seen[e[2]]=true
+ check(rules.valid(e[2]),e[2]..' is a valid guess')
+end
+-- The day's word, by UTC date, wrapping past the end of the list.
+local function at(date,hours) return rules.dayOf(date)*DAY+(hours or 0)*3600000 end
+eq(rules.daily(at('2026-10-08')).word,'STONE','First day'); eq(rules.daily(at('2026-10-08',23.9)).number,1,'Same day until midnight UTC')
+eq(rules.daily(at('2026-10-09')).word,'BLAZE','Second day')
+eq(rules.daily(at('2026-10-31')).word,'WITCH','Halloween')
+eq(rules.daily(at('2026-12-25')).word,'CHEST','Christmas')
+eq(rules.daily(at('2027-01-01')).word,'SPAWN',"New Year's Day")
+eq(rules.daily(at('2027-01-05')).word,'STEAK','Last day')
+local wrap=rules.daily(at('2027-01-06'))
+eq(wrap.word,'STONE','Wraps around'); eq(wrap.number,91,'Puzzle numbers keep counting'); eq(wrap.date,'2027-01-06','Date shown')
+eq(rules.dayOf('1970-01-01'),0,'Epoch'); eq(rules.dayOf('2000-03-01'),11017,'Leap century')
+-- Scoring, with repeated letters.
+local function marks(g,a) return table.concat(rules.score(g,a),' ') end
+eq(marks('STONE','STONE'),'hit hit hit hit hit','All right')
+eq(marks('CRANE','STONE'),'miss miss miss hit hit','Two in place')
+eq(marks('NOTES','STONE'),'near near near near near','All elsewhere')
+eq(marks('LLAMA','PLANK'),'miss hit hit miss miss','Extra L is a miss')
+eq(marks('EERIE','ELDER'),'hit near near miss miss','Only as many Es as the answer has')
+eq(marks('SPEED','SHEEP'),'hit near hit hit miss','Hits counted before nears')
+-- The keyboard keeps the best mark per letter.
+local best=rules.keyboard({{word='CRANE',marks=rules.score('CRANE','STONE')},{word='NOTES',marks=rules.score('NOTES','STONE')}})
+eq(best.N,'hit','N stays a hit'); eq(best.C,'miss','C missed'); eq(best.S,'near','S is near')
+-- Guesses.
+check(rules.valid('CRANE') and rules.valid('MINES') and rules.valid('PIXEL'),'Common words')
+check(not rules.valid('ZZZZZ') and not rules.valid('QWERT'),'Nonsense refused')
+-- Every supported size fits the board, the keys and the bar.
+for _,s in ipairs({{39,19},{51,19},{57,24},{100,40},{164,81}}) do
+ local L=app.layout(s[1],s[2])
+ check(L,('Layout at %dx%d'):format(s[1],s[2]))
+ check(L.kbX+10*L.kw+9-1<=s[1] and L.gridX>=1,'Keyboard fits '..s[1])
+ check(L.kbY+3*L.kh+2*L.kg-1<=s[2]-2,'Keyboard clears the message line at '..s[2])
+end
+check(not app.layout(30,12),'Too small is refused')
+eq(app.layout(100,40).tw,7,'Big tiles on a big screen')
+-- A game through the event loop: 2026-10-08, so the word is STONE.
+local t=window.create(term.current(),1,1,51,19,false)
+local clock=0; local ms=at('2026-10-08',20)
+local heard={}
+local sound={play=function(_,_,instrument,_,pitch) heard[#heard+1]=instrument..':'..pitch end,tick=function() end}
+local function sounded(name) for _,h in ipairs(heard) do if h==name then return true end end return false end
+local quit=false
+local co=coroutine.create(function()
+ app.run({target=t,clock=function() return clock end,now=function() return ms end,sound=sound,
+  button=function(e,p1) return ({[keys.left]='LEFT',[keys.up]='CENTER',[keys.right]='RIGHT'})[p1] end})
+ quit=true
+end)
+local oldPull,oldTimer=os.pullEventRaw,os.startTimer
+os.pullEventRaw=function() return coroutine.yield() end; os.startTimer=function() return 1 end
+local function send(...) local ok,err=coroutine.resume(co,...); assert(ok,err) end
+local function run(s) for _=1,s*20 do clock=clock+.05; send('timer',1) end end
+local function word(w) for c in w:gmatch('.') do send('char',c:lower()) end end
+local function key(k) send('key',k) end
+local function line(y) return (t.getLine(y)) end
+local function has(y,text) return line(y):find(text,1,true)~=nil end
+local L=app.layout(51,19)
+local function tile(r) return (line(L.gridY+(r-1)*(L.th+L.rg)):gsub('[^%u]','')) end
+local ok,err=pcall(function()
+ send(); run(.2)
+ check(has(1,'DAILY WORDLE #1'),'Title and number')
+ check(has(19,'PRESS Q'),'Bar shows the lit key')
+ -- Too short, then not a word: refused, the row stays.
+ word('sto'); key(keys.enter); run(.1)
+ check(has(18,'NOT ENOUGH LETTERS'),'Short guess refused'); check(sounded('bass:6'),'Refusal buzz')
+ key(keys.backspace); key(keys.backspace); key(keys.backspace)
+ word('zzzzz'); key(keys.enter); run(.1)
+ check(has(18,'NOT IN WORD LIST'),'Unknown word refused'); eq(tile(1),'ZZZZZ','Refused guess stays to fix')
+ for _=1,5 do key(keys.backspace) end
+ -- A letter key's key event must not also move the cursor or type twice.
+ key(keys.a); send('char','a'); eq(tile(1),'A','One A'); key(keys.backspace)
+ -- CRANE: the tiles turn over one at a time.
+ word('crane'); key(keys.enter); run(.1)
+ run(2)
+ eq(tile(1),'CRANE','First guess on the board')
+ check(sounded('bell:18') and sounded('snare:8'),'Tiles sound as they turn')
+ check(has(18,'GUESS 2 OF 6'),'Second guess next')
+ local bg=select(3,t.getLine(L.gridY))
+ eq(bg:sub(L.gridX,L.gridX),colors.toBlit(colors.gray),'C is a miss')
+ eq(bg:sub(L.gridX+3*(L.tw+1),L.gridX+3*(L.tw+1)),colors.toBlit(colors.green),'N is a hit')
+ -- The cabinet buttons: RIGHT moves along the keys, CENTER presses, then type the rest.
+ key(keys.right); check(has(19,'PRESS W'),'RIGHT moves to W')
+ key(keys.left); key(keys.left); check(has(19,'PRESS DEL'),'LEFT wraps to DEL')
+ for _=1,16 do key(keys.left) end
+ check(has(19,'PRESS S'),'Back along the bottom row and up to S'); key(keys.up)
+ word('tone'); key(keys.enter); run(3)
+ eq(tile(2),'STONE','Solved on guess two')
+ check(has(18,'MAGNIFICENT! SOLVED 2/6'),'Win message'); check(sounded('chime:24'),'Win jingle')
+ check(has(19,'NEXT PLAYER'),'Next player offered')
+ -- Typing after the win does nothing; NEXT PLAYER clears the board for the same word.
+ word('abc'); eq(tile(3),'','No typing once solved')
+ key(keys.up); run(.1)
+ eq(tile(1),'','Board cleared'); check(has(1,'DAILY WORDLE #1'),'Same puzzle')
+ -- Six misses lose and show the word.
+ for _=1,6 do word('crane'); key(keys.enter); run(2) end
+ check(has(18,'THE WORD WAS STONE'),'Loss shows the word'); check(sounded('didgeridoo:4'),'Loss sound')
+ -- The next player after midnight gets the next day's word.
+ ms=at('2026-10-09',0.5); key(keys.up); run(.1)
+ check(has(1,'DAILY WORDLE #2'),'Next day')
+ for _=1,6 do word('crane'); key(keys.enter); run(2) end
+ check(has(18,'THE WORD WAS BLAZE'),'Day two is BLAZE')
+ key(keys.left)
+ check(quit,'QUIT leaves the game')
+end)
+os.pullEventRaw,os.startTimer=oldPull,oldTimer
+if not ok then error(err,0) end
+print(('wordle: %d checks passed'):format(passed))
+]=])
+
+writeFile('wordle/words.lua', [[
+-- Daily Wordle answers: one Minecraft word per date (UTC). After the last date the list
+-- starts again from the top, so the cabinet never runs out. Every answer is also a valid guess.
+-- Halloween is WITCH, Christmas is CHEST (presents) and New Year's Day is SPAWN.
+return {
+ {'2026-10-08','STONE'},
+ {'2026-10-09','BLAZE'},
+ {'2026-10-10','GHAST'},
+ {'2026-10-11','SLIME'},
+ {'2026-10-12','TORCH'},
+ {'2026-10-13','SPORE'},
+ {'2026-10-14','ANVIL'},
+ {'2026-10-15','BRICK'},
+ {'2026-10-16','SWORD'},
+ {'2026-10-17','ARROW'},
+ {'2026-10-18','WHEAT'},
+ {'2026-10-19','BREAD'},
+ {'2026-10-20','SHEEP'},
+ {'2026-10-21','LLAMA'},
+ {'2026-10-22','PANDA'},
+ {'2026-10-23','SQUID'},
+ {'2026-10-24','BIRCH'},
+ {'2026-10-25','CLOCK'},
+ {'2026-10-26','FLINT'},
+ {'2026-10-27','LAPIS'},
+ {'2026-10-28','GLASS'},
+ {'2026-10-29','BLOCK'},
+ {'2026-10-30','CRAFT'},
+ {'2026-10-31','WITCH'},
+ {'2026-11-01','STRAY'},
+ {'2026-11-02','ELDER'},
+ {'2026-11-03','OCEAN'},
+ {'2026-11-04','TAIGA'},
+ {'2026-11-05','SWAMP'},
+ {'2026-11-06','BIOME'},
+ {'2026-11-07','MAGMA'},
+ {'2026-11-08','ENDER'},
+ {'2026-11-09','PEARL'},
+ {'2026-11-10','SHELL'},
+ {'2026-11-11','GOLEM'},
+ {'2026-11-12','ALLAY'},
+ {'2026-11-13','LEVER'},
+ {'2026-11-14','FENCE'},
+ {'2026-11-15','GRASS'},
+ {'2026-11-16','PLANK'},
+ {'2026-11-17','SKULL'},
+ {'2026-11-18','HORSE'},
+ {'2026-11-19','CAMEL'},
+ {'2026-11-20','COCOA'},
+ {'2026-11-21','MELON'},
+ {'2026-11-22','BERRY'},
+ {'2026-11-23','APPLE'},
+ {'2026-11-24','SUGAR'},
+ {'2026-11-25','PAPER'},
+ {'2026-11-26','SHELF'},
+ {'2026-11-27','STAIR'},
+ {'2026-11-28','CORAL'},
+ {'2026-11-29','SHARD'},
+ {'2026-11-30','GEODE'},
+ {'2026-12-01','SCULK'},
+ {'2026-12-02','VAULT'},
+ {'2026-12-03','TRIAL'},
+ {'2026-12-04','ARMOR'},
+ {'2026-12-05','BOOTS'},
+ {'2026-12-06','TOTEM'},
+ {'2026-12-07','FANGS'},
+ {'2026-12-08','TRADE'},
+ {'2026-12-09','SCUTE'},
+ {'2026-12-10','WATER'},
+ {'2026-12-11','BRUTE'},
+ {'2026-12-12','INGOT'},
+ {'2026-12-13','CHAIN'},
+ {'2026-12-14','WORLD'},
+ {'2026-12-15','BUILD'},
+ {'2026-12-16','GROVE'},
+ {'2026-12-17','PEAKS'},
+ {'2026-12-18','BEACH'},
+ {'2026-12-19','RIVER'},
+ {'2026-12-20','LIGHT'},
+ {'2026-12-21','SMELT'},
+ {'2026-12-22','FLAME'},
+ {'2026-12-23','SMITE'},
+ {'2026-12-24','LEVEL'},
+ {'2026-12-25','CHEST'},
+ {'2026-12-26','STEVE'},
+ {'2026-12-27','NOTCH'},
+ {'2026-12-28','HONEY'},
+ {'2026-12-29','TULIP'},
+ {'2026-12-30','POPPY'},
+ {'2026-12-31','DAISY'},
+ {'2027-01-01','SPAWN'},
+ {'2027-01-02','LILAC'},
+ {'2027-01-03','SEEDS'},
+ {'2027-01-04','CROPS'},
+ {'2027-01-05','STEAK'},
+}
+]])
+
+writeFile('wordle.lua', [[
+-- Daily Wordle: the server's word of the day, a Minecraft word, in six guesses.
+-- wordle [--terminal | --monitor NAME]
+local args={...}
+local t
+for i,a in ipairs(args) do
+ if a=='--terminal' then t=term.current() end
+ if a=='--monitor' then t=assert(peripheral.wrap(args[i+1] or ''),'No monitor named '..tostring(args[i+1])); t.setTextScale(1) end
+end
+t=t or require('derby.ui').target()
+local restore=require('derby.palette').save(t)
+local ok,err=pcall(require('wordle.app').run,{target=t,args=args})
+restore()
+t.setBackgroundColor(colors.black); t.setTextColor(colors.white); t.clear(); t.setCursorPos(1,1)
+if not ok then error(err,0) end
 ]])
 
 

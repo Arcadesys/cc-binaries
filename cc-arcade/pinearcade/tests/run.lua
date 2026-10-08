@@ -80,6 +80,7 @@ key(keys.enter); eq(state_().boot,'pinearcade','MENU AT BOOT'); check(read('/sta
 key(keys.backspace); check(text(19):find('NEXT',1,true),'Backspace leaves the card')
 check(sounded('hat:8'),'Leaving a card sounds'); check(ticks>20,'The frame loop drains the sound queue')
 -- Touch: the bar's thirds are the buttons; a game that errors is reported.
+key(keys.left); check(text(16):find('DAILY WORDLE',1,true),'Daily Wordle is the last game')
 key(keys.left); check(text(16):find('PINE FACE',1,true),'Previous game')
 send('mouse_click',1,25,19); run(.6); send('mouse_click',1,25,19); run(.6)
 eq(launched[2],'pineface','Clicked PLAY'); check(text(18):find('STOPPED',1,true),'Stop reported'); eq(paused,1,'Output held after a failed run')

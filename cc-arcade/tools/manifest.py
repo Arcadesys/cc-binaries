@@ -12,6 +12,7 @@ PROGRAMS = {
     'pinejack': ('Pine Jack', 'pinejack.lua', [], 'Pine3D blackjack on the three cabinet buttons'),
     'pinebox': ('Pine Shut the Box', 'pinebox.lua', [], 'Pine3D grand prize round with physically thrown dice'),
     'race': ('Pine3D Derby', 'race.lua', ['derby/odds.json'], 'House-run 3D horse race: display, betting station or exhibition'),
+    'wordle': ('Daily Wordle', 'wordle.lua', [], "The server's Minecraft word of the day in six guesses"),
     # Tools installed with every program.
     'house': ('House setup', 'house.lua', [], 'House host, station, cashier and display roles (house setup ...)'),
     'config': ('Button setup', 'config.lua', [], 'Teach the LEFT / CENTER / RIGHT cabinet buttons'),
@@ -30,7 +31,7 @@ TOOLS = ['house', 'config']
 LAUNCHER = 'pinearcade'
 # Games whose entry does not take --monitor NAME.
 NO_MONITOR = {'race'}
-ORDER = [LAUNCHER, 'pineslots', 'pinejack', 'pinebox', 'race', *FURBALL, *TOOLS]
+ORDER = [LAUNCHER, 'pineslots', 'pinejack', 'pinebox', 'race', *FURBALL, 'wordle', *TOOLS]
 REQ = re.compile(r"""require\s*\(?\s*['"]([\w.\-]+)['"]""")
 PINE = ['derby/vendor/Pine3D.lua', 'derby/vendor/betterblittle.lua', 'derby/vendor/LICENSE', 'derby/vendor/REVISION.txt']
 def deps(base, entry):
