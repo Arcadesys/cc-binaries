@@ -118,6 +118,7 @@ World.__index = World
 --   floor    = "minecraft:stone" or false               -- infinite floor at floorY (default -1)
 --   floorY   = -1
 --   unlimitedFuel = false
+--   onPlace  = function(world, x, y, z, itemName) -> block spec, false (can't place) or nil (default)
 function sim.newWorld(opts)
     opts = opts or {}
     local t = opts.turtle or {}
@@ -148,6 +149,7 @@ function sim.newWorld(opts)
         minedByName = {},
         failures = {},
         maxActions = opts.maxActions or 1000000,
+        onPlace = opts.onPlace,
     }, World)
 
     for _, f in ipairs(opts.fill or {}) do
@@ -511,6 +513,14 @@ function World:makeTurtle()
         end
         if dir ~= "up" and dir ~= "down" then
             block.state = { facing = OPPOSITE[dir] }
+        end
+        if w.onPlace then
+            local custom = w.onPlace(w, x, y, z, s.name)
+            if custom == false then
+                return false, "Cannot place block here"
+            elseif custom then
+                block = parseBlock(custom)
+            end
         end
         w:setBlock(x, y, z, block)
         s.count = s.count - 1

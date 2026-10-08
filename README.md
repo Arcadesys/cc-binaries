@@ -62,6 +62,25 @@ messages, checks wallet consumers, and documents the remaining in-game release g
 The [payout analysis](./cc-arcade/tests/payout-analysis.md) contains proposed,
 not-yet-applied single-player tables and the four requested play-mode boundaries.
 
+## TurtleOS: early-game turtle jobs
+
+[`cc-turtleos/`](./cc-turtleos) is a menu of turtle jobs. Install it on a turtle:
+
+```
+wget run https://raw.githubusercontent.com/Arcadesys/cc-binaries/main/cc-turtleos/install.lua
+```
+
+Pick a role, then a job. Each job has a **How to set up** page, options you can change with the arrow keys, a fuel estimate, and **Start on boot**, which keeps it working after a chunk reload. Press Q while it runs to send it home.
+
+| Job | What it does |
+| --- | --- |
+| Farmer › Crop farm | Harvests ripe wheat, carrots, potatoes and beetroot, replants, and fills empty farmland |
+| Farmer › Sugar cane farm | Cuts cane (or cactus) down to the bottom block so it regrows |
+| Farmer › Tree farm | Chops and replants a 4x4 grid of trees |
+| Miner › Branch miner | Main tunnel with side branches, follows ore veins, tosses stone, places torches, unloads at a chest when full, and resumes after a reboot |
+
+Every job drops its output in a chest behind the turtle's start spot and takes fuel from the turtle's inventory or a chest under that spot. Writing a new job: see [`cc-turtleos/agents.md`](./cc-turtleos/agents.md).
+
 ## Testing turtle scripts without Minecraft
 
 [`turtlesim/`](./turtlesim/README.md) runs any turtle script against a simulated turtle and world in CraftOS-PC, with a report of fuel, ores and failed actions:
