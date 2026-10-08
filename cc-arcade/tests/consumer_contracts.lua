@@ -630,7 +630,13 @@ return function(check,eq)
  local function free(name)
   local env,stubs=isolated(repo..'/computercraft_scripts/'..name); local forbidden=0
   local poison=setmetatable({},{__index=function(_,key) forbidden=forbidden+1; error(name..' touched forbidden paid/network API '..tostring(key)) end})
-  env.rednet=poison; env.http=poison; env.credits=poison; env.wallet=poison; env.disk=poison; env.fs=poison; env.peripheral=poison
+  env.rednet=poison; env.http=poison; env.credits=poison; env.wallet=poison; env.disk=poison; env.fs=poison
+  -- A speaker is neither paid nor networked: looking one up finds none, and every other
+  -- peripheral call is still forbidden.
+  env.peripheral=setmetatable({find=function(kind,...)
+   if kind=='speaker' then return nil end
+   forbidden=forbidden+1; error(name..' looked for peripheral '..tostring(kind))
+  end},{__index=poison})
   local requireLocal=env.require
   env.require=function(module)
    if module=='credits' or module=='casino.wallet' or module:match('^derby%.') then forbidden=forbidden+1; error(name..' unexpectedly requires house module '..module) end
