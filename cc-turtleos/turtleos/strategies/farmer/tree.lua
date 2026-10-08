@@ -335,4 +335,10 @@ function tree.execute()
     saveProgress(currentTreeIndex)
 end
 
+-- Menu details (this strategy predates the job format, so the menu runs
+-- execute() in a loop).
+tree.title = "Tree farm"
+tree.summary = "4x4 grid of saplings, 2 apart"
+tree.description = "Chops a 4x4 grid of trees planted two blocks apart and replants saplings."
+
 return tree

@@ -2,170 +2,227 @@
 local base = fs.getDir(shell.getRunningProgram())
 local pkgRoot = fs.getDir(base)
 local rootPath = "/" .. fs.combine(pkgRoot, "?.lua")
-if not package.path:find(rootPath, 1, true) then
+if not (";" .. package.path .. ";"):find(";" .. rootPath .. ";", 1, true) then
     package.path = rootPath .. ";/" .. fs.combine(pkgRoot, "?/init.lua") .. ";" .. package.path
 end
 
-local strategies_dir = fs.combine(base, "strategies")
+local ui = require("turtleos.lib.ui")
+local jobs = require("turtleos.lib.jobs")
+local inv = require("turtleos.lib.inv")
 
--- Helper: Get list of roles (directories)
-local function get_roles()
-    local roles = {}
-    local files = fs.list(strategies_dir)
-    for _, file in ipairs(files) do
-        if fs.isDir(fs.combine(strategies_dir, file)) then
-            table.insert(roles, file)
-        end
-    end
-    table.sort(roles)
-    return roles
-end
+jobs.setBase(base)
 
--- Helper: Get list of strategies for a role
-local function get_strategies(role)
-    local strats = {}
-    local path = fs.combine(strategies_dir, role)
-    if fs.exists(path) and fs.isDir(path) then
-        local files = fs.list(path)
-        for _, file in ipairs(files) do
-            if file:sub(-4) == ".lua" then
-                table.insert(strats, file:sub(1, -5)) -- Remove .lua
-            end
-        end
-    end
-    table.sort(strats)
-    return strats
-end
+local T = ui.theme
 
-local function draw_menu(title, options, selected)
-    term.clear()
-    term.setCursorPos(1, 1)
-    textutils.slowPrint(title, 50) -- Nice little effect, very fast
-    print(string.rep("-", #title))
-    
-    local w, h = term.getSize()
-    local start_y = 3
-    local max_items = h - start_y
-    
-    -- Pagination start index
-    local start_idx = 1
-    if selected > max_items then
-        start_idx = selected - max_items + 1
-    end
-
-    for i = 0, max_items - 1 do
-        local idx = start_idx + i
-        if idx > #options then break end
-        
-        term.setCursorPos(1, start_y + i)
-        local prefix = (idx == selected) and "> " or "  "
-        print(prefix .. options[idx].label)
-    end
-end
-
-local function run_menu()
-    local state = "main" -- main, role
-    local current_role = nil
-    
-    local main_selected = 1
-    local role_selected = 1
-    
+-- Generic list screen. `build()` returns title, items, and optionally a
+-- right-hand header. Each item may have: label, right, info (shown under
+-- the list when selected), action(), left(), rightKey(), separator.
+-- Returns when an action returns "back" (or Backspace/Q is pressed at a
+-- screen that allows it).
+local function screen(build, canBack)
+    local selected = 1
     while true do
-        local options = {}
-        local title = ""
-        local selected_ptr = 1
-        
-        if state == "main" then
-            title = "Start Menu (Select Role)"
-            local roles = get_roles()
-            for _, r in ipairs(roles) do
-                table.insert(options, {label = r:gsub("^%l", string.upper), value = r, type = "role"})
-            end
-            table.insert(options, {label = "Reboot", type = "cmd", action = os.reboot})
-            table.insert(options, {label = "Shutdown", type = "cmd", action = os.shutdown})
-            
-            selected_ptr = main_selected
-            
-        elseif state == "role" then
-            title = "Role: " .. current_role:gsub("^%l", string.upper)
-            local strats = get_strategies(current_role)
-            for _, s in ipairs(strats) do
-                table.insert(options, {label = s, value = s, type = "strat"})
-            end
-            table.insert(options, {label = "< Back", type = "back"})
-            
-            selected_ptr = role_selected
+        local title, items, headerRight = build()
+        if selected > #items then selected = #items end
+        while items[selected] and items[selected].separator do selected = selected + 1 end
+        local w, h = ui.size()
+        ui.clear()
+        ui.bar(1, title, headerRight or ui.fuelText())
+        local rows = ui.list(items, selected, 2, h - 2)
+        local cur = items[selected]
+        ui.write(2, h - 1, ui.fit(cur and cur.info or "", w - 2), T.dim)
+        local help = "Enter: choose"
+        if cur and cur.left then help = "<>: change  Enter: edit" end
+        if canBack then help = help .. "  Bksp: back" end
+        ui.bar(h, help)
+
+        local function move(d)
+            repeat
+                selected = (selected - 1 + d) % #items + 1
+            until not items[selected].separator
         end
-        
-        draw_menu(title, options, selected_ptr)
-        
-        local event, key = os.pullEvent("key")
-        
-        if key == keys.up then
-            selected_ptr = selected_ptr - 1
-            if selected_ptr < 1 then selected_ptr = #options end
-        elseif key == keys.down then
-            selected_ptr = selected_ptr + 1
-            if selected_ptr > #options then selected_ptr = 1 end
-        elseif key == keys.enter then
-            local action = options[selected_ptr]
-            
-            if state == "main" then
-                main_selected = selected_ptr
-                if action.type == "role" then
-                    current_role = action.value
-                    role_selected = 1
-                    state = "role"
-                elseif action.type == "cmd" then
-                    term.clear()
-                    term.setCursorPos(1,1)
-                    print("Executing...")
-                    action.action()
-                end
-                
-            elseif state == "role" then
-                role_selected = selected_ptr
-                if action.type == "back" then
-                    state = "main"
-                elseif action.type == "strat" then
-                    term.clear()
-                    term.setCursorPos(1, 1)
-                    print("Starting " .. current_role .. " role with strategy: " .. action.value)
-                    
-                    local role_mod_name = "turtleos.roles." .. current_role
-                    package.loaded[role_mod_name] = nil -- Reload role
-                    
-                    local success, role = pcall(require, role_mod_name)
-                    if success and type(role) == "table" and role.run then
-                        -- Construct a minimal schema for the role
-                        local run_schema = {
-                            role = current_role,
-                            strategy = action.value
-                        }
-                        
-                        -- Run the role (this will likely loop forever)
-                        local ok, err = pcall(role.run, run_schema)
-                        if not ok then
-                            print("\nRole Execution Error: " .. tostring(err))
-                        end
-                    else
-                        print("\nError: Failed to load role module '" .. current_role .. "' or missing 'run'.")
-                        if not success then print(tostring(role)) end
-                        
-                        -- Fallback: try running strategy directly if role fails? 
-                        -- No, better to be explicit.
-                    end
-                    
-                    print("\nProcess ended. Press any key to return.")
-                    os.pullEvent("key")
-                end
+
+        local ev, a, _, y = os.pullEvent()
+        local activate = false
+        if ev == "key" then
+            if a == keys.up then move(-1)
+            elseif a == keys.down then move(1)
+            elseif a == keys.enter or a == keys.space then activate = true
+            elseif a == keys.left and cur and cur.left then cur.left()
+            elseif a == keys.right and cur and cur.rightKey then cur.rightKey()
+            elseif (a == keys.backspace or a == keys.q) and canBack then return
             end
+        elseif ev == "mouse_click" and rows[y] then
+            selected = rows[y]
+            activate = true
+        elseif ev == "mouse_scroll" then
+            move(a)
         end
-        
-        -- Update the persisted selection pointers
-        if state == "main" then main_selected = selected_ptr
-        elseif state == "role" then role_selected = selected_ptr end
+        if activate and items[selected].action then
+            if items[selected].action() == "back" then return end
+        end
     end
 end
 
-run_menu()
+local function message(title, text)
+    ui.page(title, type(text) == "table" and text or { text })
+end
+
+-- Display text for an option's current value.
+local function showValue(o, v)
+    if o.type == "bool" then return v and "[on]" or "[off]" end
+    if o.type == "number" and o.key == "torches" and v == 0 then return "< off >" end
+    return "< " .. tostring(v) .. " >"
+end
+
+local function optionItem(job, opts, o)
+    local function set(v)
+        opts[o.key] = v
+        jobs.saveOptions(job, opts)
+    end
+    local function nudge(d)
+        if o.type == "bool" then
+            set(not opts[o.key])
+        elseif o.type == "choice" then
+            local i = 1
+            for n, c in ipairs(o.choices) do if c == opts[o.key] then i = n end end
+            set(o.choices[(i - 1 + d) % #o.choices + 1])
+        else
+            local v = (opts[o.key] or 0) + d * (o.step or 1)
+            if o.min then v = math.max(o.min, v) end
+            if o.max then v = math.min(o.max, v) end
+            set(v)
+        end
+    end
+    return {
+        label = o.label,
+        right = showValue(o, opts[o.key]),
+        info = o.type == "number" and ("Type a number with Enter (" .. (o.min or 0) .. "-" .. (o.max or "") .. ")")
+            or "Enter or <> to change",
+        left = function() nudge(-1) end,
+        rightKey = function() nudge(1) end,
+        action = function()
+            if o.type ~= "number" then return nudge(1) end
+            local _, h = ui.size()
+            local v = tonumber(ui.prompt(h - 1, o.label, opts[o.key]) or "")
+            if v then
+                v = math.floor(v)
+                if o.min then v = math.max(o.min, v) end
+                if o.max then v = math.min(o.max, v) end
+                set(v)
+            end
+        end,
+    }
+end
+
+local function runJob(job, opts, resume)
+    local result = jobs.run(job, opts, resume)
+    message(job.title, { result or "Done", "", "Fuel left: " .. tostring(turtle.getFuelLevel()) })
+end
+
+local function jobScreen(job)
+    local opts = jobs.options(job)
+    screen(function()
+        local items = {}
+        local fuelInfo = ""
+        if job.estimateFuel then
+            local need = job.estimateFuel(opts)
+            fuelInfo = "Needs ~" .. need .. " fuel" .. (job.repeats and " a cycle" or "")
+                .. ", has " .. tostring(turtle.getFuelLevel())
+        end
+        if job.broken then
+            items[#items + 1] = { label = "This job failed to load", info = job.broken,
+                action = function() message(job.title, { job.broken }) end }
+        else
+            items[#items + 1] = { label = "Start", right = "at start spot", info = fuelInfo,
+                action = function() runJob(job, opts, false) end }
+            local saved = jobs.progress(job)
+            if saved and job.progressText then
+                items[#items + 1] = { label = "Resume", right = job.progressText(saved, opts),
+                    info = "Carry on from where it stopped",
+                    action = function() runJob(job, opts, true) end }
+            end
+        end
+        items[#items + 1] = { label = "How to set up", info = job.summary, action = function()
+            local lines = { job.description or job.summary, "" }
+            for _, l in ipairs(job.setup or {}) do lines[#lines + 1] = l end
+            message(job.title, lines)
+        end }
+        if #job.options > 0 then items[#items + 1] = { separator = true, label = "Options" } end
+        for _, o in ipairs(job.options) do
+            items[#items + 1] = optionItem(job, opts, o)
+        end
+        local auto = jobs.autorun()
+        local on = auto and auto.role == job.role and auto.id == job.id
+        items[#items + 1] = { separator = true }
+        items[#items + 1] = {
+            label = "Start on boot", right = on and "[on]" or "[off]",
+            info = "Keep working after a reboot or chunk reload",
+            action = function() jobs.setAutorun(not on and job or nil) end,
+            left = function() jobs.setAutorun(not on and job or nil) end,
+            rightKey = function() jobs.setAutorun(not on and job or nil) end,
+        }
+        items[#items + 1] = { label = "< Back", action = function() return "back" end }
+        return job.title, items
+    end, true)
+end
+
+local function roleScreen(role)
+    screen(function()
+        local items = {}
+        for _, job in ipairs(role.jobs) do
+            items[#items + 1] = { label = job.title, info = job.summary, action = function() jobScreen(job) end }
+        end
+        items[#items + 1] = { label = "< Back", action = function() return "back" end }
+        return role.title, items
+    end, true)
+end
+
+local function refuelAll()
+    local before = turtle.getFuelLevel()
+    inv.refuel(turtle.getFuelLimit())
+    local after = turtle.getFuelLevel()
+    if after == before then
+        message("Refuel", { "No fuel in the inventory.", "", "Put coal, charcoal or a lava bucket in the turtle and try again." })
+    else
+        message("Refuel", { "Fuel: " .. before .. " -> " .. after })
+    end
+end
+
+local function findJob(roles, role, id)
+    for _, r in ipairs(roles) do
+        if r.id == role then
+            for _, j in ipairs(r.jobs) do
+                if j.id == id then return j end
+            end
+        end
+    end
+end
+
+screen(function()
+    local roles = jobs.roles()
+    local items = {}
+    for _, role in ipairs(roles) do
+        local names = {}
+        for _, j in ipairs(role.jobs) do names[#names + 1] = j.title end
+        items[#items + 1] = {
+            label = role.title, right = #role.jobs .. (#role.jobs == 1 and " job" or " jobs"),
+            info = table.concat(names, ", "),
+            action = function() roleScreen(role) end,
+        }
+    end
+    items[#items + 1] = { separator = true }
+    local auto = jobs.autorun()
+    local autoJob = auto and findJob(roles, auto.role, auto.id)
+    if autoJob then
+        items[#items + 1] = { label = "On boot: " .. autoJob.title, info = "Open it to change or turn off",
+            action = function() jobScreen(autoJob) end }
+    end
+    items[#items + 1] = { label = "Refuel", info = "Burn the fuel in my inventory", action = refuelAll }
+    items[#items + 1] = { label = "Exit to shell", info = "Type 'startup' to come back", action = function() return "back" end }
+    items[#items + 1] = { label = "Reboot", action = os.reboot }
+    local label = os.getComputerLabel()
+    return "TurtleOS" .. (label and (" - " .. label) or ""), items
+end, false)
+
+ui.clear()

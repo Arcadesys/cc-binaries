@@ -1,88 +1,67 @@
 # TurtleOS Agent Guide
 
-This document provides an overview of the TurtleOS architecture, intended use cases, and schema definitions to assist with future agentic development.
+TurtleOS is a menu for ComputerCraft turtles. The player picks a role (Farmer, Miner), then a job, sets its options, and starts it. Jobs can be set to start on boot, so a turtle keeps working after a chunk reload or server restart.
 
-## 1. Project Overview
+## Layout
 
-TurtleOS is a modular operating system designed for ComputerCraft Turtles. It allows turtles to be dynamically configured with specific "Roles" and "Strategies" via a JSON schema, making them adaptable to various tasks without rewriting core code.
+- `boot.lua`: entry point (`startup.lua` runs it). Adds `/` to `package.path` and calls `core.init()`.
+- `install.lua`: downloads the files from GitHub. **Its `FILES` list must name every file under `turtleos/`**; update it when adding or removing one.
+- `turtleos/menu.lua`: the menu (main → role → job screen).
+- `turtleos/lib/`
+  - `core.lua`: runs a start-on-boot job (5 second countdown, any key skips it), then the menu.
+  - `jobs.lua`: finds jobs, saves their options, runs them with a status screen and a Q-to-stop listener.
+  - `nav.lua`: position tracking relative to the job's start spot, saved on every move.
+  - `inv.lua`: inventory helpers (find, refuel, refuel from a chest, unload).
+  - `field.lua`: the snake-over-a-field loop shared by the crop and sugar cane jobs.
+  - `ui.lua`: drawing helpers sized for the 39x13 turtle screen.
+- `turtleos/strategies/<role>/<job>.lua`: one file per job. A folder here is a role in the menu.
+- `turtleos/apis/movement.lua`: older movement API, still used by `tree.lua`.
+- `tests/`: turtlesim worlds and runners (see below).
 
-## 2. Directory Structure
+Saved state lives in `/.turtleos/` on the turtle: `nav` (position), `options/<role>.<job>`, `progress/<role>.<job>`, `autorun`.
 
-The codebase is organized as follows:
+## Job format
 
-- **`turtleos/`**: The main application directory.
-  - **`lib/`**: Core libraries and utilities.
-    - `core.lua`: Main initialization logic.
-    - `schema.lua`: Handles loading and parsing of the JSON configuration.
-    - `logger.lua`: Logging utility.
-  - **`roles/`**: Defines high-level job types. Each file corresponds to a `role` in the schema.
-    - Example: `farmer.lua`, `miner.lua`.
-  - **`strategies/`**: specific implementations for roles. Organized by role name.
-    - Example: `strategies/farmer/potato.lua` (Strategy for the Farmer role).
-
-- **Root Files**:
-  - `turtle_schema.json`: The configuration file that dictates the turtle's behavior.
-  - `boot.lua` / `startup.lua`: Entry point that loads `turtleos.lib.core`.
-  - `install.lua`: Installer script.
-
-## 3. Schema Explanation
-
-The behavior of a turtle is defined by `turtle_schema.json`. This file is loaded at startup.
-
-### JSON Structure
-
-```json
-{
-    "name": "Turtle Name",
-    "version": "1.0.0",
-    "role": "role_name",
-    "strategy": "strategy_name"
+```lua
+return {
+    title = "Crop farm",
+    summary = "One line for the job list",
+    description = "A paragraph, shown first under How to set up",
+    setup = { "1. Step", "2. Step" },
+    options = {
+        { key = "length", label = "Length", type = "number", default = 9, min = 1, max = 64, step = 1 },
+        { key = "side", label = "Field is to the", type = "choice", default = "right", choices = { "right", "left" } },
+        { key = "veins", label = "Follow ore veins", type = "bool", default = true },
+    },
+    estimateFuel = function(opts) return 100 end, -- optional, shown on the job screen
+    repeats = true,          -- optional: the fuel estimate is per cycle
+    bootResumeOnly = true,   -- optional: on boot, only resume saved progress
+    progressText = function(saved, opts) return "branch 3 of 10" end, -- optional: enables Resume
+    run = function(opts, ctx) return "Result shown to the player" end,
 }
 ```
 
-### Fields
+`ctx` gives the job: `ctx.opts`, `ctx.resume` (true when continuing after a reboot or Resume), `ctx.status(text)`, `ctx.count(name, n)`, `ctx.log(text)`, `ctx.stopping()`, `ctx.wait(seconds, label)`, `ctx.progress()`, `ctx.saveProgress(table)`, `ctx.clearProgress()`.
 
-- **`name`** (string): A human-readable name for the turtle or configuration.
-- **`version`** (string): Version of the configuration.
-- **`role`** (string): The high-level job the turtle performs.
-  - **Mapping**: This value maps directly to a file in `turtleos/roles/`.
-  - **Example**: `"role": "farmer"` loads `turtleos/roles/farmer.lua`.
-- **`strategy`** (string): The specific method the role should execute.
-  - **Mapping**: This value maps to a file in `turtleos/strategies/<role>/`.
-  - **Example**: `"strategy": "potato"` (with role "farmer") loads `turtleos/strategies/farmer/potato.lua`.
+Rules for jobs:
 
-## 4. Intended Use Cases & Workflows
+- Move with `nav`, never raw `turtle.forward()`, so the position stays saved. `nav.goTo` takes an axis order; pick one that keeps the path inside tunnels or above the field.
+- When `ctx.resume` is true, the turtle may be anywhere: go home first.
+- Check `ctx.stopping()` at safe points, then go home and return.
+- Throw `error("message", 0)` for failures the player should see.
 
-### Adding a New Capability
+Strategies with only `execute(schema)` (like `tree.lua`) still run: the runner calls `execute` in a loop.
 
-When asked to add new functionality, determine if it fits an existing **Role** or requires a new one.
+## Testing
 
-1.  **New Strategy for Existing Role**:
-    *   If the task is a variation of an existing job (e.g., farming carrots instead of potatoes), create a new strategy file in `turtleos/strategies/<role>/<new_strategy>.lua`.
-    *   Update `turtle_schema.json` to test.
+[turtlesim](../turtlesim/README.md) runs jobs headless in CraftOS-PC:
 
-2.  **New Role**:
-    *   If the task is fundamentally different (e.g., "Guard" or "Crafter"), create a new role file in `turtleos/roles/<new_role>.lua`.
-    *   Create a corresponding directory `turtleos/strategies/<new_role>/`.
-    *   Implement at least one strategy for the new role.
+```bash
+turtlesim/turtle --root cc-turtleos --world cc-turtleos/tests/world_crops.lua cc-turtleos/tests/run_job.lua farmer crops length=5 width=5 cycles=1
+turtlesim/turtle --root cc-turtleos --world cc-turtleos/tests/world_cane.lua cc-turtleos/tests/run_job.lua farmer sugarcane length=4 width=3 cycles=1
+turtlesim/turtle --root cc-turtleos --world cc-turtleos/tests/world_mine.lua cc-turtleos/tests/run_job.lua miner branch length=24 branch=8
+turtlesim/turtle --root cc-turtleos --world cc-turtleos/tests/world_mine.lua cc-turtleos/tests/stop_resume.lua miner branch 150 length=24 branch=8 hard
+turtlesim/turtle --root cc-turtleos --world empty --key enter --key enter cc-turtleos/tests/preview.lua
+```
 
-### Modifying Behavior
-
-*   **Logic Changes**: Edit the specific strategy file (e.g., `turtleos/strategies/farmer/potato.lua`) to change how the task is performed.
-*   **Core Changes**: Edit `turtleos/lib/` files only for system-wide changes (logging, error handling, schema parsing).
-
-## 5. Key Implementation Details
-
-- **Role Interface**: A role module must return a table with a `run(schema)` function.
-- **Strategy Interface**: A strategy module must return a table with an `execute()` function (or whatever the specific role expects, usually `execute`).
-- **Dependency Injection**: Roles load their strategies dynamically based on the schema.
-
-## 6. Future Agentic Calls
-
-*   **Context**: When working on this repo, always check `turtle_schema.json` to understand the current active configuration.
-*   **Verification**: After creating a new strategy or role, you can "test" it by updating `turtle_schema.json` to point to the new code.
-
-## 7. Maintenance
-
-*   **Installer Updates**: The `install.lua` file contains a hardcoded archive of the project files. **Whenever you modify any file in the `turtleos/` directory or `boot.lua`, you MUST update the corresponding entry in `install.lua`.** This ensures that users running the installer get the latest version of the code.
-
+`cycles=N` (farm jobs only) stops after N cycles. `stop_resume.lua` presses Q after N forward moves (`hard` presses it twice, stopping in place), then resumes. `preview.lua` shows the menu at the real 39x13 turtle size.
