@@ -1,5 +1,7 @@
 # Safe branch-mining pilot
 
+For a first underground ATM10 deployment, use the [one-turtle deployment checklist](ATM10_FIRST_TURTLE.md): pinned existing installer, starter supplies, tight bounds, private bay and supervised acceptance record. Do not start a fleet before the single-turtle Minecraft gate passes.
+
 The single-turtle engine prepares one bounded mining job. An optional [bounded fleet coordinator](FLEET_MINING.md) now assigns approved jobs to compatible workers. The reproducible tests use actual Lua modules in CraftOS-PC with a simulated turtle, world, inventory, and persistent filesystem. They do not establish survival or fleet readiness. Gates C and D below remain unverified in Minecraft.
 
 ## Reproduce the local checks
@@ -9,13 +11,13 @@ Install CraftOS-PC for your platform. On macOS the default runner executable is 
 From the repository root:
 
 ```sh
-for part in 1 2 3 4; do
-  python3 cc-factory/tests/run.py --part "$part/4" || exit 1
+for part in $(seq 1 16); do
+  python3 cc-factory/tests/run.py --part "$part/16" || exit 1
 done
 python3 cc-factory/tools/verify_distribution.py
 ```
 
-The 84 single-turtle cases run in four disjoint ordinal parts, with 21 cases per part. Each native emulator invocation has a 240-second harness budget; a whole-suite timeout is a harness limit, not evidence of product safety or failure.
+The 88 single-turtle cases run in sixteen disjoint ordinal parts, with five or six cases per part. The harness yields between engine instructions, matching the factory event loop and avoiding accumulated emulator watchdog time across simulated actions. Each native emulator invocation has a 240-second harness budget; a whole-suite timeout is a harness limit, not evidence of product safety or failure.
 
 The runner creates an isolated emulator directory, mounts source read-only, prints an evidence directory, and exits nonzero for a failed assertion, crash, missing report, or emulator timeout. It never opens Minecraft or connects to a world. The evidence directory contains the test report and actual terminal screen dumps. No npm test dependency is required. `verify_distribution.py` checks source/bundle equality, manifest inclusion and native installer readback. Render the final status screens with `python3 cc-factory/tests/run.py --screens`; this produces native terminal dump JSON for every detail page.
 
@@ -73,6 +75,8 @@ To resume a clean stopped or safely failed job, repeat its exact command with `-
 An interrupted physical action, unresolved action intent, corrupted journal, or leftover `.next` staging file requires manual reconciliation. Automatic movement is refused. Compare the physical turtle, inventory and world with the saved record before deciding how to repair or retire the job; do not blindly delete the journal and relaunch at a guessed origin.
 
 ## Current local evidence
+
+The ATM10 first-turtle refresh adds four tight-bound, starter-loadout cases at a nonzero underground origin. Its [validation receipt](tests/atm10-first-turtle-results.txt) records the current run separately from the historical evidence below. Minecraft gates C and D remain unverified.
 
 The original foundation native runner passed 83 cases with exit status 0. One subsequently added factory R dispatch case also passed in a focused run, bringing the verified set to 84 unique cases. [Retained test output](tests/validation-results.txt) records the exact commands and counts. Native status/setup rendering produced 16 terminal pages across 39×13, 39×19 and 51×19. The current fleet change packages 53 modules; both native installers passed source readback, and the existing ArcadeOS suite previously passed all 53 cases. The current source refresh completed 77 unique cases with no assertion failures across four disjoint parts: two parts passed, and two were cancelled when delivery was requested, leaving seven cases unrefreshed. [Current refresh receipt](tests/fleet-baseline-results.txt) preserves those exact limits.
 
