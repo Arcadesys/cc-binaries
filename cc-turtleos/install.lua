@@ -30,6 +30,7 @@ local FILES = {
     "turtleos/lib/logger.lua",
     "turtleos/lib/nav.lua",
     "turtleos/lib/ui.lua",
+    "turtleos/strategies/builder/arcade_console.lua",
     "turtleos/strategies/farmer/crops.lua",
     "turtleos/strategies/farmer/sugarcane.lua",
     "turtleos/strategies/farmer/tree.lua",
