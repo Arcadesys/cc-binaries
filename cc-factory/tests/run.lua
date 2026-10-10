@@ -1,4 +1,9 @@
 local realFS,realTerm,nativeSleep=fs,term,sleep
+local nativeQueue,nativePull=os.queueEvent,os.pullEvent
+local function nativeYield()
+ -- Reset the emulator watchdog without introducing wall-clock timer waits.
+ nativeQueue('__safe_mining_test_yield');nativePull('__safe_mining_test_yield')
+end
 -- Load unchanged source before installing the virtual filesystem. CC shell
 -- programs normally get cc.require; this loader keeps that cache contract.
 local sources={}
@@ -48,13 +53,14 @@ local function ready(opts,cfg)
  w.set(w.target('up'),{name='minecraft:chest',capacity=100000,items={['minecraft:coal']=16,['minecraft:torch']=64,['minecraft:cobblestone']=64}})
  local ctx={config=cfg};local engine=require('lib_safe_miner')
  local ok,err=engine.initialize(ctx);assert(ok~='ERROR',ctx.lastError or err)
- local raw=engine.step;local ticks=0;engine.step=function(c) ticks=ticks+1;if ticks%20==0 then nativeSleep(0) end;return raw(c) end
+ -- Match the factory event loop's yield between bounded instructions.
+ local raw=engine.step;engine.step=function(c) nativeYield();return raw(c) end
  return w,ctx,engine
 end
 local function drive(w,ctx,engine,max)
  for tick=1,max or 1000 do
   if ctx.phase=='DONE' or ctx.phase=='NEEDS_HELP' or ctx.phase=='STOPPED' then return end
-  engine.step(ctx)
+  nativeYield();engine.step(ctx)
   if tick%20==0 then nativeSleep(0) end
  end
  error('Exceeded bounded test steps: '..tostring(ctx.phase))
@@ -133,6 +139,31 @@ for _,heading in ipairs({'north','east','south','west'}) do
   local w,c,e=ready({facing=heading});drive(w,c,e);eq(c.phase,'DONE',c.lastError);poseMatches(w,c)
   eq(w.pose.x,0);eq(w.pose.y,0);eq(w.pose.z,0);eq(w.pose.facing,heading);eq(w.drops,0,'No world-item dumping')
   local receiver=w.block({x=0,y=-1,z=0});assert((receiver.received or 0)>0,'Mined output was not transferred')
+ end)
+end
+
+for _,heading in ipairs({'north','east','south','west'}) do
+ test('ATM10 starter supplies and tight bounds '..heading,function()
+  local cfg=config(heading)
+  cfg.home={x=120,y=-48,z=-220,facing=heading}
+  local strategy=require('lib_strategy_branchmine')
+  local bounds=strategy.generate(6,3,2,3).bounds
+  eq(bounds.min.x,-3);eq(bounds.max.x,3);eq(bounds.min.y,-1);eq(bounds.max.y,1);eq(bounds.min.z,0);eq(bounds.max.z,7)
+  cfg.bounds={min={x=math.huge,y=math.huge,z=math.huge},max={x=-math.huge,y=-math.huge,z=-math.huge}}
+  for _,x in ipairs({bounds.min.x,bounds.max.x}) do
+   for _,y in ipairs({bounds.min.y,bounds.max.y}) do
+    for _,z in ipairs({bounds.min.z,bounds.max.z}) do
+     local p=strategy.localToWorld(cfg.home,{x=x,y=y,z=z})
+     for _,axis in ipairs({'x','y','z'}) do cfg.bounds.min[axis]=math.min(cfg.bounds.min[axis],p[axis]);cfg.bounds.max[axis]=math.max(cfg.bounds.max[axis],p[axis]) end
+    end
+   end
+  end
+  local w,c,e=ready({pose=cfg.home,fuel=0},cfg)
+  w.slots[1].count=16;w.slots[2].count=16
+  local output=w.block({x=120,y=-49,z=-220});output.capacity=27*64
+  drive(w,c,e);eq(c.phase,'DONE',c.lastError);poseMatches(w,c)
+  eq(w.pose.x,120);eq(w.pose.y,-48);eq(w.pose.z,-220);eq(w.pose.facing,heading)
+  assert(w.fuel>=cfg.fuelMargin);eq(w.drops,0);assert(output.received>0)
  end)
 end
 
