@@ -12,11 +12,15 @@ local function paletteSave(t)
 end
 
 function render.new(target)
-  local t = target or term.current(); local oldTerm = term.current()
-  local saved = paletteSave(t)
-  for c, hex in pairs(stadium.palette) do if t.setPaletteColor then pcall(t.setPaletteColor, c, hex) end end
-  t.setBackgroundColor(colors.black); t.setTextColor(colors.white); t.clear()
-  local w, h = t.getSize()
+  local screen = target or term.current(); local oldTerm = term.current()
+  local saved = paletteSave(screen)
+  for c, hex in pairs(stadium.palette) do if screen.setPaletteColor then pcall(screen.setPaletteColor, c, hex) end end
+  screen.setBackgroundColor(colors.black); screen.setTextColor(colors.white); screen.clear()
+  local w, h = screen.getSize()
+  -- Hidden back buffer: each frame is composed here and shown in one pass, so the display never blanks.
+  local t = window.create(screen, 1, 1, w, h, false)
+  for c, hex in pairs(stadium.palette) do pcall(t.setPaletteColor, c, hex) end
+  term.redirect(t)
   local controls = ui.layout(w, h, "PITCH")
   local sceneY = 5
   local sceneH = math.max(1, h - 4 - controls.rowH * 2)
@@ -113,13 +117,14 @@ function render.new(target)
       end
     end
     ui.draw(t, view, controls)
+    t.setVisible(true); t.setVisible(false)
   end
 
   function api:close()
     if closed then return end; closed = true
     if frame and frame.buffer and frame.buffer.blitWin then pcall(frame.buffer.blitWin.setVisible, false) end
-    for i, rgb in pairs(saved) do if t.setPaletteColor then pcall(t.setPaletteColor, 2 ^ i, rgb[1], rgb[2], rgb[3]) end end
-    t.setBackgroundColor(colors.black); t.setTextColor(colors.white); t.clear(); t.setCursorPos(1, 1)
+    for i, rgb in pairs(saved) do if screen.setPaletteColor then pcall(screen.setPaletteColor, 2 ^ i, rgb[1], rgb[2], rgb[3]) end end
+    screen.setBackgroundColor(colors.black); screen.setTextColor(colors.white); screen.clear(); screen.setCursorPos(1, 1)
     if term.redirect then term.redirect(oldTerm) end
   end
   return api

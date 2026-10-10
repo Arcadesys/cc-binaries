@@ -123,6 +123,13 @@ function render.new(target)
       [colors.gray] = 0x7a6360, [colors.red] = 0xa53443, [colors.lightGray] = 0xc6baa1}
     for c, rgb in pairs(shades) do t.setPaletteColor(c, rgb) end
   end
+  -- Hidden back buffer: each frame is composed here and shown in one pass, so the display never blanks.
+  local screen = t
+  do
+    local w, h = screen.getSize()
+    t = window.create(screen, 1, 1, w, h, false)
+    term.redirect(t)
+  end
   local renderer = {target = target, buttons = {}}
   local sceneBox = sceneBoxFor(t)
   local frame = pine.newFrame(sceneBox.x, sceneBox.y, sceneBox.w, sceneBox.h)
@@ -138,6 +145,7 @@ function render.new(target)
   local axisObject
 
   function renderer:resize()
+    t.reposition(1, 1, screen.getSize())
     sceneBox = sceneBoxFor(t)
     frame:setSize(sceneBox.x, sceneBox.y, sceneBox.w, sceneBox.h)
   end
@@ -238,16 +246,18 @@ function render.new(target)
     if h >= 3 then ui.writeAt(t, 1, 3, row3, colors.white, colors.black, w) end
     self.buttons = ui.layout(w, h, view.phase)
     ui.draw(t, view, self.buttons, sceneBox.h)
+    t.setVisible(true); t.setVisible(false)
   end
 
   function renderer:close()
     if frame and frame.buffer and frame.buffer.blitWin then pcall(frame.buffer.blitWin.setVisible, false) end
-    if t.setPaletteColor then
-      for _, p in ipairs(originalPalette) do pcall(t.setPaletteColor, p[1], p[2], p[3], p[4]) end
+    if term.current() == t then term.redirect(screen) end
+    if screen.setPaletteColor then
+      for _, p in ipairs(originalPalette) do pcall(screen.setPaletteColor, p[1], p[2], p[3], p[4]) end
     end
-    if t.setBackgroundColor then t.setBackgroundColor(colors.black) end
-    if t.setTextColor then t.setTextColor(colors.white) end
-    if t.clear then t.clear(); t.setCursorPos(1, 1) end
+    if screen.setBackgroundColor then screen.setBackgroundColor(colors.black) end
+    if screen.setTextColor then screen.setTextColor(colors.white) end
+    if screen.clear then screen.clear(); screen.setCursorPos(1, 1) end
   end
   return renderer
 end
