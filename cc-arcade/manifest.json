@@ -583,6 +583,25 @@
     }
    ]
   },
+  "softstore": {
+   "title": "Pine Software",
+   "entry": "softstore.lua",
+   "description": "Kiosk that sells games on floppy disks for Eyes of Ender",
+   "files": [
+    {
+     "path": "softstore.lua",
+     "size": 9861
+    },
+    {
+     "path": "softstore/disk/install.lua",
+     "size": 3082
+    },
+    {
+     "path": "softstore/disk/startup.lua",
+     "size": 1088
+    }
+   ]
+  },
   "house": {
    "title": "House setup",
    "entry": "house.lua",
@@ -1089,6 +1108,9 @@
   "config"
  ],
  "launcher": "pinearcade",
+ "kiosks": [
+  "softstore"
+ ],
  "order": [
   "pinearcade",
   "pineslots",
@@ -1101,6 +1123,7 @@
   "pinedungeon",
   "pineface",
   "wordle",
+  "softstore",
   "house",
   "config"
  ]

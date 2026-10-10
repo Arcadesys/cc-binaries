@@ -107,8 +107,9 @@ assert(manifest and manifest.programs,'manifest.json is not valid')
 local names=manifest.order
 if not names then names={}; for name in pairs(manifest.programs) do names[#names+1]=name end; table.sort(names) end
 local function isTool(name) for _,t in ipairs(manifest.tools) do if t==name then return true end end end
+local function isKiosk(name) for _,t in ipairs(manifest.kiosks or {}) do if t==name then return true end end end
 local games={}
-for _,n in ipairs(names) do if not isTool(n) and n~=manifest.launcher then games[#games+1]=n end end
+for _,n in ipairs(names) do if not isTool(n) and not isKiosk(n) and n~=manifest.launcher then games[#games+1]=n end end
 if o.command=='list' then
  for _,n in ipairs(names) do local p=manifest.programs[n]; say(('%-11s %s'):format(n,p.title),colors.yellow); say('            '..p.description) end
  say(('%-11s %s'):format('all','Everything above, opening on the Pine Arcade menu'),colors.yellow)
@@ -166,7 +167,7 @@ print()
 local catalog={}
 for _,n in ipairs(selection) do
  local p=manifest.programs[n]
- catalog[n]={title=p.title,entry=p.entry,description=p.description,monitor=p.monitor,kind=isTool(n) and 'tool' or n==manifest.launcher and 'launcher' or 'game'}
+ catalog[n]={title=p.title,entry=p.entry,description=p.description,monitor=p.monitor,kind=isTool(n) and 'tool' or isKiosk(n) and 'kiosk' or n==manifest.launcher and 'launcher' or 'game'}
 end
 local boot
 if o.startup then boot=o.programs[1]

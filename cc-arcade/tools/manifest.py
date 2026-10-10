@@ -13,6 +13,9 @@ PROGRAMS = {
     'pinebox': ('Pine Shut the Box', 'pinebox.lua', [], 'Pine3D grand prize round with physically thrown dice'),
     'race': ('Pine3D Derby', 'race.lua', ['derby/odds.json'], 'House-run 3D horse race: display, betting station or exhibition'),
     'wordle': ('Daily Wordle', 'wordle.lua', [], "The server's Minecraft word of the day in six guesses"),
+    # Kiosks: installed by name only, never by `get all` or shown as games.
+    'softstore': ('Pine Software', 'softstore.lua', ['softstore/disk/install.lua', 'softstore/disk/startup.lua'],
+        'Kiosk that sells games on floppy disks for Eyes of Ender'),
     # Tools installed with every program.
     'house': ('House setup', 'house.lua', [], 'House host, station, cashier and display roles (house setup ...)'),
     'config': ('Button setup', 'config.lua', [], 'Teach the LEFT / CENTER / RIGHT cabinet buttons'),
@@ -28,10 +31,11 @@ FURBALL = {
     'pineface': ('Pine Face', 'pine-face', 'face.lua', 'Faceball-style Smiley tag for four players over rednet'),
 }
 TOOLS = ['house', 'config']
+KIOSKS = ['softstore']
 LAUNCHER = 'pinearcade'
 # Games whose entry does not take --monitor NAME.
 NO_MONITOR = {'race'}
-ORDER = [LAUNCHER, 'pineslots', 'pinejack', 'pinebox', 'race', *FURBALL, 'wordle', *TOOLS]
+ORDER = [LAUNCHER, 'pineslots', 'pinejack', 'pinebox', 'race', *FURBALL, 'wordle', *KIOSKS, *TOOLS]
 REQ = re.compile(r"""require\s*\(?\s*['"]([\w.\-]+)['"]""")
 PINE = ['derby/vendor/Pine3D.lua', 'derby/vendor/betterblittle.lua', 'derby/vendor/LICENSE', 'derby/vendor/REVISION.txt']
 def deps(base, entry):
@@ -48,7 +52,7 @@ def entry(path, src=None):
     f = {'path': path, 'size': (repo / (src or f'cc-arcade/{path}')).stat().st_size}
     if src: f['src'] = src
     return f
-out = {'programs': {}, 'tools': TOOLS, 'launcher': LAUNCHER, 'order': ORDER}
+out = {'programs': {}, 'tools': TOOLS, 'launcher': LAUNCHER, 'kiosks': KIOSKS, 'order': ORDER}
 for name, (title, main, extra, desc) in PROGRAMS.items():
     files = deps(root, main) | set(extra)
     # Pine3D loads betterblittle through a computed path, and its licence travels with it.
