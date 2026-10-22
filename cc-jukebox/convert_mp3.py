@@ -127,10 +127,8 @@ def update_manifest(input_title_path, output_path):
         print("Song already in manifest.")
 
 if __name__ == "__main__":
-    if len(sys.argv) > 1:
-        target = sys.argv[1]
-    else:
-        # Default for the current request
-        target = r"songs\neon_nights.mp3"
-        
-    process_file(target)
+    if len(sys.argv) < 2:
+        print("Usage: python convert_mp3.py <song.mp3>")
+        sys.exit(1)
+
+    process_file(sys.argv[1])
