@@ -65,7 +65,7 @@ for name, (title, folder, main, desc) in FURBALL.items():
     assert 'vendor/Pine3D.lua' in found, f'{folder} no longer uses vendor/Pine3D.lua'
     for v in PINE:
         mine = base / 'vendor' / Path(v).name
-        assert mine.read_bytes() == (root / v).read_bytes(), f'{mine} differs from cc-arcade/{v}'
+        assert mine.read_bytes() == (root / v).read_bytes(), f'{mine} differs from cc-arcade/{v}; run cc-arcade/tools/sync_pine3d.py'
     files = [entry(f'{folder}/{f}', f'computercraft_scripts/{folder}/{f}') for f in sorted(found) if not f.startswith('vendor/')]
     out['programs'][name] = {'title': title, 'entry': f'{folder}/{main}', 'description': desc,
         'files': sorted(files + [entry(v) for v in PINE], key=lambda f: f['path'])}

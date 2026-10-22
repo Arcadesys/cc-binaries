@@ -135,6 +135,13 @@ manifest. Tests, tools, docs and the concept image are excluded from runtime
 packages. Pine3D is bundled at the revision in `vendor/REVISION.txt` with its MIT
 license; no runtime library download is required.
 
+`derby/vendor` is the canonical Pine3D. Each `computercraft_scripts/pine-*` game keeps
+its own identical `vendor/` copy on purpose: those folders are copy-and-run installs
+and ArcadeOS installs them under `/pkg/scripts`, away from the derby. `get.lua`
+installs the derby copy once and the games fall back to it. To update Pine3D, change
+`derby/vendor`, run `python3 cc-arcade/tools/sync_pine3d.py`, then the two commands
+above; `tools/manifest.py` fails if any copy differs.
+
 ## Configurable item currencies
 
 See [CURRENCY.md](CURRENCY.md) for explicit version-2 migration, operator-controlled
