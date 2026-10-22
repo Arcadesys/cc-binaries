@@ -1,0 +1,236 @@
+ATM10 first-turtle local validation — 2026-10-09 UTC
+Source base: 26cd98b7992a8c8c8204c84acd96bc5386d46904; focused deployment changes in this PR.
+Runtime: CraftOS-PC 2.8.3 Linux AppImage, extracted AppRun; CRAFTOS_BIN=/tmp/squashfs-root/AppRun.
+Result: 88 unique mining cases passed across 16 disjoint parts plus two focused recovery reruns; zero assertion failures in this final refresh.
+Parts 2/16 and 14/16 exceeded the existing 240-second emulator budget after five and four completed passes respectively. Their unfinished cases passed individually with the same budget. These parts are not reported as whole-part passes.
+Earlier attempts hit emulator no-yield watchdog failures in the pure API double, or were cancelled after harness changes. The final harness yields at instruction boundaries using a queued native event (including reload drive loops), preserving real Lua engine logic and the 240-second limit. Timer waits are unnecessary in a deterministic double.
+Both existing installers passed native source readback; 54 bundled modules match source and manifest. ArcadeOS: all 63 cases passed.
+Minecraft survival pilot: NOT RUN. Recipes for the installed release, actual tools/block behavior, privacy/claims, physical transfers and chunk loading: NOT VERIFIED ON SERVER. Fleet/scale acceptance: NOT RUN.
+
+$ CRAFTOS_BIN=/tmp/squashfs-root/AppRun python3 cc-factory/tests/run.py --part 1/16
+Evidence directory: /tmp/safe-mining-results-5si5si2m
+PASS bilateral route geometry north
+PASS unknown cave opening fails front
+PASS mineAndFill protects down minecraft:chest
+PASS complete tiny mine physical cycle south
+PASS interrupted journal replacement refuses automatic recovery
+PASS factory detail key and stale timer after Enter do not advance
+PASS all 6 passed, 0 failed
+
+$ CRAFTOS_BIN=/tmp/squashfs-root/AppRun python3 cc-factory/tests/run.py --part 2/16
+FAIL emulator exceeded 240 seconds. Evidence directory: /tmp/safe-mining-results-78zsjmnt
+PASS bilateral route geometry east
+PASS failed seal is surfaced front
+PASS prepareMove protects down computercraft:turtle_normal
+PASS complete tiny mine physical cycle west
+PASS corrupt checkpoint refuses recovery
+
+$ CRAFTOS_BIN=/tmp/squashfs-root/AppRun python3 cc-factory/tests/run.py --part 3/16
+Evidence directory: /tmp/safe-mining-results-lx8dcp6c
+PASS bilateral route geometry south
+PASS prepareMove protects up minecraft:chest
+PASS mineAndFill protects down computercraft:turtle_normal
+PASS ATM10 starter supplies and tight bounds north
+PASS checkpoint open failure prevents unjournaled action
+PASS completion at home does not traverse the job a second time
+PASS all 6 passed, 0 failed
+
+$ CRAFTOS_BIN=/tmp/squashfs-root/AppRun python3 cc-factory/tests/run.py --part 4/16
+Evidence directory: /tmp/safe-mining-results-41rd1w4b
+PASS bilateral route geometry west
+PASS mineAndFill protects up minecraft:chest
+PASS prepareMove protects down mod:mystery_ore
+PASS ATM10 starter supplies and tight bounds east
+PASS checkpoint write failure prevents unjournaled action
+PASS every physical dig preserves capacity with distinct neighbour drops
+PASS all 6 passed, 0 failed
+
+$ CRAFTOS_BIN=/tmp/squashfs-root/AppRun python3 cc-factory/tests/run.py --part 5/16
+Evidence directory: /tmp/safe-mining-results-5j73myop
+PASS explicit policy rejects containers turtles unknown and fluids
+PASS prepareMove protects up computercraft:turtle_normal
+PASS mineAndFill protects down mod:mystery_ore
+PASS ATM10 starter supplies and tight bounds south
+PASS checkpoint move failure prevents unjournaled action
+PASS setup valid tiny defaults generate complete explicit CLI arguments
+PASS all 6 passed, 0 failed
+
+$ CRAFTOS_BIN=/tmp/squashfs-root/AppRun python3 cc-factory/tests/run.py --part 6/16
+Evidence directory: /tmp/safe-mining-results-_9x74_9d
+PASS prepareMove protects front minecraft:chest
+PASS mineAndFill protects up computercraft:turtle_normal
+PASS prepareMove protects down minecraft:lava
+PASS ATM10 starter supplies and tight bounds west
+PASS checkpoint readback failure prevents unjournaled action
+PASS setup malformed home reprompts rather than inferring pose
+PASS all 6 passed, 0 failed
+
+$ CRAFTOS_BIN=/tmp/squashfs-root/AppRun python3 cc-factory/tests/run.py --part 7/16
+Evidence directory: /tmp/safe-mining-results-zja8bg_y
+PASS mineAndFill protects front minecraft:chest
+PASS prepareMove protects up mod:mystery_ore
+PASS mineAndFill protects down minecraft:lava
+PASS unlimited fuel runs complete operating cycle
+PASS real termination after successful physical move fails closed on fresh load
+PASS setup Q cancels without turtle actions
+PASS all 6 passed, 0 failed
+
+$ CRAFTOS_BIN=/tmp/squashfs-root/AppRun python3 cc-factory/tests/run.py --part 8/16
+Evidence directory: /tmp/safe-mining-results-xilidnin
+PASS prepareMove protects front computercraft:turtle_normal
+PASS mineAndFill protects up mod:mystery_ore
+PASS prepareMove protects down minecraft:water
+PASS low fuel without consumables stops before reserve loss
+PASS partial receiver transfer is counted without world drops
+PASS factory R retraces and unloads partial job without new excavation
+PASS all 6 passed, 0 failed
+
+$ CRAFTOS_BIN=/tmp/squashfs-root/AppRun python3 cc-factory/tests/run.py --part 9/16
+Evidence directory: /tmp/safe-mining-results-2xf_rvpk
+PASS mineAndFill protects front computercraft:turtle_normal
+PASS prepareMove protects up minecraft:lava
+PASS mineAndFill protects down minecraft:water
+PASS missing output receiver fails without drops
+PASS rendered labelled keyboard UI 39x13
+PASS all 5 passed, 0 failed
+
+$ CRAFTOS_BIN=/tmp/squashfs-root/AppRun python3 cc-factory/tests/run.py --part 10/16
+Evidence directory: /tmp/safe-mining-results-hv5gyy1d
+PASS prepareMove protects front mod:mystery_ore
+PASS mineAndFill protects up minecraft:lava
+PASS safe movement cannot bypass block policy down
+PASS full output receiver fails without drops
+PASS rendered labelled keyboard UI 39x19
+PASS all 5 passed, 0 failed
+
+$ CRAFTOS_BIN=/tmp/squashfs-root/AppRun python3 cc-factory/tests/run.py --part 11/16
+Evidence directory: /tmp/safe-mining-results-ctadczzc
+PASS mineAndFill protects front mod:mystery_ore
+PASS prepareMove protects up minecraft:water
+PASS unknown cave opening fails down
+PASS failed turn preserves instruction and heading
+PASS rendered labelled keyboard UI 51x19
+PASS all 5 passed, 0 failed
+
+$ CRAFTOS_BIN=/tmp/squashfs-root/AppRun python3 cc-factory/tests/run.py --part 12/16
+Evidence directory: /tmp/safe-mining-results-f0kp_446
+PASS prepareMove protects front minecraft:lava
+PASS mineAndFill protects up minecraft:water
+PASS failed seal is surfaced down
+PASS failed torch placement stops instead of advancing
+PASS surplus cobblestone unload creates mining capacity and resumes
+PASS all 5 passed, 0 failed
+
+$ CRAFTOS_BIN=/tmp/squashfs-root/AppRun python3 cc-factory/tests/run.py --part 13/16
+Evidence directory: /tmp/safe-mining-results-8px_5p0v
+PASS mineAndFill protects front minecraft:lava
+PASS safe movement cannot bypass block policy up
+PASS falling material has bounded dig attempts
+PASS blocked home route stops without destructive shortcuts
+PASS move orientation substep never skips target cell
+PASS all 5 passed, 0 failed
+
+$ CRAFTOS_BIN=/tmp/squashfs-root/AppRun python3 cc-factory/tests/run.py --part 14/16
+FAIL emulator exceeded 240 seconds. Evidence directory: /tmp/safe-mining-results-yh8e7_79
+PASS prepareMove protects front minecraft:water
+PASS unknown cave opening fails up
+PASS neighbor scan stops on horizontal protected block without digging
+PASS inventory service restores exact work pose before next instruction
+
+$ CRAFTOS_BIN=/tmp/squashfs-root/AppRun python3 cc-factory/tests/run.py --part 15/16
+Evidence directory: /tmp/safe-mining-results-qlnjaia7
+PASS mineAndFill protects front minecraft:water
+PASS failed seal is surfaced up
+PASS complete tiny mine physical cycle north
+PASS checkpoint readback and clean reload preserve pointer and pose
+PASS factory READY Q stops with zero native turtle actions
+PASS all 5 passed, 0 failed
+
+$ CRAFTOS_BIN=/tmp/squashfs-root/AppRun python3 cc-factory/tests/run.py --part 16/16
+Evidence directory: /tmp/safe-mining-results-_fjzh51v
+PASS safe movement cannot bypass block policy front
+PASS prepareMove protects down minecraft:chest
+PASS complete tiny mine physical cycle east
+PASS interrupted action refuses recovery without turtle actions
+PASS factory keys and stale timers never mine before Enter
+PASS all 5 passed, 0 failed
+
+$ CRAFTOS_BIN=/tmp/squashfs-root/AppRun python3 cc-factory/tests/run.py --filter 'manual return stops partial job and clean resume completes it'
+Evidence directory: /tmp/safe-mining-results-d7ulfoim
+PASS manual return stops partial job and clean resume completes it
+PASS all 1 passed, 0 failed
+
+$ CRAFTOS_BIN=/tmp/squashfs-root/AppRun python3 cc-factory/tests/run.py --filter 'clean restart after placed torches finishes complete cycle'
+Evidence directory: /tmp/safe-mining-results-mecov9pq
+PASS clean restart after placed torches finishes complete cycle
+PASS all 1 passed, 0 failed
+
+$ CRAFTOS_BIN=/tmp/squashfs-root/AppRun python3 cc-factory/tools/verify_distribution.py
+PASS 54 bundled modules match source and turtle manifest
+PASS both installers and source readback
+
+$ CRAFTOS_BIN=/tmp/squashfs-root/AppRun python3 arcadeos/tools/dev.py test
+ok   test_wm :: layout fills the tile area without overlap for 1-4 windows
+ok   test_wm :: two columns are 25 wide on a 51-wide screen
+ok   test_wm :: small screens get one full tile
+ok   test_wm :: frame splits title, menu, client
+ok   test_apps :: registry finds the built-in apps
+ok   test_apps :: turtle-only apps are hidden on computers
+ok   test_apps :: missing hardware is explained
+ok   test_apps :: manifest entries are absolute
+ok   test_kernel :: keys go only to the focused window
+ok   test_kernel :: non-input events are broadcast
+ok   test_kernel :: mouse clicks are translated to window coordinates
+ok   test_kernel :: first click on an unfocused window only focuses it
+ok   test_kernel :: a fifth window iconizes the least recently focused
+ok   test_kernel :: ctrl+tab cycles focus and is not delivered
+ok   test_kernel :: os.reboot inside an app closes only that app
+ok   test_kernel :: terminate goes to the focused app
+ok   test_kernel :: setMenus adds a menu bar and shrinks the client
+ok   test_kernel :: menu choices arrive as arcadeos_menu events
+ok   test_kernel :: keyboard menu navigation
+ok   test_kernel :: system menu iconizes and the icon restores
+ok   test_kernel :: zoom button takes the whole screen with chrome
+ok   test_kernel :: zooming delivers term_resize to the app
+ok   test_kernel :: fullscreen app gets the whole screen and palette is restored on switch
+ok   test_kernel :: close on a non-native app that ignores terminate kills it
+ok   test_kernel :: multishell compat launches windows and sets titles
+ok   test_kernel :: kernel-modal box blocks input until dismissed
+ok   test_kernel :: screen saver covers the screen and a key press ends it without reaching the app
+ok   test_kernel :: screen saver restores a fullscreen app that was focused
+ok   test_kernel :: small screens show one window at a time
+ok   test_ui :: gallery keyboard reaches every app across pages
+ok   test_ui :: gallery resize and refresh preserve selected identity
+ok   test_ui :: gallery mouse targets select before activating
+ok   test_ui :: executive opens selected icon through kernel
+ok   test_ui :: executive offers only the Pine3D games
+ok   test_ui :: empty gallery does not invent a launch target
+ok   test_smoke :: launches calculator
+ok   test_smoke :: launches clock
+ok   test_smoke :: launches control
+ok   test_smoke :: launches notepad
+ok   test_smoke :: launches paint
+ok   test_smoke :: launches blackjack
+ok   test_smoke :: launches cantstop
+ok   test_smoke :: launches euchre
+ok   test_smoke :: launches race
+ok   test_smoke :: launches idlecraft
+ok   test_smoke :: launches minesweeper
+ok   test_smoke :: launches pineball
+ok   test_smoke :: launches pinedungeon
+ok   test_smoke :: launches pineface
+ok   test_smoke :: launches pinejack
+ok   test_smoke :: launches pinelanes
+ok   test_smoke :: launches pinelinks
+ok   test_smoke :: launches pinebox
+ok   test_smoke :: launches pineslots
+ok   test_smoke :: launches reversi
+ok   test_smoke :: launches rpsrogue
+ok   test_smoke :: launches slots
+ok   test_smoke :: launches solitaire
+ok   test_smoke :: launches jukebox
+ok   test_smoke :: launches midiplayer
+ok   test_smoke :: launches designer
+ok   test_smoke :: launches executive
+ok   test_smoke :: launches terminal
+PASS all 63

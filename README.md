@@ -117,6 +117,8 @@ turtlesim/turtle harness                        # all cc-factory harnesses, head
 
 For turtle branch mining, start with the [safe mining pilot guide](./cc-factory/SAFE_MINING.md). It covers bounded jobs, checked return/unload, restart recovery, installation, and the supervised in-world checks required before scaling.
 
+Playing ATM10 from an underground starter base? Follow the [first private mining turtle checklist](./cc-factory/ATM10_FIRST_TURTLE.md), using the cc-factory installer and its down-output/up-supply bay. This is a different implementation from the cc-turtleos miner above; keep the first run supervised.
+
 The [mining fleet guide](./cc-factory/FLEET_MINING.md) adds automatic assignment of pre-approved jobs, durable area reservations, and shared-world turtle-tester scenarios. A lost turtle's area remains quarantined until manually reconciled.
 
 ## Pine3D Derby and diamond house

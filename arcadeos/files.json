@@ -1050,7 +1050,7 @@
    "description": "Factory and TurtleOS turtle automation (turtles only)",
    "required": false,
    "turtle": true,
-   "size": 494467,
+   "size": 564551,
    "files": [
     {
      "src": "cc-factory/factory.lua",
@@ -1066,6 +1066,11 @@
      "src": "cc-factory/fleet_worker.lua",
      "dest": "/pkg/factory/fleet_worker.lua",
      "size": 3294
+    },
+    {
+     "src": "cc-factory/lib_bg2.lua",
+     "dest": "/pkg/factory/lib_bg2.lua",
+     "size": 8440
     },
     {
      "src": "cc-factory/lib_designer.lua",
@@ -1190,7 +1195,7 @@
     {
      "src": "cc-factory/lib_parser.lua",
      "dest": "/pkg/factory/lib_parser.lua",
-     "size": 17007
+     "size": 17381
     },
     {
      "src": "cc-factory/lib_placement.lua",
@@ -1263,6 +1268,11 @@
      "size": 14321
     },
     {
+     "src": "cc-factory/schema_colosseum.txt",
+     "dest": "/pkg/factory/schema_colosseum.txt",
+     "size": 22769
+    },
+    {
      "src": "cc-factory/schema_modular_factory.txt",
      "dest": "/pkg/factory/schema_modular_factory.txt",
      "size": 2445
@@ -1330,7 +1340,7 @@
     {
      "src": "cc-turtleos/turtleos/menu.lua",
      "dest": "/pkg/turtleos/menu.lua",
-     "size": 6233
+     "size": 9130
     },
     {
      "src": "cc-turtleos/turtleos/apis/movement.lua",
@@ -1340,7 +1350,22 @@
     {
      "src": "cc-turtleos/turtleos/lib/core.lua",
      "dest": "/pkg/turtleos/lib/core.lua",
-     "size": 588
+     "size": 1832
+    },
+    {
+     "src": "cc-turtleos/turtleos/lib/field.lua",
+     "dest": "/pkg/turtleos/lib/field.lua",
+     "size": 4193
+    },
+    {
+     "src": "cc-turtleos/turtleos/lib/inv.lua",
+     "dest": "/pkg/turtleos/lib/inv.lua",
+     "size": 4803
+    },
+    {
+     "src": "cc-turtleos/turtleos/lib/jobs.lua",
+     "dest": "/pkg/turtleos/lib/jobs.lua",
+     "size": 7879
     },
     {
      "src": "cc-turtleos/turtleos/lib/logger.lua",
@@ -1348,34 +1373,34 @@
      "size": 392
     },
     {
-     "src": "cc-turtleos/turtleos/lib/schema.lua",
-     "dest": "/pkg/turtleos/lib/schema.lua",
-     "size": 425
+     "src": "cc-turtleos/turtleos/lib/nav.lua",
+     "dest": "/pkg/turtleos/lib/nav.lua",
+     "size": 5392
     },
     {
-     "src": "cc-turtleos/turtleos/roles/builder.lua",
-     "dest": "/pkg/turtleos/roles/builder.lua",
-     "size": 258
+     "src": "cc-turtleos/turtleos/lib/ui.lua",
+     "dest": "/pkg/turtleos/lib/ui.lua",
+     "size": 5315
     },
     {
-     "src": "cc-turtleos/turtleos/roles/farmer.lua",
-     "dest": "/pkg/turtleos/roles/farmer.lua",
-     "size": 950
+     "src": "cc-turtleos/turtleos/strategies/farmer/crops.lua",
+     "dest": "/pkg/turtleos/strategies/farmer/crops.lua",
+     "size": 3266
     },
     {
-     "src": "cc-turtleos/turtleos/roles/miner.lua",
-     "dest": "/pkg/turtleos/roles/miner.lua",
-     "size": 204
-    },
-    {
-     "src": "cc-turtleos/turtleos/strategies/farmer/potato.lua",
-     "dest": "/pkg/turtleos/strategies/farmer/potato.lua",
-     "size": 8161
+     "src": "cc-turtleos/turtleos/strategies/farmer/sugarcane.lua",
+     "dest": "/pkg/turtleos/strategies/farmer/sugarcane.lua",
+     "size": 2331
     },
     {
      "src": "cc-turtleos/turtleos/strategies/farmer/tree.lua",
      "dest": "/pkg/turtleos/strategies/farmer/tree.lua",
-     "size": 10221
+     "size": 10487
+    },
+    {
+     "src": "cc-turtleos/turtleos/strategies/miner/branch.lua",
+     "dest": "/pkg/turtleos/strategies/miner/branch.lua",
+     "size": 10913
     }
    ]
   }
