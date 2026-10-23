@@ -53,6 +53,13 @@ end
 local function seatFor(self,id)
   for i,s in ipairs(self.seats) do if s.id==id then return i,s end end
 end
+local function seatPlayer(self,sender,seat,s,name,message)
+  s.kind="R";s.id=sender;s.name=name;s.mask=0;s.last=self.now();s.bot=nil;s.prev=nil
+  self.message=message or (name.." joined as P"..seat..".")
+  self:send(sender,{t="seat",seat=seat})
+  self:announce(self:lobbyMsg())
+  if self.phase~="lobby" then self:send(sender,{t="start"}) end
+end
 function Host:handle(sender,msg,protocol)
   if protocol~=net.PROTOCOL or type(msg)~="table" then return false end
   local now=self.now()
@@ -66,15 +73,18 @@ function Host:handle(sender,msg,protocol)
       end
     end
     if not seat then self:send(sender,{t="full"});return true end
-    s.kind="R";s.id=sender;s.name=tostring(msg.name or ("PC"..sender)):sub(1,8);s.mask=0;s.last=now
-    s.bot=nil
-    self.message=s.name.." joined as P"..seat.."."
-    self:send(sender,{t="seat",seat=seat})
-    self:announce(self:lobbyMsg())
-    if self.phase~="lobby" then self:send(sender,{t="start"}) end
+    seatPlayer(self,sender,seat,s,tostring(msg.name or ("PC"..sender)):sub(1,8))
     return true
   end
   local seat,s=seatFor(self,sender)
+  -- A computer dropped after a brief radio gap is still sending input: give its seat back
+  -- at once instead of leaving it to time out on its side and press R.
+  if seat and s.kind=="B" and s.prev and msg.t=="in" then
+    local name=s.prev or ("PC"..sender)
+    seatPlayer(self,sender,seat,s,name,name.." is back as P"..seat..".")
+    s.mask=tonumber(msg.mask) or 0
+    return true
+  end
   if not seat or s.kind~="R" then return false end
   s.last=now
   if msg.t=="in" then s.mask=tonumber(msg.mask) or 0
@@ -83,7 +93,8 @@ function Host:handle(sender,msg,protocol)
 end
 function Host:drop(seat,message)
   local s=self.seats[seat]
-  s.kind="B";s.mask=0;s.name="BOT";s.bot=nil -- keep s.id so that computer can rejoin
+  s.prev=s.name -- keep s.id (and the name) so that computer can rejoin
+  s.kind="B";s.mask=0;s.name="BOT";s.bot=nil
   self.message=message
   self:announce(self:lobbyMsg())
 end
@@ -150,7 +161,7 @@ local Client={};Client.__index=Client
 function net.client(opts)
   opts=opts or {}
   local self=setmetatable({rn=opts.rn,now=opts.now or function() return os.epoch("utc") end,
-    name=opts.name or "PLAYER",hostId=opts.hostId,phase="joining",role="client",mask=0,
+    name=opts.name or "PLAYER",hostId=opts.hostId,fixedHost=opts.hostId~=nil,phase="joining",role="client",mask=0,
     lastSent=0,lastHeard=0,message="Looking for a Pine Face host..."},Client)
   self.online=self.rn and openModems(self.rn,opts.find or defaultFind)
   if not self.online then self.phase="lost";self.message="No modem attached." end
@@ -158,9 +169,15 @@ function net.client(opts)
 end
 function Client:join()
   if not self.online then return false end
-  if not self.hostId then
-    local ok,id=pcall(self.rn.lookup,net.PROTOCOL)
-    self.hostId=ok and id or nil
+  -- Without a fixed host ID, look the host up on every (re)join: it may have restarted on
+  -- another computer. Prefer the host we were playing with if it still answers.
+  if not self.fixedHost then
+    local found={pcall(self.rn.lookup,net.PROTOCOL)}
+    local previous=self.hostId;self.hostId=nil
+    if found[1] then
+      for i=2,#found do if found[i]==previous then self.hostId=previous end end
+      self.hostId=self.hostId or found[2]
+    end
   end
   if not self.hostId then self.phase="lost";self.message="No Pine Face host found. R retries.";return false end
   self.phase="joining";self.message="Joining host #"..self.hostId.."..."
@@ -171,8 +188,9 @@ end
 function Client:handle(sender,msg,protocol)
   if protocol~=net.PROTOCOL or sender~=self.hostId or type(msg)~="table" then return false end
   self.lastHeard=self.now()
-  if msg.t=="seat" then self.mySeat=msg.seat;if self.phase=="joining" then self.phase="lobby" end
-    self.message="You are P"..msg.seat..". Waiting for the host to start."
+  if msg.t=="seat" then self.mySeat=msg.seat
+    if self.phase=="joining" then self.phase="lobby" end
+    if self.phase=="lobby" then self.message="You are P"..msg.seat..". Waiting for the host to start." end
   elseif msg.t=="lobby" then self.names=msg.n;self.kinds=msg.k
   elseif msg.t=="full" then self.phase="lost";self.message="That game is full."
   elseif msg.t=="start" then self.phase="play";self.message=""

@@ -107,6 +107,19 @@ local scores={};for i,pl in ipairs(m.players) do scores[i]=pl.score end
 check(m.phase=="over" and m.winner,"bot match finishes: tick "..m.tick.." scores "..table.concat(scores,","))
 local m2=botMatch(42)
 check(m2.tick==m.tick and m2.winner==m.winner,"bot matches are deterministic")
+-- A bot lined up on a rival holds fire while the rival's spawn shield is up.
+do
+  local r2=room(box);for i=3,4 do r2.players[i].alive=false;r2.players[i].respawn=9999;r2.players[i].x=-50 end
+  local me,them=r2.players[1],r2.players[2]
+  me.x,me.z,me.yaw=2,3,0;them.x,them.z=5,3
+  local function fires(shield)
+    them.shield=shield;local bb=bot.new(5);local fired=false
+    for _=1,6 do if world.bit(bb:input(r2,1),W.FIRE) then fired=true end end
+    return fired
+  end
+  check(not fires(W.SHIELD),"bot holds fire at a shielded rival")
+  check(fires(0),"bot fires once the shield drops")
+end
 -- Networking through a fake rednet hub: host plus two clients, then a dropout.
 local net=require("lib.net")
 local clock=0
@@ -157,6 +170,28 @@ local c4=net.client({rn=endpoint(14),now=now,find=find,name="DAN",hostId=10});no
 local c5=net.client({rn=endpoint(15),now=now,find=find,name="EVE",hostId=10});nodes[15]=c5
 c3:join();c4:join();c5:join();pump()
 check(c3.mySeat and c4.mySeat and c5.phase=="lost","a fifth player is turned away")
+-- A brief radio gap: the host drops a client, which is still sending input. It gets its
+-- seat (and name) back as soon as the host hears it, without pressing R.
+local h2=net.host({rn=endpoint(40),now=now,find=find,seed=2});nodes[40]=h2
+local c6=net.client({rn=endpoint(41),now=now,find=find,name="FRAN",hostId=40});nodes[41]=c6
+c6:join();pump();h2:start();pump()
+for _=1,32 do clock=clock+100;h2:tick(0);pump() end
+check(h2.seats[2].kind=="B" and c6.phase=="play","hiccup hands the seat to a bot")
+clock=clock+100;check(not c6:tick(W.FWD),"client has not timed out yet");pump()
+check(h2.seats[2].kind=="R" and h2.seats[2].name=="FRAN" and c6.mySeat==2 and c6.phase=="play",
+  "dropped client is reseated when heard again")
+check(h2.seats[2].mask==W.FWD,"reseated client's input applies at once")
+h2:tick(0);pump();check(c6.state.tick==h2.state.tick,"snapshots resume after reseating")
+check(not h2:handle(99,{t="in",mask=1},net.PROTOCOL) and h2.seats[3].kind=="B",
+  "a stranger's input does not take a seat")
+-- RETRY looks the host up again, so a host restarted on another computer is found.
+local c7=net.client({rn=endpoint(42),now=now,find=find,name="GUS"});nodes[42]=c7
+check(c7:join() and c7.hostId==40,"lookup finds the current host");pump()
+h2:close();pump()
+check(c7.phase=="lost","client hears the host close")
+local h3=net.host({rn=endpoint(50),now=now,find=find,seed=3});nodes[50]=h3
+check(c7:join() and c7.hostId==50,"retry finds the host's new computer");pump()
+check(c7.mySeat==2 and c7.phase=="lobby","retry seats the client at the new host")
 local solo=net.host({rn=endpoint(20),now=now,find=function() end})
 check(not solo.online and solo.seats[2].kind=="B","no modem means solo against bots")
 solo:start();for _=1,20 do solo:tick(W.FWD) end
@@ -246,6 +281,31 @@ do
     local r,g,b=t.getPaletteColor(2^i)
     check(math.abs(r-palette[i][1])<1e-6 and math.abs(b-palette[i][3])<1e-6,"palette restored")
   end
+end
+-- RETRY runs rednet.lookup, which swallows every event (the loop timer included) for a
+-- while. The screen must keep drawing afterwards.
+do
+  local App=require("lib.app")
+  local old=term.current();local t=window.create(old,1,1,51,19,false)
+  local lookups=0
+  local rn={isOpen=function() return true end,open=function() end,send=function() end,
+    lookup=function()
+      lookups=lookups+1
+      local id=os.startTimer(.3)
+      repeat local e,p=os.pullEvent() until e=="timer" and p==id
+    end}
+  local retried,after=false,0
+  local opts={terminal=true,join=false,rednet=rn,find=function(_,fn) fn("top",{}) end,
+    record=function(kind) if kind=="frame" and retried then after=after+1 end end}
+  term.redirect(t)
+  local final
+  parallel.waitForAll(function() final=App.run(opts) end,function()
+    sleep(.8);retried=true;os.queueEvent("key",keys.r,false)
+    sleep(.8);os.queueEvent("key",keys.q,false)
+  end)
+  term.redirect(old)
+  check(final.session.phase=="lost" and lookups==2,"retry looked the host up again: "..lookups)
+  check(after>=1,"screen redraws after a RETRY lookup: "..after.." frames")
 end
 print("bot match: "..m.tick.." ticks, "..shots.." shots, winner P"..m.winner.." scores "..table.concat(scores,","))
 check(require("tests.sound")==true,"sound cues")
