@@ -15,7 +15,7 @@ Copy this complete `pine-links` folder onto an Advanced Computer. Keep `lib` and
 /pine-links/diagnostic.lua --terminal
 ```
 
-The default uses the first attached Advanced Monitor, or the computer screen. Use at least 39 columns × 19 rows; 51×19 works, and a larger monitor gives the 3D scene more room. Smaller displays show a resize prompt.
+The default uses the first attached Advanced Monitor, or the computer screen. Use at least 39 columns × 19 rows; 51×19 works, and a larger monitor gives the 3D scene more room. Smaller displays show a resize prompt, and only QUIT works until the display is large enough.
 
 ## Play
 
@@ -37,15 +37,15 @@ Rough and sand weaken a shot: rough to 72% power, sand to 50% (83% with the wedg
 | Club | Q / E, or C | CLUB − / + |
 | Aim at cup | A | AIM CUP |
 | Fine adjustments | F | FINE |
-| Swing / start | Space or Enter | SWING / START |
+| Swing / start (also resumes from help or menu) | Space or Enter | SWING / START / RESUME |
 | Tee / 3D overview / overhead map | Tab | VIEW |
 | Skip shot animation | S | SKIP |
-| Help / resume | H | HELP / RESUME |
-| Pause / resume | P | MENU / RESUME |
-| Restart hole | R | MENU, then RESTART |
+| Help / resume (from the menu, opens help) | H | HELP / RESUME |
+| Pause / resume (from help, opens the menu) | P | MENU / RESUME |
+| Restart hole | R in help, menu or scorecard | MENU, then RESTART |
 | Quit | Backspace | MENU, then QUIT |
 
-The scorecard uses furball's labels (Hole in one!, Birdie!, Par!, +N over par).
+The scorecard uses furball's labels (Hole in one!, Birdie!, Par!, +N over par). R only restarts from help, the menu or the scorecard, so a stray press beside the E club key cannot wipe a hole in progress. Resuming from help or the menu restores the message that was showing.
 
 ## Architecture and tests
 
