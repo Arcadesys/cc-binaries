@@ -278,7 +278,7 @@
    "description": "Arcade games: Blackjack, Slots, Pine Slots, Pine Jack, Pine Shut the Box, Can't Stop, Race, RPS Rogue, IdleCraft",
    "required": false,
    "turtle": false,
-   "size": 393644,
+   "size": 559903,
    "files": [
     {
      "src": "cc-arcade/audio.lua",
@@ -298,7 +298,7 @@
     {
      "src": "cc-arcade/credits.lua",
      "dest": "/pkg/arcade/credits.lua",
-     "size": 5501
+     "size": 8592
     },
     {
      "src": "cc-arcade/house.lua",
@@ -351,9 +351,24 @@
      "size": 24362
     },
     {
+     "src": "cc-arcade/softstore.lua",
+     "dest": "/pkg/arcade/softstore.lua",
+     "size": 9861
+    },
+    {
+     "src": "cc-arcade/tables.lua",
+     "dest": "/pkg/arcade/tables.lua",
+     "size": 117
+    },
+    {
      "src": "cc-arcade/track.lua",
      "dest": "/pkg/arcade/track.lua",
      "size": 18826
+    },
+    {
+     "src": "cc-arcade/wordle.lua",
+     "dest": "/pkg/arcade/wordle.lua",
+     "size": 643
     },
     {
      "src": "cc-arcade/casino/app.lua",
@@ -383,17 +398,22 @@
     {
      "src": "cc-arcade/casino/wallet.lua",
      "dest": "/pkg/arcade/casino/wallet.lua",
-     "size": 3980
+     "size": 5310
     },
     {
      "src": "cc-arcade/derby/app.lua",
      "dest": "/pkg/arcade/derby/app.lua",
-     "size": 3420
+     "size": 3496
+    },
+    {
+     "src": "cc-arcade/derby/cage.lua",
+     "dest": "/pkg/arcade/derby/cage.lua",
+     "size": 8163
     },
     {
      "src": "cc-arcade/derby/cashier.lua",
      "dest": "/pkg/arcade/derby/cashier.lua",
-     "size": 3577
+     "size": 6086
     },
     {
      "src": "cc-arcade/derby/client.lua",
@@ -403,22 +423,27 @@
     {
      "src": "cc-arcade/derby/config.lua",
      "dest": "/pkg/arcade/derby/config.lua",
-     "size": 1820
+     "size": 1869
+    },
+    {
+     "src": "cc-arcade/derby/currency.lua",
+     "dest": "/pkg/arcade/derby/currency.lua",
+     "size": 8924
     },
     {
      "src": "cc-arcade/derby/house.lua",
      "dest": "/pkg/arcade/derby/house.lua",
-     "size": 3649
+     "size": 3917
     },
     {
      "src": "cc-arcade/derby/inventory.lua",
      "dest": "/pkg/arcade/derby/inventory.lua",
-     "size": 787
+     "size": 4407
     },
     {
      "src": "cc-arcade/derby/ledger.lua",
      "dest": "/pkg/arcade/derby/ledger.lua",
-     "size": 5487
+     "size": 9416
     },
     {
      "src": "cc-arcade/derby/odds.json",
@@ -448,12 +473,17 @@
     {
      "src": "cc-arcade/derby/server.lua",
      "dest": "/pkg/arcade/derby/server.lua",
-     "size": 2570
+     "size": 2680
     },
     {
      "src": "cc-arcade/derby/service.lua",
      "dest": "/pkg/arcade/derby/service.lua",
-     "size": 4529
+     "size": 9071
+    },
+    {
+     "src": "cc-arcade/derby/sfx.lua",
+     "dest": "/pkg/arcade/derby/sfx.lua",
+     "size": 2358
     },
     {
      "src": "cc-arcade/derby/sim.lua",
@@ -463,12 +493,12 @@
     {
      "src": "cc-arcade/derby/station.lua",
      "dest": "/pkg/arcade/derby/station.lua",
-     "size": 3852
+     "size": 4131
     },
     {
      "src": "cc-arcade/derby/store.lua",
      "dest": "/pkg/arcade/derby/store.lua",
-     "size": 1705
+     "size": 4531
     },
     {
      "src": "cc-arcade/derby/ui.lua",
@@ -498,22 +528,17 @@
     {
      "src": "cc-arcade/pinearcade/app.lua",
      "dest": "/pkg/arcade/pinearcade/app.lua",
-     "size": 7492
+     "size": 8536
     },
     {
      "src": "cc-arcade/pinearcade/emblems.lua",
      "dest": "/pkg/arcade/pinearcade/emblems.lua",
-     "size": 9758
+     "size": 10201
     },
     {
      "src": "cc-arcade/pinearcade/render.lua",
      "dest": "/pkg/arcade/pinearcade/render.lua",
      "size": 4617
-    },
-    {
-     "src": "cc-arcade/pinearcade/tests/run.lua",
-     "dest": "/pkg/arcade/pinearcade/tests/run.lua",
-     "size": 6702
     },
     {
      "src": "cc-arcade/pinebox/app.lua",
@@ -533,7 +558,7 @@
     {
      "src": "cc-arcade/pinebox/game.lua",
      "dest": "/pkg/arcade/pinebox/game.lua",
-     "size": 15361
+     "size": 16984
     },
     {
      "src": "cc-arcade/pinebox/render.lua",
@@ -558,7 +583,7 @@
     {
      "src": "cc-arcade/pinejack/game.lua",
      "dest": "/pkg/arcade/pinejack/game.lua",
-     "size": 13059
+     "size": 14575
     },
     {
      "src": "cc-arcade/pinejack/render.lua",
@@ -614,6 +639,76 @@
      "src": "cc-arcade/screensavers/roulette.lua",
      "dest": "/pkg/arcade/screensavers/roulette.lua",
      "size": 5288
+    },
+    {
+     "src": "cc-arcade/softstore/disk/install.lua",
+     "dest": "/pkg/arcade/softstore/disk/install.lua",
+     "size": 3082
+    },
+    {
+     "src": "cc-arcade/softstore/disk/startup.lua",
+     "dest": "/pkg/arcade/softstore/disk/startup.lua",
+     "size": 1088
+    },
+    {
+     "src": "cc-arcade/tables/app.lua",
+     "dest": "/pkg/arcade/tables/app.lua",
+     "size": 792
+    },
+    {
+     "src": "cc-arcade/tables/bank.lua",
+     "dest": "/pkg/arcade/tables/bank.lua",
+     "size": 736
+    },
+    {
+     "src": "cc-arcade/tables/host.lua",
+     "dest": "/pkg/arcade/tables/host.lua",
+     "size": 8787
+    },
+    {
+     "src": "cc-arcade/tables/net.lua",
+     "dest": "/pkg/arcade/tables/net.lua",
+     "size": 2469
+    },
+    {
+     "src": "cc-arcade/tables/seat.lua",
+     "dest": "/pkg/arcade/tables/seat.lua",
+     "size": 2497
+    },
+    {
+     "src": "cc-arcade/tables/view.lua",
+     "dest": "/pkg/arcade/tables/view.lua",
+     "size": 1685
+    },
+    {
+     "src": "cc-arcade/tables/games/highcard.lua",
+     "dest": "/pkg/arcade/tables/games/highcard.lua",
+     "size": 3291
+    },
+    {
+     "src": "cc-arcade/wordle/app.lua",
+     "dest": "/pkg/arcade/wordle/app.lua",
+     "size": 10639
+    },
+    {
+     "src": "cc-arcade/wordle/guesses.lua",
+     "dest": "/pkg/arcade/wordle/guesses.lua",
+     "size": 63147
+    },
+    {
+     "src": "cc-arcade/wordle/render.lua",
+     "dest": "/pkg/arcade/wordle/render.lua",
+     "size": 8215
+    },
+    {
+     "src": "cc-arcade/wordle/rules.lua",
+     "dest": "/pkg/arcade/wordle/rules.lua",
+     "size": 2279
+    },
+    {
+     "src": "cc-arcade/wordle/words.lua",
+     "dest": "/pkg/arcade/wordle/words.lua",
+     "size": 2529
     }
    ]
   },
@@ -664,7 +759,7 @@
    "description": "Pine3D games: Pine Ball, Pine Links, Pine Lanes, Pine Dungeon",
    "required": false,
    "turtle": false,
-   "size": 660226,
+   "size": 685854,
    "files": [
     {
      "src": "computercraft_scripts/pine-ball/ball.lua",
@@ -674,7 +769,7 @@
     {
      "src": "computercraft_scripts/pine-ball/lib/app.lua",
      "dest": "/pkg/scripts/pine-ball/lib/app.lua",
-     "size": 19932
+     "size": 20952
     },
     {
      "src": "computercraft_scripts/pine-ball/lib/baseball.lua",
@@ -694,7 +789,7 @@
     {
      "src": "computercraft_scripts/pine-ball/lib/render.lua",
      "dest": "/pkg/scripts/pine-ball/lib/render.lua",
-     "size": 6244
+     "size": 6614
     },
     {
      "src": "computercraft_scripts/pine-ball/lib/rng.lua",
@@ -705,6 +800,11 @@
      "src": "computercraft_scripts/pine-ball/lib/roster.lua",
      "dest": "/pkg/scripts/pine-ball/lib/roster.lua",
      "size": 1058
+    },
+    {
+     "src": "computercraft_scripts/pine-ball/lib/sound.lua",
+     "dest": "/pkg/scripts/pine-ball/lib/sound.lua",
+     "size": 2779
     },
     {
      "src": "computercraft_scripts/pine-ball/lib/stadium.lua",
@@ -744,7 +844,7 @@
     {
      "src": "computercraft_scripts/pine-dungeon/lib/app.lua",
      "dest": "/pkg/scripts/pine-dungeon/lib/app.lua",
-     "size": 4192
+     "size": 6090
     },
     {
      "src": "computercraft_scripts/pine-dungeon/lib/input.lua",
@@ -755,6 +855,11 @@
      "src": "computercraft_scripts/pine-dungeon/lib/render.lua",
      "dest": "/pkg/scripts/pine-dungeon/lib/render.lua",
      "size": 8413
+    },
+    {
+     "src": "computercraft_scripts/pine-dungeon/lib/sound.lua",
+     "dest": "/pkg/scripts/pine-dungeon/lib/sound.lua",
+     "size": 2604
     },
     {
      "src": "computercraft_scripts/pine-dungeon/lib/ui.lua",
@@ -794,7 +899,7 @@
     {
      "src": "computercraft_scripts/pine-face/lib/app.lua",
      "dest": "/pkg/scripts/pine-face/lib/app.lua",
-     "size": 5599
+     "size": 7217
     },
     {
      "src": "computercraft_scripts/pine-face/lib/bot.lua",
@@ -815,6 +920,11 @@
      "src": "computercraft_scripts/pine-face/lib/render.lua",
      "dest": "/pkg/scripts/pine-face/lib/render.lua",
      "size": 6981
+    },
+    {
+     "src": "computercraft_scripts/pine-face/lib/sound.lua",
+     "dest": "/pkg/scripts/pine-face/lib/sound.lua",
+     "size": 2098
     },
     {
      "src": "computercraft_scripts/pine-face/lib/ui.lua",
@@ -859,7 +969,7 @@
     {
      "src": "computercraft_scripts/pine-lanes/lib/app.lua",
      "dest": "/pkg/scripts/pine-lanes/lib/app.lua",
-     "size": 12199
+     "size": 13581
     },
     {
      "src": "computercraft_scripts/pine-lanes/lib/input.lua",
@@ -902,6 +1012,11 @@
      "size": 11381
     },
     {
+     "src": "computercraft_scripts/pine-lanes/lib/sound.lua",
+     "dest": "/pkg/scripts/pine-lanes/lib/sound.lua",
+     "size": 2216
+    },
+    {
      "src": "computercraft_scripts/pine-lanes/lib/ui.lua",
      "dest": "/pkg/scripts/pine-lanes/lib/ui.lua",
      "size": 10784
@@ -934,7 +1049,7 @@
     {
      "src": "computercraft_scripts/pine-links/lib/app.lua",
      "dest": "/pkg/scripts/pine-links/lib/app.lua",
-     "size": 11566
+     "size": 12245
     },
     {
      "src": "computercraft_scripts/pine-links/lib/course.lua",
@@ -964,12 +1079,17 @@
     {
      "src": "computercraft_scripts/pine-links/lib/render.lua",
      "dest": "/pkg/scripts/pine-links/lib/render.lua",
-     "size": 12395
+     "size": 12822
     },
     {
      "src": "computercraft_scripts/pine-links/lib/rules.lua",
      "dest": "/pkg/scripts/pine-links/lib/rules.lua",
      "size": 1640
+    },
+    {
+     "src": "computercraft_scripts/pine-links/lib/sound.lua",
+     "dest": "/pkg/scripts/pine-links/lib/sound.lua",
+     "size": 2026
     },
     {
      "src": "computercraft_scripts/pine-links/lib/ui.lua",
@@ -1050,7 +1170,7 @@
    "description": "Factory and TurtleOS turtle automation (turtles only)",
    "required": false,
    "turtle": true,
-   "size": 564551,
+   "size": 573840,
    "files": [
     {
      "src": "cc-factory/factory.lua",
@@ -1381,6 +1501,11 @@
      "src": "cc-turtleos/turtleos/lib/ui.lua",
      "dest": "/pkg/turtleos/lib/ui.lua",
      "size": 5315
+    },
+    {
+     "src": "cc-turtleos/turtleos/strategies/builder/arcade_console.lua",
+     "dest": "/pkg/turtleos/strategies/builder/arcade_console.lua",
+     "size": 9289
     },
     {
      "src": "cc-turtleos/turtleos/strategies/farmer/crops.lua",
