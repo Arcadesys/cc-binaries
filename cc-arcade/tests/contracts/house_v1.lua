@@ -356,7 +356,7 @@ response('roundStatus zero-liability terms',{op='roundStatus'},{ok=true,status='
 response('roundStatus maximum integer terms',{op='roundStatus'},{ok=true,status='open',stake=1000000000,maximum=1000000000})
 response('roundStatus settled loss retains reserved terms',{op='roundStatus'},{ok=true,status='settled',stake=10,maximum=40,paid=0})
 response('ordinary denial',{op='lookup',account='missing'},{ok=false,error='Insert a new house account card'})
-response('transport timeout',{op='lookup',account='house-1'},{ok=false,error='House offline; request retained for retry',offline=true})
+response('transport timeout',{op='lookup',account='house-1'},{ok=false,error='House offline',offline=true})
 response('client pending reconciliation',{op='deposit',id='7:1',account='house-1',amount=5},{ok=false,error='Cashier transfer pending reconciliation',pending=true})
 response('transfer pending raw receipt',{op='deposit',id='7:1',account='house-1',amount=5},{ok=true,pending=true,id='7:1'})
 response('partial transfer completion',{op='withdraw',id='7:1',account='house-1',amount=5},{ok=true,moved=3,balance=97,id='7:1'})
