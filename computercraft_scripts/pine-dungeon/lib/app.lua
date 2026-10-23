@@ -104,7 +104,11 @@ function App.run(options)
       app:emit("frame",{width=width,height=height,renderMs=os.epoch("utc")-start})
     end
     draw()
-    local timer=os.startTimer(.25)
+    -- Poll the display every 0.25s; while speaker notes are queued, tick every 0.05s so
+    -- multi-note cues keep their rhythm instead of landing together on the next poll.
+    local timer
+    local function schedule() timer=os.startTimer(#app.sound.queue>0 and .05 or .25) end
+    schedule()
     while app.running do
       local event={os.pullEventRaw()};local changed=false
       if event[1]=="terminate" then app.running=false
@@ -121,10 +125,13 @@ function App.run(options)
           app.overlay="menu";app.state.message="Display resized. RESUME when ready."
           rebuild();changed=true
         end
-        app.sound:tick();timer=os.startTimer(.25)
+        app.sound:tick();schedule()
       else
         local action=input.action(event,renderer.buttons,monitorName)
-        if action then changed=app:action(action);app.sound:tick() end
+        if action then
+          changed=app:action(action);app.sound:tick()
+          if #app.sound.queue>0 then schedule() end
+        end
       end
       if app.running and changed then draw() end
     end

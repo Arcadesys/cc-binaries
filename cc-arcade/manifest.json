@@ -1004,7 +1004,7 @@
     },
     {
      "path": "pine-dungeon/lib/app.lua",
-     "size": 6090,
+     "size": 6407,
      "src": "computercraft_scripts/pine-dungeon/lib/app.lua"
     },
     {
@@ -1024,12 +1024,12 @@
     },
     {
      "path": "pine-dungeon/lib/ui.lua",
-     "size": 4955,
+     "size": 5202,
      "src": "computercraft_scripts/pine-dungeon/lib/ui.lua"
     },
     {
      "path": "pine-dungeon/lib/world.lua",
-     "size": 8672,
+     "size": 8989,
      "src": "computercraft_scripts/pine-dungeon/lib/world.lua"
     }
    ]
