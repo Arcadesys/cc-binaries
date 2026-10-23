@@ -10,7 +10,7 @@ Use a screen of at least 39×19 characters; 51×19 or larger is recommended. Cho
 
 ## Play
 
-Choose 1–4 players, then START. Players are labeled Player 1–4 and take turns by frame. Select POSITION, AIM, POWER, or HOOK and adjust it, then ROLL. The yellow chevrons on the lane preview the exact path the engine will roll (red once it drops into a gutter). Aim is furball's launch angle; hook is its spin: negative bends left and positive bends right, more strongly past the first third of the lane. Under 20% power the ball stops short. Settings are retained separately for each player. Shot selection is untimed.
+Choose 1–4 players, then START. Each player picks a mascot with Left / Right and LOCK IN. Players are labeled Player 1–4 and take turns by frame. Select POSITION, AIM, POWER, or HOOK and adjust it, then ROLL. The yellow chevrons on the lane preview the exact path the engine will roll (red once it drops into a gutter). Aim is furball's launch angle; hook is its spin: negative bends left and positive bends right, more strongly past the first third of the lane. Under 20% power the ball stops short. Settings are retained separately for each player. Shot selection is untimed.
 
 All four settings use furball's control units.
 
@@ -26,9 +26,9 @@ Furball's pocket shot — position −32, aim +10, power 100 — strikes from a 
 | Control | Keyboard | Tap |
 |---|---|---|
 | Select shot parameter | 1–4, or Up / Down | Parameter name |
-| Adjust selected value | Left / Right | − / + |
+| Adjust selected value (hold to sweep) | Left / Right | − / + |
 | Fine adjustments | F | FINE |
-| Start, roll, continue | Space | START / ROLL / CONTINUE |
+| Start, lock in mascot, roll, continue | Space or Enter | START / LOCK IN / ROLL / CONTINUE |
 | Lane / pin-deck / scorecard view | Tab | VIEW |
 | Scorecard player | Up / Down in score view | Previous / next player |
 | Skip animation | S | SKIP |
@@ -37,7 +37,7 @@ Furball's pocket shot — position −32, aim +10, power 100 — strikes from a 
 | Restart match | R in help/menu/final screen | RESTART |
 | Quit | Backspace in menu/final screen | QUIT |
 
-After each roll, inspect the pin count and choose CONTINUE. Standing pins remain where they settled for the second delivery; fallen pins are cleared. The tenth frame awards the standard spare/strike bonus deliveries. Pending bonuses are identified in the scorecard, and tied totals share a placing. Restart keeps the current player count but resets the match and shot settings.
+After each roll, inspect the pin count and choose CONTINUE. Standing pins remain where they settled for the second delivery; fallen pins are cleared. The tenth frame awards the standard spare/strike bonus deliveries. Pending bonuses are identified in the scorecard, and tied totals share a placing. Restart keeps the current player count and mascots but resets the match and shot settings.
 
 This is deterministic arcade physics, not a certified bowling simulator. Pin toppling is computed by the simulation and displayed by Pine3D; there are no scripted strikes. Each delivery is seeded `matchSeed + deliveryNumber`, as in furball; `--seed N` replays a match exactly. Upright pins never move in the furball deck, so a second ball faces the survivors on their spots. No network play, saved games, custom player names, sounds, changing oil patterns, or loft/foul controls are included.
 
@@ -45,7 +45,7 @@ This is deterministic arcade physics, not a certified bowling simulator. Pin top
 
 `lib/rng.lua` (mulberry32) and `lib/pindeck.lua` are the furball kernel; `lib/physics.lua` keeps the Pine contract over it, `lib/lane.lua` maps furball scene units to Pine axes, and `lib/alley.lua` holds the converted meshes. The kernel's fixed 1/120-second steps run in bounded batches, record 30 Hz playback snapshots, and display at a 10 Hz target. Skipping the animation cannot change a roll. Numerical failures cancel without altering the score or rack. `tests/furball.lua` checks the port against `tests/fixtures/furball_bowling.json`; regenerate it after furball tuning with `../tools/furball-fixtures/update.sh`.
 
-Run `tools/test_craftos.sh RESULT_DIRECTORY` for core tests or `tools/test_runtime.sh RESULT_DIRECTORY` for GUI CraftOS-PC integration tests. They use isolated emulator directories. The runtime tests require GUI monitor emulation. In CraftOS, launch `tests/run.lua` from the game folder for the core checks.
+Run `tools/test_craftos.sh RESULT_DIRECTORY` for core tests or `tools/test_runtime.sh RESULT_DIRECTORY` for GUI CraftOS-PC integration tests. They use isolated emulator directories. Without CraftOS, `lua5.4 tests/headless.lua` (run from this folder, as CI does) checks physics, rules, input, sound and controller under plain Lua 5.3/5.4. The runtime tests require GUI monitor emulation. In CraftOS, launch `tests/run.lua` from the game folder for the core checks.
 
 `--seed N` replays a match; `--diagnostic` starts a labeled lane inspection; `--log /path.jsonl` records explicit local playtest receipts. Logs are opt-in and are not saved match progress.
 

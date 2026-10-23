@@ -2,7 +2,7 @@ local input=require("lib.input")
 local oldKeys=keys
 local function check(value,message) assert(value,message) end
 local function tests()
-  keys={up=1,down=2,left=3,right=4,space=5,tab=6,f=7,h=8,p=9,s=10,r=11,backspace=12,one=13,two=14,three=15,four=16}
+  keys={up=1,down=2,left=3,right=4,space=5,tab=6,f=7,h=8,p=9,s=10,r=11,backspace=12,one=13,two=14,three=15,four=16,enter=17,numPadEnter=18}
   input._resetDebounce()
   check(input.action({"key",keys.space,false,time=0},nil,nil)=="primary","space primary")
   check(input.action({"key",keys.space,true,time=.1},nil,nil)==nil,"held primary ignored")
@@ -16,6 +16,11 @@ local function tests()
   check(input.action({"mouse_click",1,3,3,time=1.2},buttons,nil)==nil,"primary debounce")
   check(input.action({"mouse_click",1,3,3,time=5},buttons,nil)=="roll","primary after debounce")
   check(input.action({"key",keys.backspace,false,time=6},nil,nil)=="quit","backspace quits")
+  check(input.action({"key",keys.enter,false,time=7},nil,nil)=="primary","enter is primary")
+  check(input.action({"key",keys.enter,true,time=8},nil,nil)==nil,"held enter ignored")
+  check(input.action({"key",keys.right,true,time=8.1},nil,nil)=="adjust_up","held right keeps adjusting")
+  check(input.action({"key",keys.left,true,time=8.2},nil,nil)=="adjust_down","held left keeps adjusting")
+  check(input.action({"key",keys.up,true,time=8.3},nil,nil)==nil,"held up does not cycle")
 end
 local ok,err=pcall(tests)
 keys=oldKeys

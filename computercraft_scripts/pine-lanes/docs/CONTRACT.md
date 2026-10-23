@@ -49,14 +49,14 @@ View fields: phase, playerCount, currentPlayer, frame, ballNumber, settings, sel
 
 Cameras: `lane`, `deck`, `score`. Phases: SETUP, AIM, SIMULATE, PLAYBACK, RESULT, FINAL, HELP, PAUSED.
 
-`ui.layout(w,h,phase,camera)` returns rectangles `{id,label,x,y,w,h}`. `input.action(event,buttons,monitorName)` returns an action or nil. Foreign monitor touches are ignored. Pointer input and keyboard input share the same actions. Repeat key events and rapidly repeated primary actions are rejected.
+`ui.layout(w,h,phase,camera)` returns rectangles `{id,label,x,y,w,h}`. `input.action(event,buttons,monitorName)` returns an action or nil. Foreign monitor touches are ignored. Pointer input and keyboard input share the same actions. Repeat key events (except held Left/Right adjustments) and rapidly repeated primary actions are rejected.
 
-Keyboard: 1–4 select parameters; Up/Down select parameter or scorecard player; Left/Right adjust; Space starts, rolls, or continues; Tab changes view; F toggles fine; H help; P menu; S skip; R restarts in menu/final; Backspace quits in menu/final or the small-screen fallback.
+Keyboard: 1–4 select parameters; Up/Down select parameter or scorecard player; Left/Right adjust (holding repeats); Space or Enter starts, locks in a mascot, rolls, or continues; Tab changes view; F toggles fine; H help; P menu; S skip; R restarts in menu/final; Backspace quits in menu/final or the small-screen fallback.
 
 Minimum 39×19; normal targets are at least two rows tall. Small displays retain resize instructions and quit. Text/numbered pin diagrams supplement color. Help and pause preserve game state. Palette, terminal redirect, text/background colors, and cursor blink are restored on normal and error exits.
 
 ## Controller
 
-Flow: setup → aim → simulate → playback → result → continue → aim/final. Settings persist per player. Restart begins a fresh match with the same player count. Result commit happens exactly once; skipping only changes presentation. Errors return to AIM with rack and score unchanged.
+Flow: setup → aim → simulate → playback → result → continue → aim/final. Settings persist per player. Restart begins a fresh match with the same player count and mascots. Result commit happens exactly once; skipping only changes presentation. Errors return to AIM with rack and score unchanged.
 
 Simulation advances up to 120 fixed steps per 0.1-second event-loop tick. Playback uses the 30 Hz cache at a 10 Hz display target. Resize polling complements events; detachment falls back to the computer terminal and pauses. Optional `--log` captures local validation receipts, not saved progress.
