@@ -65,4 +65,50 @@ end
 assert(full.phase == "FINAL" and full.state.status == "final" and full.state.score.light ~= full.state.score.dark)
 full:action("swing"); assert(full.phase == "INTRO", "play again")
 full:action("pause"); full:action("quit"); assert(not full.running)
+
+-- Bad command-line values never reach the kernel: innings are whole and 1-9, seeds unsigned 32-bit.
+for given, want in pairs({[0] = 1, [-4] = 1, [2.5] = 2, [42] = 9, [9] = 9}) do
+  assert(App.new({seed = 1, innings = given}).innings == want, "innings " .. given)
+end
+assert(App.new({seed = 1, innings = "x"}).innings == bb.DEFAULT_INNINGS and App.new({seed = 1}).innings == bb.DEFAULT_INNINGS)
+assert(App.new({seed = -1}).seed == 4294967295 and App.new({seed = 0 / 0}).seed >= 0, "seed range")
+assert(App.new({seed = 1, mode = "bogus"}).mode == "cpu")
+
+-- An arrow released while paused (or in help) still releases: the aim never sticks.
+local stuck = App.new({seed = 3}); stuck:action("start"); stuck:action("swing")
+stuck:action("hold_left"); stuck:action("pause"); stuck:action("release_left"); stuck:action("pause")
+assert(stuck:aim().x == 0, "aim stuck after a release in the menu")
+stuck:action("hold_up"); stuck:action("help"); stuck:action("release_up"); stuck:action("help")
+assert(stuck:aim().y == 0, "aim stuck after a release in help")
+stuck.smallDisplay = true; stuck:action("hold_right"); stuck:action("release_right"); stuck.smallDisplay = nil
+assert(stuck:aim().x == 0)
+
+-- Setup: a held Up/Down auto-repeats but flips the mode once per press.
+local setup = App.new({seed = 1})
+setup:action("hold_up"); setup:action("hold_up"); setup:action("hold_up"); assert(setup.mode == "duel", "repeat flipped mode")
+setup:action("release_up"); setup:action("hold_down"); assert(setup.mode == "cpu")
+setup:action("release_down"); setup:action("start"); assert(setup:aim().y == 0, "setup keys leaked into the aim")
+
+-- Enter skips the intro as well as Space.
+local intro = App.new({seed = 1}); intro:action("start"); assert(intro.phase == "INTRO")
+intro:action("start"); assert(intro.phase == "WINDUP", "enter did not skip the intro")
+
+-- Through a result hold the HUD names the batter who just finished, not the next one up.
+local hold = App.new({seed = 11}); hold:action("start"); hold:action("swing")
+local checked = false
+guard = 0
+while not checked and guard < 20000 do
+  hold:advance(40); guard = guard + 1
+  if hold.phase == "RESULT" and hold.pitch and hold.pitch.batter.id ~= hold:batter().id then
+    assert(hold:view().batter.id == hold.pitch.batter.id, "HUD jumped to the next batter")
+    hold:action("pause"); assert(hold:view().batter.id == hold.pitch.batter.id, "paused HUD jumped batters"); hold:action("pause")
+    checked = true
+  end
+end
+assert(checked, "no plate appearance ended")
+
+-- Duel results name the winning player.
+local duelEnd = App.new({seed = 2, mode = "duel"}); duelEnd.state.status = "final"; duelEnd.state.score = {light = 2, dark = 5}
+duelEnd:afterEvent(); assert(duelEnd.phase == "FINAL" and duelEnd.message:find("P2 DARK WINS 5-2", 1, true), duelEnd.message)
+assert(duelEnd:view().batter == nil)
 return true

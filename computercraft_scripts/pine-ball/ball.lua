@@ -5,16 +5,18 @@ env.require,env.package=require('cc.require').make(env,base)
 -- The arcade installer (cc-arcade/get.lua) shares one Pine3D: use it when vendor/ is absent.
 env.package.path=env.package.path..';/'..fs.combine(base,'..','derby')..'/?.lua'
 local require=env.require
+local USAGE='Usage: ball.lua [--terminal | --monitor NAME] [--duel] [--innings 1-9] [--seed N] [--log FILE]'
 local options={}
 local i=1
 while i<=#args do
-  if args[i]=='--terminal' then options.terminal=true
+  if args[i]=='--help' or args[i]=='-h' then print(USAGE); return
+  elseif args[i]=='--terminal' then options.terminal=true
   elseif args[i]=='--monitor' then i=i+1; options.monitor=assert(args[i],'--monitor needs a name')
   elseif args[i]=='--duel' then options.mode='duel'
-  elseif args[i]=='--innings' then i=i+1; options.innings=assert(tonumber(args[i]),'--innings needs a number')
+  elseif args[i]=='--innings' then i=i+1; options.innings=assert(tonumber(args[i]),'--innings needs a number from 1 to 9')
   elseif args[i]=='--seed' then i=i+1; options.seed=assert(tonumber(args[i]),'--seed needs a number')
   elseif args[i]=='--log' then i=i+1; options.log=assert(args[i],'--log needs a path')
-  else error('Unknown option: '..args[i]) end
+  else printError('Unknown option: '..args[i]); print(USAGE); return end
   i=i+1
 end
 local log

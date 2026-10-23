@@ -13,7 +13,7 @@ Copy the complete `pine-ball` folder to an Advanced Computer and run:
 /pine-ball/ball.lua --duel --innings 5 --seed 123
 ```
 
-The default uses the first attached Advanced Monitor, otherwise the computer screen. Minimum 39×19; 51×19 or larger is recommended. `--seed` replays the same CPU pitches, contact rolls and catch rolls. `--log FILE` writes local JSON receipts of deliveries, swings and plays.
+The default uses the first attached Advanced Monitor, otherwise the computer screen. Minimum 39×19; 51×19 or larger is recommended. A monitor too small at its current text scale is switched to scale 0.5 for the game and put back on exit; a screen that is still too small shows its size and a QUIT button. `--innings` is clamped to a whole number from 1 to 9. `--seed` replays the same CPU pitches, contact rolls and catch rolls. `--log FILE` writes local JSON receipts of deliveries, swings and plays. `--help` prints the options.
 
 ## Play
 
@@ -27,15 +27,17 @@ Choose CPU (the computer pitches; pass the keyboard between batters, like furbal
 
 | Action | Keyboard | Screen button |
 |---|---|---|
-| Swing / skip intro / play again | Space | SWING |
+| Swing / skip intro / play again | Space (Enter also skips the intro) | SWING, SKIP INTRO, PLAY AGAIN |
 | Aim (hold) | Arrows | AIM (cycle), LIFT/LEVEL/CHOP |
 | Pitch type / spot / throw (duel) | 1–4 / WASD / E | type, < > ^ v, THROW |
 | Setup: mode / innings | M or Up/Down / Left/Right | MODE, INN −/+ |
 | Help, menu | H, P | HELP, MENU |
-| New game | R in menu or final | NEW GAME |
+| New game (back to setup) | R in menu or final | NEW GAME (menu, help, final) |
 | Quit | Backspace in menu, setup or final | QUIT |
 
-Menus and resizing pause the game clock, so a pause never costs a pitch.
+Menus and resizing pause the game clock, so a pause never costs a pitch. An arrow released while a menu is open still releases, so the aim never sticks after resuming. Holding Up or Down on the setup screen flips the mode once, not once per key repeat. If the monitor is unplugged, the game pauses and continues on the computer screen.
+
+Through each result the second row keeps naming the batter who just finished, until the next pitch.
 
 **Timing in Minecraft.** The windows are furball's, measured with `os.epoch("utc")` when the key event arrives. A server delivers input on 50 ms ticks, so perfect contact is harder in-world than in a browser; good and weak contact remain reachable.
 
@@ -53,6 +55,6 @@ Menus and resizing pause the game clock, so a pause never costs a pitch.
 ./tools/test_craftos.sh /tmp/pine-ball-results
 ```
 
-The core suite checks furball parity (400 pitch resolutions, 50 CPU pitches, 612 reducer steps over six full games, 40 catch plans, fielding seed), the fielding layer, input, the controller (perfect swing matches the kernel, walks/strikeouts end a half, pause freezes deadlines, duel pitches, a full game reaches FINAL) and Pine3D display layouts at 39×19, 51×19 and 82×40. `tests/smoke.lua` drives the live event loop with real timers and queued keys. After furball tuning, regenerate fixtures with `../tools/furball-fixtures/update.sh`.
+The core suite checks furball parity (400 pitch resolutions, 50 CPU pitches, 612 reducer steps over six full games, 40 catch plans, fielding seed), the fielding layer, input, the controller (perfect swing matches the kernel, walks/strikeouts end a half, pause freezes deadlines, duel pitches, a full game reaches FINAL) and Pine3D display layouts at 39×19, 51×19 and 82×40. `tests/smoke.lua` drives the live event loop with real timers and queued keys, then unplugs an emulated monitor mid-game and checks that play moves to the terminal; run it with `./tools/test_smoke.sh` (CraftOS-PC GUI mode, which opens a window, because headless mode has no monitors). After furball tuning, regenerate fixtures with `../tools/furball-fixtures/update.sh`.
 
 Not yet run inside Minecraft.
