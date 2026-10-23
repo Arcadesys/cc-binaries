@@ -22,7 +22,7 @@ function M.read(spec)
  return ok and on==true
 end
 -- Keyboard and touch stand in for the cabinet on a desk or a bare monitor.
-local KEYS={[keys.space]='arm',[keys.enter]='arm',[keys.one]='bet',[keys.b]='bet',[keys.two]='max',[keys.m]='max',[keys.three]='cash',[keys.c]='cash'}
+local KEYS={[keys.space]='arm',[keys.enter]='arm',[keys.numPadEnter]='arm',[keys.one]='bet',[keys.b]='bet',[keys.two]='max',[keys.m]='max',[keys.three]='cash',[keys.c]='cash'}
 function M.new(config,read)
  read=read or M.read
  local api={config=config,last={}}

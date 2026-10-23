@@ -10422,7 +10422,7 @@ function M.read(spec)
  return ok and on==true
 end
 -- Keyboard and touch stand in for the cabinet on a desk or a bare monitor.
-local KEYS={[keys.space]='arm',[keys.enter]='arm',[keys.one]='bet',[keys.b]='bet',[keys.two]='max',[keys.m]='max',[keys.three]='cash',[keys.c]='cash'}
+local KEYS={[keys.space]='arm',[keys.enter]='arm',[keys.numPadEnter]='arm',[keys.one]='bet',[keys.b]='bet',[keys.two]='max',[keys.m]='max',[keys.three]='cash',[keys.c]='cash'}
 function M.new(config,read)
  read=read or M.read
  local api={config=config,last={}}
@@ -10523,23 +10523,26 @@ function M.run(opts)
  local sound=opts.sound or sounds()
  local bet,positions=1,{0,0,0}
  local spin,result,hold
- local message,highlight='',false
+ local message,highlight,short='',false,nil
  local pressed={}
  local shown -- credit meter value while a win rolls up
  local idleSince=clock(); local nextCard=0
- local function say(text,hi) message=text; highlight=hi or false end
+ -- short: an optional compact form shown when text is wider than the display.
+ local function say(text,hi,compact) message=text; highlight=hi or false; short=compact end
  local function balance() local s=wallet:session(); return s and s.balance end
  local function welcome()
   local s=wallet:session()
-  if s then say(('%s: PULL THE ARM TO SPIN'):format(s.name:upper()))
+  if s then say(('%s: PULL THE ARM TO SPIN'):format(s.name:upper()),false,('%s: PULL TO SPIN'):format(s.name:upper()))
   elseif wallet.problem then say(wallet.problem:upper())
   else say('INSERT YOUR HOUSE CARD TO PLAY') end
  end
- local function start(stops,round,demo)
+ -- before: the meter to show while the reels turn. The round is already settled, so
+ -- showing the live balance now would give the result away before the reels stop.
+ local function start(stops,round,demo,before)
   local now=clock(); local total,wins=reels.evaluate(stops,bet)
   spin={start=now,plans={},stops=stops,total=total,wins=wins,demo=demo,round=round,stopped=0}
   for i=1,3 do spin.plans[i]=M.plan(positions[i],stops[i],M.stopAt[i]) end
-  shown=balance(); result=nil
+  shown=before; result=nil
   say(demo and 'INSERT YOUR HOUSE CARD TO PLAY' or 'GOOD LUCK!')
   for n=0,math.floor(M.stopAt[3]*10) do sound:play(now+n/10,'hat',.6,18+n%3) end
  end
@@ -10548,19 +10551,25 @@ function M.run(opts)
   if spin then return end
   if hold then
    local ok,err=wallet:retry()
-   if ok then hold=nil; say('PAYOUT CONFIRMED',true) else say('HOUSE OFFLINE: PULL TO RETRY ('..tostring(err)..')') end
+   if ok then hold=nil; say('PAYOUT CONFIRMED',true) else say('HOUSE OFFLINE: PULL TO RETRY ('..tostring(err)..')',false,'HOUSE OFFLINE: PULL TO RETRY') end
    return
   end
   local s=wallet:session()
   if not s then say(wallet.problem and wallet.problem:upper() or 'INSERT YOUR HOUSE CARD TO PLAY'); return end
-  if s.balance<bet then say(s.balance>0 and 'NOT ENOUGH CREDITS: PRESS BET ONE TO LOWER' or 'NO CREDITS: VISIT THE CASHIER'); return end
+  if s.balance<bet then
+   -- Drop to what the meter covers so the next pull plays; never spin unasked.
+   if s.balance>=1 then bet=math.floor(s.balance); say(('LOW CREDITS: BET LOWERED TO %d'):format(bet))
+   else say('NO CREDITS: VISIT THE CASHIER') end
+   return
+  end
   local round,err=wallet:begin(bet,reels.maxReturn(bet))
   if not round then say(tostring(err):upper()); return end
+  local before=balance()
   local stops=reels.spin(random)
   local total=reels.evaluate(stops,bet)
   local ok,settleErr=wallet:settle(round,total)
   if not ok then hold={round=round,total=total,error=settleErr} end
-  start(stops,round,false)
+  start(stops,round,false,before)
  end
  local function act(name)
   if not name then return end
@@ -10576,7 +10585,7 @@ function M.run(opts)
     wallet:cashout(); say('PRACTICE METER RESET TO 100')
    else
     local had=wallet:cashout()
-    if had then say(('CARD RETURNED: %d CREDITS ON YOUR ACCOUNT'):format(had),true); for n=0,4 do sound:play(now+n*.08,'chime',.8,12+n*2) end
+    if had then say(('CARD RETURNED: %d CREDITS ON ACCOUNT'):format(had),true,('CARD OUT: %d ON ACCOUNT'):format(had)); for n=0,4 do sound:play(now+n*.08,'chime',.8,12+n*2) end
     else say('NO CARD TO RETURN') end
    end
   end
@@ -10586,7 +10595,7 @@ function M.run(opts)
   for i=1,3 do positions[i]=s.stops[i] end
   if s.demo then welcome(); return end
   result={wins=s.wins,total=s.total,at=now}
-  if hold then say('HOUSE OFFLINE: PULL THE ARM TO RETRY PAYOUT')
+  if hold then say('HOUSE OFFLINE: PULL ARM TO RETRY PAYOUT')
   elseif s.total>0 then
    say(('WINNER! %d CREDITS'):format(s.total),true)
    local notes=s.total>=80 and {12,16,19,24,19,24,28,31} or s.total>=15 and {12,16,19,24} or {14,18}
@@ -10597,7 +10606,8 @@ function M.run(opts)
   for _,n in ipairs(input:poll()) do act(n) end
   if now>=nextCard then
    nextCard=now+1
-   if wallet:refresh() then welcome() end
+   -- A new or pulled card ends any roll-up of the previous card's win.
+   if wallet:refresh() then shown=nil; welcome() end
   end
   if spin then
    local t=now-spin.start
@@ -10615,7 +10625,8 @@ function M.run(opts)
   if result and result.total>0 and not spin and #result.wins>1 then
    local w=result.wins[math.floor((now-result.at)/1.4)%#result.wins+1]
    if now-result.at>1.4 then
-    say(('LINE %d %s: %s %s %s PAYS %d'):format(w.line,reels.lineNames[w.line],reels.names[w.symbols[1]],reels.names[w.symbols[2]],reels.names[w.symbols[3]],w.pay),true)
+    say(('LINE %d %s: %s %s %s PAYS %d'):format(w.line,reels.lineNames[w.line],reels.names[w.symbols[1]],reels.names[w.symbols[2]],reels.names[w.symbols[3]],w.pay),true,
+     ('LINE %d: %s %s %s = %d'):format(w.line,reels.names[w.symbols[1]],reels.names[w.symbols[2]],reels.names[w.symbols[3]],w.pay))
    end
   end
   -- Attract: with no card in a live cabinet, run a free demo spin every few seconds.
@@ -10644,7 +10655,7 @@ function M.run(opts)
  local function draw(now)
   local p={}; for k,v in pairs(pressed) do if v>now then p[k]=true end end
   view:draw({positions=positions,bet=bet,credits=shown or balance(),title=wallet.title,
-   lamps=lamps(now),lines=lines(now),pressed=p,message=message,highlight=highlight})
+   lamps=lamps(now),lines=lines(now),pressed=p,message=message,short=short,highlight=highlight})
  end
  wallet:refresh(); welcome()
  local timer=os.startTimer(0)
@@ -10768,7 +10779,7 @@ function M.new(t)
  term.redirect(old)
  local api={frame=f}
  -- view: positions[3], lamps(i)->bool, lines[5]->bool, pressed{name=true},
- -- title, credits, bet, win, message, highlight
+ -- title, credits, bet, win, message, short (compact message for narrow screens), highlight
  function api:draw(v)
   local previous=term.redirect(t)
   local ww,hh=t.getSize()
@@ -10787,6 +10798,7 @@ function M.new(t)
   line(t,1,' '..(v.title or 'PINE SLOTS'),colors.yellow,colors.blue)
   t.setCursorPos(math.max(1,w-#right+1),1); t.setTextColor(colors.white); t.setBackgroundColor(colors.blue); t.write(right)
   local msg=v.message or ''
+  if #msg>w and v.short then msg=v.short end
   local pad=math.max(0,math.floor((w-#msg)/2))
   line(t,h-1,string.rep(' ',pad)..msg,v.highlight and colors.black or colors.yellow,v.highlight and colors.yellow or colors.black)
   for _,b in ipairs(M.buttons(w)) do
