@@ -13,14 +13,30 @@ App.ZONE_HALF_WIDTH, App.ZONE_CENTER_Y, App.ZONE_HALF_HEIGHT = 0.26, 0.8, 0.32
 App.RELEASE = {x = 0.15, y = 1.9, z = -plays.MOUND_DISTANCE + 1.2}
 App.CATCHER_BALL_DEPTH = 1.3
 local IMPACT_HOLD_MS = {weak = 12, good = 20, perfect = 28}
+App.MIN_INNINGS, App.MAX_INNINGS = 1, 9
+App.MIN_WIDTH, App.MIN_HEIGHT = 39, 19
+-- Phases whose picture only changes on input; the idle timer does not redraw them.
+App.STATIC_PHASES = {SETUP = true, PAUSED = true, HELP = true, FINAL = true, PITCH_SELECT = true}
+
+-- Whole innings in the setup range; anything else (0, 2.5, nil, "x") falls back to the default.
+function App.clampInnings(n)
+  n = tonumber(n)
+  if not n or n ~= n then return bb.DEFAULT_INNINGS end
+  return math.max(App.MIN_INNINGS, math.min(App.MAX_INNINGS, math.floor(n)))
+end
 
 function App.new(options)
   options = options or {}
-  local self = setmetatable({options = options, running = true, mode = options.mode or "cpu",
-    innings = options.innings or bb.DEFAULT_INNINGS, phase = "SETUP", clock = 0, held = {},
-    message = "Choose CPU or 2-player duel, then START.", lastInput = "Ready"}, App)
+  local self = setmetatable({options = options, running = true, mode = options.mode == "duel" and "duel" or "cpu",
+    innings = App.clampInnings(options.innings), phase = "SETUP", clock = 0, held = {},
+    message = "Pick MODE and INNINGS, then PLAY BALL.", lastInput = "Ready"}, App)
   self.sound = options.sound or require("lib.sound").new()
-  self.seed = math.floor(tonumber(options.seed) or ((os.epoch and os.epoch("utc") or os.time()) % 1000000))
+  -- Seeds live in unsigned 32-bit space, as rng.create and the fielding salt expect.
+  local seed = tonumber(options.seed)
+  if not seed or seed ~= seed or seed == math.huge or seed == -math.huge then
+    seed = (os.epoch and os.epoch("utc") or os.time()) % 1000000
+  end
+  self.seed = math.floor(seed) % 4294967296
   self:newGame()
   return self
 end
@@ -36,6 +52,7 @@ function App:newGame()
   self.fielding = bb.copy(bb.DEFAULT_FIELDING)
   self.pitch, self.swing, self.play, self.flash, self.board = nil, nil, nil, nil, nil
   self.draft = {type = 1, x = 0, y = 0}
+  self.held = {}
 end
 
 -- Pausable presentation clock: overlays and resizes freeze every deadline.
@@ -52,9 +69,9 @@ end
 
 function App:batter() return roster.players[bb.currentBatter(self.state)] end
 
-function App:roles()
+function App:roles(state)
   if self.mode ~= "duel" then return nil end
-  return bb.battingTeam(self.state) == "light" and {batter = "P1 LIGHT", pitcher = "P2 DARK"} or {batter = "P2 DARK", pitcher = "P1 LIGHT"}
+  return bb.battingTeam(state or self.state) == "light" and {batter = "P1 LIGHT", pitcher = "P2 DARK"} or {batter = "P2 DARK", pitcher = "P1 LIGHT"}
 end
 
 function App:start()
@@ -70,7 +87,7 @@ function App:nextPitch()
   self.board = nil
   if self.mode == "duel" then
     self.phase = "PITCH_SELECT"
-    self.message = self:roles().pitcher .. " pitches: 1-4 type, WASD spot, E throw"
+    self.message = self:roles().pitcher .. ": 1-4 type, WASD aim, E throw"
   else
     self:beginWindup(bb.cpuPitch(self.next))
   end
@@ -78,7 +95,9 @@ end
 
 function App:beginWindup(pitch)
   self.phase = "WINDUP"; self.deadline = self.clock + plays.WINDUP_MS
-  self.pitch = {pitch = pitch, releasedAt = self.deadline, arrivesAt = self.deadline + bb.PITCH_TRAVEL_MS[pitch.type]}
+  -- The batter is kept with the pitch so the HUD names who hit it through the result hold.
+  self.pitch = {pitch = pitch, releasedAt = self.deadline, arrivesAt = self.deadline + bb.PITCH_TRAVEL_MS[pitch.type],
+    batter = self:batter()}
   self.message = "Now batting: " .. self:batter().name .. " #" .. self:batter().number
   self:emit("delivery", pitch)
 end
@@ -108,9 +127,8 @@ end
 
 function App:commit(t, info)
   local prev = self.state
-  local label, big = plays.headline(t.callouts, 0)
   local detail, runs = plays.detail(t, prev, info or {})
-  label = plays.headline(t.callouts, runs)
+  local label, big = plays.headline(t.callouts, runs)
   for _, c in ipairs(t.callouts) do
     if c == "SIDE_RETIRED" then
       -- Hold the completed half on the board through the third-out presentation.
@@ -163,7 +181,9 @@ function App:afterEvent()
   if self.state.status == "final" then
     self.phase = "FINAL"
     local s = self.state.score
-    self.message = (s.light > s.dark and "LIGHT" or "DARK") .. " WINS " .. math.max(s.light, s.dark) .. "-" .. math.min(s.light, s.dark) .. "! SPACE plays again."
+    local winner = s.light > s.dark and "light" or "dark"
+    local who = self.mode == "duel" and (winner == "light" and "P1 LIGHT" or "P2 DARK") or (winner == "light" and "LIGHT" or "DARK")
+    self.message = who .. " WINS " .. math.max(s.light, s.dark) .. "-" .. math.min(s.light, s.dark) .. "! SPACE plays again."
     self:cue("final")
     self:emit("final", {score = s})
   else self:nextPitch() end
@@ -216,6 +236,9 @@ function App:resume() self.phase = self.resumePhase or "SETUP"; self.resumePhase
 function App:action(action)
   if not action then return end
   self.lastInput = action; self:emit("input", action)
+  -- A key let go during a menu, help or a too-small display must still release, or the aim sticks.
+  local release = action:match("^release_(%a+)$")
+  if release then self.held[release] = nil; return end
   if action == "quit" then
     if self.phase == "PAUSED" or self.phase == "HELP" or self.phase == "SETUP" or self.phase == "FINAL" or self.smallDisplay then self.running = false end
     return
@@ -233,7 +256,11 @@ function App:action(action)
     return
   end
   if self.phase == "SETUP" then
-    if action == "mode" or action == "hold_up" or action == "hold_down" then self.mode = self.mode == "cpu" and "duel" or "cpu"
+    local dir = action:match("^hold_(%a+)$")
+    -- Held Up/Down auto-repeats; toggle the mode once per press, not once per repeat.
+    if (dir == "up" or dir == "down") and self.held[dir] then return end
+    if dir == "up" or dir == "down" then self.held[dir] = true end
+    if action == "mode" or dir == "up" or dir == "down" then self.mode = self.mode == "cpu" and "duel" or "cpu"
     elseif action == "innings_up" or action == "hold_right" then self.innings = math.min(9, self.innings + 1)
     elseif action == "innings_down" or action == "hold_left" then self.innings = math.max(1, self.innings - 1)
     elseif action == "swing" or action == "start" then self:start() end
@@ -242,14 +269,12 @@ function App:action(action)
   -- Held aim keys; a touch AIM button cycles the same values.
   local hold = action:match("^hold_(%a+)$")
   if hold then self.held[hold] = true; return end
-  local release = action:match("^release_(%a+)$")
-  if release then self.held[release] = nil; return end
   if action == "aim_x" then
     local x = self:aim().x; self.held.left, self.held.right = x == 0 and true or nil, x == -1 and true or nil; return
   elseif action == "aim_y" then
     local y = self:aim().y; self.held.down, self.held.up = y == 0 and true or nil, y == -1 and true or nil; return
   end
-  if action == "swing" or (action == "start" and self.phase == "FINAL") then self:swingPressed(); return end
+  if action == "swing" or (action == "start" and (self.phase == "FINAL" or self.phase == "INTRO")) then self:swingPressed(); return end
   if action == "restart" and self.phase == "FINAL" then self.phase = "SETUP"; self:newGame(); return end
   if self.phase == "PITCH_SELECT" then
     local d = self.draft
@@ -349,11 +374,17 @@ function App:scene()
   return s
 end
 
+-- Phases where the pitch's batter is still the one on screen, even after the state has moved on.
+local HOLDING = {CONTACT = true, FOUL = true, IN_PLAY = true, RESULT = true}
 function App:view()
   local board = self.board or self.state
-  local batter = (self.phase ~= "SETUP") and self:batter() or nil
+  local phase = self.phase
+  if phase == "PAUSED" or phase == "HELP" then phase = self.resumePhase or "SETUP" end
+  local batter
+  if HOLDING[phase] and self.pitch then batter = self.pitch.batter
+  elseif phase ~= "SETUP" and phase ~= "FINAL" then batter = self:batter() end
   return {phase = self.phase, mode = self.mode, innings = self.innings, board = board, state = self.state,
-    batter = batter, roles = self:roles(), aim = self:aim(), draft = self.draft, flash = self.flash,
+    batter = batter, roles = self:roles(board), aim = self:aim(), draft = self.draft, flash = self.flash,
     message = self.message, lastInput = self.lastInput, scene = self:scene(), pitch = self.pitch,
     swing = self.swing, smallDisplay = self.smallDisplay}
 end
@@ -370,17 +401,43 @@ function App.run(options)
     else peripheral.find("monitor", function(name, mon) if not monitorName and mon.isColor() then target = mon; monitorName = name end end) end
   end
   local app = App.new(options); local renderer, width, height
+  -- A fresh monitor is text scale 1, often too coarse for 39x19; use 0.5 then and put it back on exit.
+  local restoreScale
+  if monitorName and target.getTextScale and target.setTextScale then
+    local w, h = target.getSize()
+    if (w < App.MIN_WIDTH or h < App.MIN_HEIGHT) and target.getTextScale() > 0.5 then
+      restoreScale = {target, target.getTextScale()}; target.setTextScale(0.5)
+    end
+  end
+  -- A detached monitor throws on every call, sometimes before its detach event is pulled.
+  local function size()
+    local okSize, w, h = pcall(target.getSize)
+    if okSize then return w, h end
+  end
+  local dirty = true
   local function rebuild()
+    dirty = true
     if renderer then pcall(function() renderer:close() end) end
-    term.redirect(target); renderer = render.new(target); width, height = target.getSize(); app.smallDisplay = width < 39 or height < 19
+    term.redirect(target); renderer = render.new(target); width, height = target.getSize()
+    app.smallDisplay = width < App.MIN_WIDTH or height < App.MIN_HEIGHT
+  end
+  local function toTerminal()
+    target = original; monitorName = nil; app:pause("Monitor detached. Resume here."); rebuild()
   end
   local ok, err = xpcall(function()
     rebuild()
     local last = os.epoch("utc")
     local timer = os.startTimer(0.05)
+    local drawnPhase
     local function draw()
-      local start = os.epoch("utc"); renderer:draw(app:view())
+      local start = os.epoch("utc"); renderer:draw(app:view()); drawnPhase, dirty = app.phase, false
       app:emit("frame", {renderMs = os.epoch("utc") - start, width = width, height = height})
+    end
+    local function safeDraw()
+      local drew, drawErr = xpcall(draw, debug.traceback)
+      if drew then return end
+      if monitorName and not (peripheral.isPresent(monitorName) and size()) then toTerminal(); draw()
+      else error(drawErr, 0) end
     end
     local function tick()
       local now = os.epoch("utc"); app:advance(now - last); last = now
@@ -388,28 +445,33 @@ function App.run(options)
     draw()
     while app.running do
       local event = {os.pullEventRaw()}
+      local changed = false
       if event[1] == "terminate" then app.running = false
-      elseif event[1] == "peripheral_detach" and event[2] == monitorName then
-        target = original; monitorName = nil; app:pause("Monitor detached. Resume here."); rebuild()
+      elseif event[1] == "peripheral_detach" and event[2] == monitorName then toTerminal(); changed = true
       elseif (event[1] == "monitor_resize" and event[2] == monitorName) or (event[1] == "term_resize" and not monitorName) then
-        app:pause("Display resized. Resume when ready."); rebuild()
+        local w, h = size()
+        if monitorName and not w then toTerminal(); changed = true
+        elseif w ~= width or h ~= height then app:pause("Display resized. Resume when ready."); rebuild(); changed = true end
       elseif event[1] == "timer" and event[2] == timer then
-        local w, h = target.getSize()
-        if monitorName and not w then target = original; monitorName = nil; app:pause("Monitor detached. Resume here."); rebuild()
+        local w, h = size()
+        if monitorName and not w then toTerminal()
         elseif w ~= width or h ~= height then app:pause("Display resized. Resume when ready."); rebuild() end
         tick(); app.sound:tick()
         -- Fast frames while the ball is live; a slower idle cadence otherwise.
         local live = app.phase == "WINDUP" or app.phase == "PITCH" or app.phase == "CONTACT" or app.phase == "FOUL" or app.phase == "IN_PLAY"
         timer = os.startTimer(live and 0.05 or 0.1)
+        -- Menus, setup and the final screen only change on input or a phase change.
+        changed = not App.STATIC_PHASES[app.phase] or app.phase ~= drawnPhase
       else
         -- Advance the clock to this exact event before acting, so swing timing uses the press time.
         local action = input.action(event, renderer.buttons or {}, monitorName)
-        if action then tick(); app:action(action); app.sound:tick() end
+        if action then tick(); app:action(action); app.sound:tick(); changed = true end
       end
-      if app.running then draw() end
+      if app.running and (changed or dirty) then safeDraw() end
     end
   end, debug.traceback)
   if renderer then pcall(function() renderer:close() end) end
+  if restoreScale then pcall(restoreScale[1].setTextScale, restoreScale[2]) end
   term.redirect(original); original.setTextColor(fg); original.setBackgroundColor(bg); original.setCursorBlink(blink)
   app:emit("exit", {ok = ok, error = err}); if not ok then error(err, 0) end
   return app
