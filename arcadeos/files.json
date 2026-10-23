@@ -278,7 +278,7 @@
    "description": "Arcade games: Blackjack, Slots, Pine Slots, Pine Jack, Pine Shut the Box, Can't Stop, Race, RPS Rogue, IdleCraft",
    "required": false,
    "turtle": false,
-   "size": 787008,
+   "size": 559903,
    "files": [
     {
      "src": "cc-arcade/audio.lua",
@@ -541,11 +541,6 @@
      "size": 4617
     },
     {
-     "src": "cc-arcade/pinearcade/tests/run.lua",
-     "dest": "/pkg/arcade/pinearcade/tests/run.lua",
-     "size": 7542
-    },
-    {
      "src": "cc-arcade/pinebox/app.lua",
      "dest": "/pkg/arcade/pinebox/app.lua",
      "size": 251
@@ -691,86 +686,6 @@
      "size": 3291
     },
     {
-     "src": "cc-arcade/tables/tests/cluster.lua",
-     "dest": "/pkg/arcade/tables/tests/cluster.lua",
-     "size": 5044
-    },
-    {
-     "src": "cc-arcade/tables/tests/run.lua",
-     "dest": "/pkg/arcade/tables/tests/run.lua",
-     "size": 10372
-    },
-    {
-     "src": "cc-arcade/tests/consumer_contracts.lua",
-     "dest": "/pkg/arcade/tests/consumer_contracts.lua",
-     "size": 45520
-    },
-    {
-     "src": "cc-arcade/tests/currency_identity.lua",
-     "dest": "/pkg/arcade/tests/currency_identity.lua",
-     "size": 13685
-    },
-    {
-     "src": "cc-arcade/tests/currency_runtime.lua",
-     "dest": "/pkg/arcade/tests/currency_runtime.lua",
-     "size": 13286
-    },
-    {
-     "src": "cc-arcade/tests/currency_wire.lua",
-     "dest": "/pkg/arcade/tests/currency_wire.lua",
-     "size": 3370
-    },
-    {
-     "src": "cc-arcade/tests/known_recovery_gap.lua",
-     "dest": "/pkg/arcade/tests/known_recovery_gap.lua",
-     "size": 4575
-    },
-    {
-     "src": "cc-arcade/tests/payout_analysis.lua",
-     "dest": "/pkg/arcade/tests/payout_analysis.lua",
-     "size": 8330
-    },
-    {
-     "src": "cc-arcade/tests/rednet_contracts.lua",
-     "dest": "/pkg/arcade/tests/rednet_contracts.lua",
-     "size": 21552
-    },
-    {
-     "src": "cc-arcade/tests/support_contracts.lua",
-     "dest": "/pkg/arcade/tests/support_contracts.lua",
-     "size": 3232
-    },
-    {
-     "src": "cc-arcade/tests/contracts/currency_policy.lua",
-     "dest": "/pkg/arcade/tests/contracts/currency_policy.lua",
-     "size": 24811
-    },
-    {
-     "src": "cc-arcade/tests/contracts/house_v1.lua",
-     "dest": "/pkg/arcade/tests/contracts/house_v1.lua",
-     "size": 36791
-    },
-    {
-     "src": "cc-arcade/tests/contracts/play_modes.lua",
-     "dest": "/pkg/arcade/tests/contracts/play_modes.lua",
-     "size": 2480
-    },
-    {
-     "src": "cc-arcade/tests/support/hub.lua",
-     "dest": "/pkg/arcade/tests/support/hub.lua",
-     "size": 6286
-    },
-    {
-     "src": "cc-arcade/tests/support/json.lua",
-     "dest": "/pkg/arcade/tests/support/json.lua",
-     "size": 7222
-    },
-    {
-     "src": "cc-arcade/tests/support/platform.lua",
-     "dest": "/pkg/arcade/tests/support/platform.lua",
-     "size": 5691
-    },
-    {
      "src": "cc-arcade/wordle/app.lua",
      "dest": "/pkg/arcade/wordle/app.lua",
      "size": 10639
@@ -794,11 +709,6 @@
      "src": "cc-arcade/wordle/words.lua",
      "dest": "/pkg/arcade/wordle/words.lua",
      "size": 2529
-    },
-    {
-     "src": "cc-arcade/wordle/tests/run.lua",
-     "dest": "/pkg/arcade/wordle/tests/run.lua",
-     "size": 7316
     }
    ]
   },

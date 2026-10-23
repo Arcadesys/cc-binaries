@@ -55,6 +55,10 @@
             "pinebox/tools/**",
             "casino/tests/**",
             "casino/tools/**",
+            "tests/**",
+            "tables/tests/**",
+            "wordle/tests/**",
+            "pinearcade/tests/**",
             "get.lua"
           ]
         }
