@@ -67,7 +67,7 @@ local function loadFloor(state,number)
 end
 function world.new()
   local state={player={x=0,z=0,hp=12,maxHp=12,potions=1,gold=0,facing="east"},
-    turn=0,phase="play",message="Find the End Portal on floor 3.",kills=0}
+    turn=0,phase="play",message="Find the End Portal on floor 3.",kills=0,hurt=0}
   loadFloor(state,1)
   return state
 end
@@ -149,31 +149,40 @@ local function bossAct(state,m)
   elseif m.enraged or state.turn%2==0 then stepToward(state,m) end
   return hits,msg
 end
+-- Monsters raised this turn (the Warden's zombies) wait until next turn to act.
+-- Damage is summed per source so a Warden message never hides a zombie's hit.
 local function enemiesAct(state)
   local p=state.player
-  local hits,bossMsg=0,nil
-  for _,m in ipairs(state.monsters) do
+  local mobHits,bossHits,bossMsg=0,0,nil
+  local count=#state.monsters
+  for i=1,count do
+    local m=state.monsters[i]
     if m.hp>0 then
       if m.kind=="W" then
-        local h,msg=bossAct(state,m);hits=hits+h;bossMsg=msg or bossMsg
+        local h,msg=bossAct(state,m);bossHits=bossHits+h;bossMsg=msg or bossMsg
       else
         local d=math.abs(p.x-m.x)+math.abs(p.z-m.z)
-        if d==1 then hits=hits+world.kinds[m.kind].dmg
+        if d==1 then mobHits=mobHits+world.kinds[m.kind].dmg
         elseif d<=4 then stepToward(state,m) end
       end
     end
   end
+  local hits=mobHits+bossHits
+  state.hurt=hits
+  local text=bossMsg or state.message
+  if bossHits>0 and not bossMsg then text=text.." Warden slams -"..bossHits.."." end
+  if mobHits>0 then text=text.." Mobs hit -"..mobHits.."." end
+  state.message=text
   if hits>0 then
     p.hp=math.max(0,p.hp-hits)
-    if bossMsg then state.message=bossMsg
-    else state.message=state.message.." Mobs hit for "..hits.."." end
     if p.hp==0 then state.phase="lost";state.message="You died! NEW GAME or QUIT." end
-  elseif bossMsg then state.message=bossMsg end
+  end
 end
 function world.act(state,action)
   if state.phase~="play" then return false end
   local p=state.player
   local consumed=false
+  state.hurt=0
   if action=="turn_left" or action=="turn_right" then
     for i,facing in ipairs(facings) do
       if p.facing==facing then
@@ -189,7 +198,7 @@ function world.act(state,action)
     if world.tile(state,x,z)=="#" then state.message="A stone wall blocks the way.";return false end
     local m=world.monsterAt(state,x,z)
     if not m and x==state.exit.x and z==state.exit.z and world.sealed(state) then
-      state.message="The End Portal is sealed while the Warden lives.";return false
+      state.message="The portal is sealed. Slay the Warden!";return false
     end
     if m then attack(state,m)
     else
@@ -198,7 +207,7 @@ function world.act(state,action)
       if item=="$" then p.gold=p.gold+5;state.message="You found 5 emeralds.";state.items[key(x,z)]=nil
       elseif item=="%" then p.potions=p.potions+1;state.message="You found a steak.";state.items[key(x,z)]=nil end
       if x==state.exit.x and z==state.exit.z then
-        if state.floor==#maps then state.phase="won";state.message="You entered the End Portal with "..p.gold.." emeralds!"
+        if state.floor==#maps then state.phase="won";state.message="You escaped with "..p.gold.." emeralds!"
         else
           loadFloor(state,state.floor+1);state.message="You climb down to floor "..state.floor.."."
           if state.floor==#maps then p.hp=p.maxHp;state.message="A campfire warms you. Hearts restored." end
@@ -209,13 +218,13 @@ function world.act(state,action)
     consumed=true
   elseif action=="attack" then
     local v=vectors[p.facing];local m=world.monsterAt(state,p.x+v[1],p.z+v[2])
-    if m then attack(state,m) else state.message="Your swing finds empty air." end
+    if m then attack(state,m) else state.message="You swing at empty air." end
     consumed=true
   elseif action=="heal" then
     if p.potions<1 then state.message="No steak left.";return false end
     if p.hp==p.maxHp then state.message="Hearts are already full.";return false end
     p.potions=p.potions-1;p.hp=math.min(p.maxHp,p.hp+5)
-    state.message="You eat a steak (+5 hearts).";consumed=true
+    state.message="Steak eaten: +5 hearts.";consumed=true
   elseif action=="wait" then state.message="You wait.";consumed=true
   end
   if consumed then state.turn=state.turn+1;enemiesAct(state) end

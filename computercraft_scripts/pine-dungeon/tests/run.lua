@@ -160,6 +160,25 @@ for _,m in ipairs(a.monsters) do if m.kind=="z" then zs=zs+1 end end
 check(zs==2,"summon happens once")
 a=arena();a.monsters[1].hp=2;a.monsters[1].x=3
 check(world.act(a,"attack") and not world.boss(a) and not world.sealed(a),"killing the Warden opens the portal")
+-- Zombies raised by the enrage wait a turn: one spawning beside you cannot strike at once.
+a=arena();a.player.x,a.player.z=2,7;a.monsters[1].hp=7;a.monsters[1].x=9;a.monsters[1].z=3
+world.act(a,"wait")
+check(a.monsters[1].enraged and a.player.hp==12,"raised zombie does not attack on its spawn turn")
+world.act(a,"wait");check(a.player.hp==11,"raised zombie attacks the next turn")
+-- A Warden message never hides a zombie's damage.
+a=arena();a.monsters[2]={x=2,z=4,kind="z",hp=2,maxHp=2};world.act(a,"wait")
+check(a.monsters[1].charging and a.player.hp==11 and a.hurt==1
+  and a.message:find("CHARGES",1,true) and a.message:find("-1",1,true),
+  "boss warning keeps mob damage visible")
+a=arena();a.monsters[1].x=3;world.act(a,"wait")
+check(a.player.hp==10 and a.message:find("Warden slams -2",1,true),"slam names the Warden")
+world.act(a,"turn_left");check(a.hurt==0,"hurt clears on a quiet turn")
+-- Fixed messages fit the 39-column minimum display.
+local short=world.new();short.monsters={};short.player.facing="north"
+world.act(short,"turn_right");world.act(short,"attack")
+check(#short.message<=39,"empty swing message fits: "..short.message)
+a=arena();a.player.x=9;a.monsters[1].x=2;a.monsters[1].z=2;world.act(a,"forward")
+check(#a.message<=39,"sealed portal message fits: "..a.message)
 local app=App.new()
 app:action("forward");local x,turn,facing=app.state.player.x,app.state.turn,app.state.player.facing
 app:action("help");app:action("turn_left")
@@ -194,6 +213,11 @@ for _,size in ipairs({{39,19},{51,19}}) do
   local title=t.getLine(1)
   check(title:find("PINE DUNGEON",1,true)~=nil,"rendered title at "..size[1])
   check(#painter.buttons>=11,"visible actions at "..size[1])
+  local hurtView=App.new():view();hurtView.state.hurt=3;hurtView.state.player.hp=9
+  painter:draw(hurtView)
+  local _,fg=t.getLine(2)
+  check(t.getLine(2):find("HEARTS 9/12 -3",1,true) and fg:sub(1,1)==colors.toBlit(colors.red),
+    "damage this turn is shown in red on the stat line at "..size[1])
   painter:close();term.redirect(old)
 end
 check(require("tests.sound")==true,"sound cues")

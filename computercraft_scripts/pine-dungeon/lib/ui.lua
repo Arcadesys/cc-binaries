@@ -69,8 +69,12 @@ function ui.draw(t,view,buttons)
   else
     put(t,1,1,"PINE DUNGEON | FLOOR "..s.floor.."/3 | "..string.upper(s.phase),colors.black,colors.yellow,w)
   end
-  put(t,1,2,string.format("HEARTS %d/%d STEAK %d EMERALDS %d T%d",
-    p.hp,p.maxHp,p.potions,p.gold,s.turn),colors.white,colors.black,w)
+  -- Damage taken this turn shows on the stat line in red, so it is never lost when the
+  -- message line is truncated on a narrow display.
+  local hurt=(s.hurt or 0)>0 and s.phase=="play"
+  put(t,1,2,string.format("HEARTS %d/%d%s STEAK %d EMERALDS %d T%d",p.hp,p.maxHp,
+    hurt and " -"..s.hurt or "",p.potions,p.gold,s.turn),
+    hurt and colors.red or colors.white,colors.black,w)
   put(t,1,3,s.message,boss and boss.charging and colors.orange or colors.yellow,colors.black,w)
   local sceneBottom=h-buttons.rowH*3
   if view.overlay=="help" then
