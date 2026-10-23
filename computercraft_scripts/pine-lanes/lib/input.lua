@@ -9,7 +9,7 @@ local function keyMap()
   bind(k.three,"select_power"); bind(k.four,"select_hook")
   bind(k.up,"select_prev"); bind(k.down,"select_next")
   bind(k.left,"adjust_down"); bind(k.right,"adjust_up")
-  bind(k.space,"primary"); bind(k.tab,"view"); bind(k.f,"fine")
+  bind(k.space,"primary"); bind(k.enter,"primary"); bind(k.numPadEnter,"primary"); bind(k.tab,"view"); bind(k.f,"fine")
   bind(k.h,"help"); bind(k.p,"pause"); bind(k.s,"skip")
   bind(k.r,"restart"); bind(k.backspace,"quit")
   return map
@@ -36,8 +36,10 @@ function input.action(event,buttons,monitorName)
   if type(event)~="table" then return nil end
   local name=event[1]
   if name=="key" then
-    if event[3] then return nil end -- held/repeat events never retrigger a shot
-    return debounce(keyMap()[event[2]],event.time)
+    local action=keyMap()[event[2]]
+    -- Holding Left/Right sweeps a setting; any other held/repeat key never retriggers.
+    if event[3] and action~="adjust_up" and action~="adjust_down" then return nil end
+    return debounce(action,event.time)
   elseif name=="monitor_touch" then
     if not monitorName or event[2]~=monitorName then return nil end
     local action=hit(buttons,event[3],event[4])

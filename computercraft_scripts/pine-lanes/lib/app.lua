@@ -25,9 +25,10 @@ function App:cue(name,offsetMs) self.sound:play(name,offsetMs) end
 function App:emit(kind,data)
   if self.options.record then self.options.record(kind,data,self) end
 end
-function App:resetMatch(count)
+function App:resetMatch(count,keepMascots)
+  local chosen=keepMascots and self.playerMascots or {}
   self.playerCount=count; self.match=assert(rules.new(count))
-  self.playerSettings={}; self.playerMascots={}; for i=1,count do self.playerSettings[i]=settings(); self.playerMascots[i]=(i-1)%#mascots.list+1 end
+  self.playerSettings={}; self.playerMascots={}; for i=1,count do self.playerSettings[i]=settings(); self.playerMascots[i]=chosen[i] or (i-1)%#mascots.list+1 end
   self.mascotPlayer=1
   self.sim=nil; self.playback=nil; self.displaySnapshot=nil; self.rollSummary=nil; self.resumePhase=nil
   self.selected='position'; self.fine=false; self.camera='lane'; self.scorePlayer=1
@@ -110,7 +111,8 @@ function App:action(action)
   end
   if action=='start' and (self.phase=='HELP' or self.phase=='PAUSED') then self:resume(); return end
   if action=='restart' and (self.phase=='PAUSED' or self.phase=='HELP' or self.phase=='FINAL') then
-    self:resetMatch(self.playerCount); self.phase='AIM'; self.message='New match. Player 1 bowls.'; self:cue('start'); self:emit('restart'); return
+    -- A rematch keeps everyone's mascot; only the match and shot settings start over.
+    self:resetMatch(self.playerCount,true); self.phase='AIM'; self.message='New match. Player 1 bowls.'; self:cue('start'); self:emit('restart'); return
   end
   if self.phase=='HELP' or self.phase=='PAUSED' then return end
   if action=='view' then self.camera=({lane='deck',deck='score',score='lane'})[self.camera]; self.scorePlayer=self.match.currentPlayer; return end
@@ -212,7 +214,9 @@ function App.run(options)
       elseif (event[1]=='monitor_resize' and event[2]==monitorName) or (event[1]=='term_resize' and not monitorName) then
         app:pause('Display resized. Resume when ready.');rebuild();changed=true
       elseif event[1]=='timer' and event[2]==timer then
-        local w,h=target.getSize()
+        -- A detached monitor's wrapped methods error rather than return nil.
+        local sized,w,h=pcall(target.getSize)
+        if not sized then w,h=nil,nil end
         if monitorName and not w then
           -- The monitor vanished before its detach event arrived; fall back the same way.
           target=original;monitorName=nil;app:pause('Monitor detached. Resume here.');rebuild();changed=true
