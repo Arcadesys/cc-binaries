@@ -54,6 +54,7 @@ The scorecard uses furball's labels (Hole in one!, Birdie!, Par!, +N over par). 
 ```sh
 ./tools/test_craftos.sh /tmp/pine-links-results   # core: furball parity, physics, rules, input, app
 ./tools/test_runtime.sh /tmp/pine-links-runtime   # GUI: keyboard and monitor rounds, resize/detach
+lua5.4 tests/headless.lua                         # plain Lua 5.3/5.4 (CI): physics, rules, input, sound, app
 ```
 
 `tests/furball.lua` replays 125 shots and 200 lie samples from `tests/fixtures/furball_golf.json`. After furball tuning, regenerate fixtures with `../tools/furball-fixtures/update.sh`. `vendor/REVISION.txt` records the pinned Pine3D revision.
