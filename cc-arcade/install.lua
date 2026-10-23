@@ -2296,40 +2296,72 @@ function M.display(client,t,demo,verify)
     if tick>race.tick+180 then race=sim.new(race.seed+1); tick=0 end
    else
     local r=client:read({op='snapshot'})
-    snapshot=r.ok and r or {phase='HOUSE OFFLINE',positions=snapshot.positions,order={},paused=true}
+    snapshot=r.ok and r or {phase='HOUSE OFFLINE',offline=true,positions=snapshot.positions,order={}}
    end
    sfx:hear(snapshot,os.epoch('utc'))
    render:draw(snapshot,camera,demo); frames=frames+1; timer=os.startTimer(.05)
-  elseif e=='key' then
-   if a==keys.q or a==keys.backspace then return
-   elseif a==keys.c then camera=camera=='follow' and 'overview' or camera=='overview' and 'finish' or 'follow'
+  elseif e=='key' or e=='monitor_touch' or e=='mouse_click' then
+   local before=camera
+   if e~='key' or a==keys.c then camera=M.nextCamera(camera)
+   elseif a==keys.q or a==keys.backspace then return
    elseif a==keys.one then camera='follow' elseif a==keys.two then camera='overview' elseif a==keys.three then camera='finish' end
-   settings.set('derby.camera',camera); settings.save('/derby-settings')
-   render:draw(snapshot,camera,demo)
+   if camera~=before then
+    settings.set('derby.camera',camera); settings.save('/derby-settings')
+    render:draw(snapshot,camera,demo)
+   end
   elseif e=='term_resize' or e=='monitor_resize' then render:draw(snapshot,camera,demo) end
  end
 end
-local function run(args)
+function M.nextCamera(camera)
+ return camera=='follow' and 'overview' or camera=='overview' and 'finish' or 'follow'
+end
+-- Splits `--monitor NAME` and `--terminal` (as Pine Arcade and get --startup pass them)
+-- from the command words. Returns the words and the chosen screen, if any.
+function M.options(args)
+ local words,screen={},nil
+ local i=1
+ while i<=#args do
+  if args[i]=='--terminal' then screen={terminal=true}
+  elseif args[i]=='--monitor' then i=i+1; screen={monitor=args[i]}
+  else words[#words+1]=args[i] end
+  i=i+1
+ end
+ return words,screen
+end
+function M.target(screen)
+ local ui=require('derby.ui')
+ if screen and screen.terminal then return term.current() end
+ if screen and screen.monitor then return assert(peripheral.wrap(screen.monitor or ''),'No monitor named '..tostring(screen.monitor)) end
+ return ui.target()
+end
+local function run(args,t)
  local config=require('derby.config'); local ui=require('derby.ui')
  settings.load('/derby-settings')
- local command=args[1] or 'station'
- if command=='--demo' or command=='demo' or (command=='station' and not config.read() and arcadeos and arcadeos.freeplay()) then return M.display(nil,ui.target(),true,args[2]=='--verify') end
- if command=='setup' then return config.setup(args[2],args[3],args[4]) end
  local c=config.read()
+ local command=args[1] or 'station'
+ -- A bare `race` on a computer that is not part of a house (Pine Arcade, a boot entry)
+ -- shows the exhibition rather than a setup hint that vanishes at once.
+ if command=='--demo' or command=='demo' or (command=='station' and not c and (not args[1] or (arcadeos and arcadeos.freeplay()))) then return M.display(nil,t,true,args[2]=='--verify') end
+ if command=='setup' then return config.setup(args[2],args[3],args[4]) end
  if not c then print('House is not configured. Exhibition: race --demo'); print('Configure: house setup station <wired-modem> <host-id>'); return end
  if command=='host' then assert(c.role=='host','Configure this computer as the host'); return require('derby.server').run(c) end
- local client=require('derby.client').new(c)
- if command=='display' then return M.display(client,ui.target(),false)
- elseif command=='cashier' then assert(c.role=='cashier','Configure this computer as cashier'); return require('derby.cashier').run(client,ui.target())
- elseif command=='station' then return require('derby.station').run(client,ui.target()) end
+ -- Screens keep keys, touches and their own timers that arrive during a host request.
+ local client=require('derby.client').new(c,{keepEvents=true})
+ if command=='display' then return M.display(client,t,false)
+ elseif command=='cashier' then assert(c.role=='cashier','Configure this computer as cashier'); return require('derby.cashier').run(client,t)
+ elseif command=='station' then return require('derby.station').run(client,t) end
  error('Use: house host|display|station|cashier|setup or race --demo',0)
 end
 function M.run(args)
- local t=require('derby.ui').target()
+ local words,screen=M.options(args)
+ local t=M.target(screen)
+ local scale=t.getTextScale and t.getTextScale()
+ require('derby.ui').fit(t,39,19)
  local restore=require('derby.palette').save(t)
  local old=term.current()
- local ok,err=xpcall(function() run(args) end,debug.traceback)
+ local ok,err=xpcall(function() run(words,t) end,debug.traceback)
  term.redirect(old); restore()
+ if scale then t.setTextScale(scale) end
  if not ok then error(err,0) end
 end
 return M
@@ -2633,20 +2665,33 @@ writeFile('derby/client.lua', [[
 local config=require('derby.config')
 local store=require('derby.store')
 local M={protocol='pine-derby-house-v1'}
-function M.new(c)
+local function pack(...) return {n=select('#',...),...} end
+local unpack=table.unpack or unpack
+function M.new(c,options)
  c=c or config.read(); config.network(c); assert(c.host,'Host ID missing')
  local db=store.open('/house-client/state',{counter=0,bindings={},rounds={}})
  local state=db:get(); local api={config=c}
  function api:localState() return store.copy(state) end
  function api:saveLocal(s) db:save(s); state=s end
+ -- options.keepEvents: put back the keys, touches and timers that arrive while waiting
+ -- for the host, so a screen's own loop still sees them. Off by default for the wallet.
+ local keep=options and options.keepEvents
  local function transport(q)
   local token=tostring(os.getComputerID())..':'..tostring(os.epoch('utc'))..':'..tostring(math.random(1,999999))
   rednet.send(c.host,{token=token,request=q},M.protocol)
   local timer=os.startTimer(2)
+  local held={}
+  local function finish(result)
+   for _,e in ipairs(held) do os.queueEvent(unpack(e,1,e.n)) end
+   return result
+  end
   while true do
-   local e,a,b,p=os.pullEvent()
-   if e=='timer' and a==timer then return {ok=false,error='House offline; request retained for retry',offline=true} end
-   if e=='rednet_message' and a==c.host and p==M.protocol and type(b)=='table' and b.token==token and type(b.result)=='table' then os.cancelTimer(timer); return b.result end
+   local e=pack(os.pullEvent())
+   local name,a,b,p=e[1],e[2],e[3],e[4]
+   if name=='timer' and a==timer then return finish({ok=false,error='House offline',offline=true}) end
+   if name=='rednet_message' and a==c.host and p==M.protocol and type(b)=='table' and b.token==token and type(b.result)=='table' then os.cancelTimer(timer); return finish(b.result) end
+   -- Stale house replies and raw modem packets are never wanted again.
+   if keep and name~='modem_message' and not (name=='rednet_message' and p==M.protocol) then held[#held+1]=e end
   end
  end
  function api:read(q) return transport(q) end
@@ -2654,6 +2699,7 @@ function M.new(c)
   local r=transport(q)
   if not r.offline and not r.pending then state.pending=nil; state.last={request=q,result=r}; db:save(state) end
   if r.pending then return {ok=false,error='Cashier transfer pending reconciliation',pending=true} end
+  if r.offline then return {ok=false,error='House offline; request kept for retry',offline=true} end
   return r
  end
  function api:retry()
@@ -3253,6 +3299,8 @@ local function line(t,y,text,fg,bg)
  t.write((text..string.rep(' ',w)):sub(1,w))
 end
 M.line=line
+local PLACES={'1st','2nd','3rd'}
+M.status=require('derby.ui').phase
 function M.new(t)
  assert(t.isColor(),'Pine3D Derby requires an advanced colour computer or monitor')
  require('derby.palette').apply(t)
@@ -3300,10 +3348,11 @@ function M.new(t)
   end
   f:drawObjects(objects); f:drawBuffer()
   line(t,1,' PINE3D DERBY'..(exhibition and ' | EXHIBITION - NO MONEY' or ' | '..tostring(v.id or 'CONNECTING')),colors.white,colors.blue)
-  line(t,2,' '..(v.paused and 'PAUSED' or v.phase or 'CONNECTING')..((v.seconds or 0)>0 and (' | '..v.seconds..' seconds') or ''),colors.yellow)
+  line(t,2,M.status(v),colors.yellow)
   local win=v.order and v.order[1]
   line(t,3,win and (' WINNER: '..win..' '..sim.horses[win].name) or ' Same race. Three horses. Pick your winner.',colors.white)
-  for i=1,3 do line(t,h-5+i,' '..i..' '..sim.horses[i].name..'  '..math.floor((positions[i] or 0)*100)..'%',colors.white) end
+  local place={}; for k,id in ipairs(v.order or {}) do place[id]=PLACES[k] end
+  for i=1,3 do line(t,h-5+i,' '..i..' '..sim.horses[i].name..'  '..(place[i] or (math.floor((positions[i] or 0)*100)..'%')),place[i]=='1st' and colors.yellow or colors.white) end
   line(t,h-1,' [C] Camera: '..(camera or 'follow')..'  [Q] Exit',colors.yellow)
   line(t,h,exhibition and ' Practice only | 1=Follow 2=Overview 3=Finish' or ' Bet at a station | 1=Follow 2=Overview 3=Finish',colors.white)
   term.redirect(previous)
@@ -3456,9 +3505,15 @@ function M.run(c)
    elseif a==keys.m then result=host:operator('currency')
    elseif a==keys.f then result=host:operator('fund')
    elseif a==keys.r or a==keys.u then
+    -- The R/U keypress is followed by its own char event; let it pass before read()
+    -- so the typed ID does not start with that letter.
+    local settle=os.startTimer(0)
+    repeat local ev,id=os.pullEvent() until ev=='timer' and id==settle
     t.setCursorPos(1,15); t.clearLine(); write(a==keys.r and 'Transaction ID: ' or 'Round ID: '); local id=read()
     if a==keys.r then write('Verified items actually moved: '); result=host:operator('reconcile',id,tonumber(read()))
     else result=host:operator('refund',id) end
+    -- read() swallowed the schedule timer; without a new one the races stop.
+    timer=os.startTimer(.1)
    end
    if result then message=result.ok and 'Saved and verified' or result.error; draw() end
   end
@@ -3746,6 +3801,16 @@ writeFile('derby/station.lua', [[
 local ui=require('derby.ui')
 local sim=require('derby.sim')
 local M={}
+-- Row 13: the player's ticket for this race and, once it is run, what it paid.
+function M.ticketLine(snapshot)
+ local ticket=snapshot.ok and snapshot.ticket
+ if not ticket then return nil end
+ local name=sim.horses[ticket.horse] and sim.horses[ticket.horse].name or tostring(ticket.horse)
+ if snapshot.phase=='RESULT' then
+  return (ticket.paid or 0)>0 and (' YOU WON '..ticket.paid..' CREDITS on '..name..'!') or (' No win on '..name..' this time.')
+ elseif snapshot.phase=='CANCELLED' then return ' Race cancelled: '..ticket.stake..' credits refunded.' end
+ return ' Your ticket: '..name..', '..ticket.stake..' to return '..ticket.returns
+end
 function M.run(client,t)
  local horse,stakeIndex,focus=1,1,1
  local stakes={5,10,20}; local status=''; local review
@@ -3757,6 +3822,10 @@ function M.run(client,t)
   card=ui.card(); account=card and card.account
   local r=client:read({op='snapshot',account=account})
   snapshot=r
+  -- A ticket under review is only good for the race that was open when it was made.
+  if review and not (r.ok and r.id==review.race and r.phase=='OPEN' and not r.paused) then
+   review=nil; status=r.ok and 'Betting closed before you confirmed. No bet placed.' or 'House offline. No bet placed.'
+  end
   if account then local a=client:read({op='lookup',account=account}); balance=a.ok and a.balance or nil; if not a.ok then status=a.error end else balance=nil end
  end
  local function draw()
@@ -3769,14 +3838,17 @@ function M.run(client,t)
    ui.line(t,8,' Stake: '..review.stake..' credits')
    ui.line(t,10,' Total return if winner: '..review.returns)
    ui.line(t,11,' Includes your stake | 1 credit = 1 diamond')
+   ui.line(t,12,' Betting closes in '..tostring(snapshot.seconds or 0)..'s',colors.lightGray)
    ui.button(t,13,'ENTER: PLACE BET',true,false)
    ui.line(t,17,' Backspace: back | Q: exit')
   else
-   ui.line(t,3,snapshot.ok and (' '..tostring(snapshot.phase)..' | '..tostring(snapshot.seconds or 0)..'s'..(snapshot.paused and ' | PAUSED' or '')) or ' HOUSE OFFLINE - BETTING UNAVAILABLE',colors.yellow)
+   ui.line(t,3,snapshot.ok and ui.phase(snapshot) or ' HOUSE OFFLINE - BETTING UNAVAILABLE',colors.yellow)
    for i,h in ipairs(sim.horses) do
     local returns=snapshot.payouts and snapshot.payouts[i][tostring(stakes[stakeIndex])]
     ui.button(t,4+(i-1)*3,i..' '..h.name..' | return '..tostring(returns or '--'),focus==i,horse==i)
    end
+   local mine=M.ticketLine(snapshot)
+   if mine then ui.line(t,13,mine,colors.yellow) end
    ui.line(t,14,(focus==4 and '> ' or '  ')..'Stake: '..stakes[stakeIndex]..'  [Left/Right]',colors.white,focus==4 and colors.blue or colors.black)
    ui.button(t,15,snapshot.ticket and 'TICKET ACCEPTED' or 'REVIEW BET',focus==5,false)
    ui.line(t,18,' Tab/Arrows | Enter | R: retry | Q: exit')
@@ -3792,9 +3864,13 @@ function M.run(client,t)
    status=r.ok and 'Ticket accepted. Winnings reach your account.' or r.error; review=nil; sfx:ticket(r.ok,os.epoch('utc')); refresh()
   elseif focus<=3 then horse=focus
   elseif focus==4 then stakeIndex=stakeIndex%3+1
+  elseif account and balance and balance<stakes[stakeIndex] then status='Not enough credits: '..balance..' on card, stake '..stakes[stakeIndex]..'. Visit the cashier.'
   elseif snapshot.ok and snapshot.phase=='OPEN' and not snapshot.paused and account and balance and not snapshot.ticket then
    review={account=account,race=snapshot.id,horse=horse,stake=stakes[stakeIndex],returns=snapshot.payouts[horse][tostring(stakes[stakeIndex])]}
-  else status='Bet unavailable: check card, host and race status.' end
+  elseif snapshot.ticket then status='You already have a ticket for this race.'
+  elseif not account then status='Insert a house account card to bet.'
+  elseif not (snapshot.ok and snapshot.phase=='OPEN') or snapshot.paused then status='Betting is closed. Wait for the next race.'
+  else status='Bet unavailable: house cannot read your balance. Press R or retry shortly.' end
  end
  draw()
  while true do
@@ -3923,6 +3999,13 @@ return M
 
 writeFile('derby/ui.lua', [[
 local M={}
+-- What each host phase means to a player.
+M.phases={OPEN='BETTING OPEN',LOCKED='BETTING CLOSED - GATES LOADING',RUNNING="AND THEY'RE OFF",RESULT='RESULT',CANCELLED='RACE CANCELLED - STAKES REFUNDED'}
+function M.phase(v)
+ local text=v.offline and 'HOUSE OFFLINE - RECONNECTING' or v.paused and 'PAUSED' or M.phases[v.phase] or v.phase or 'CONNECTING'
+ if not v.offline and (v.seconds or 0)>0 then text=text..' | '..v.seconds..'s' end
+ return ' '..text
+end
 function M.line(t,y,text,fg,bg)
  local w,h=t.getSize(); if y<1 or y>h then return end
  t.setCursorPos(1,y); t.setTextColor(fg or colors.white); t.setBackgroundColor(bg or colors.black)
@@ -3955,9 +4038,18 @@ function M.card()
  end
 end
 function M.target()
- local monitor=peripheral.find('monitor')
+ -- A plain monitor cannot show the colour games; prefer an advanced one.
+ local monitor=peripheral.find('monitor',function(_,m) return m.isColor() end)
  if monitor then monitor.setTextScale(1); return monitor end
  return term.current()
+end
+-- Small monitors: use half-size text when the full size cannot fit w x h.
+function M.fit(t,w,h)
+ if not t.setTextScale then return t end
+ t.setTextScale(1)
+ local cw,ch=t.getSize()
+ if cw<w or ch<h then t.setTextScale(.5) end
+ return t
 end
 function M.usable(t)
  if not t.isColor() then

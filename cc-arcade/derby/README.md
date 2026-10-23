@@ -32,9 +32,16 @@ its complete `derby` subfolder. In ArcadeOS, open a terminal and change to
 race --demo
 ```
 
-Use **1 / 2 / 3** to choose follow / overview / finish, **C** to cycle cameras,
-and **Q** to exit. The camera preference is saved. The colour display must be at
-least 39 × 19 characters. The exhibition has no redeemable funds.
+A bare `race` on a computer that is not set up as part of a house (for example
+from Pine Arcade or a `get --startup` boot entry) also opens the exhibition.
+
+Use **1 / 2 / 3** to choose follow / overview / finish, **C** or a touch/click to
+cycle cameras, and **Q** to exit. The camera preference is saved. The colour
+display must be at least 39 × 19 characters; a monitor too small for that at
+normal text size switches to half-size text. Monitors without colour are skipped.
+`--monitor NAME` or `--terminal` picks the screen for any role (`race --demo
+--monitor top`, `house display --monitor right`). The exhibition has no
+redeemable funds.
 
 ## Set up a house
 
@@ -81,7 +88,12 @@ locked seed and accepted tickets. On restart it reconstructs the same simulation
 from the saved seed and tick.
 
 Each account can confirm one ticket per race for 5, 10 or 20 credits. The station
-shows the exact **total return including stake** before final confirmation.
+shows the exact **total return including stake** and the betting countdown before
+final confirmation. A review is dropped if betting closes before you confirm, and
+a stake larger than the card's balance is refused before review. Once accepted,
+the station shows your ticket and, after the race, what it paid. The overhead
+display shows the finishing places and says **HOUSE OFFLINE** while it cannot
+reach the host.
 Calibration ran 100,000 seeds and targets a 10% house margin before whole-credit
 rounding. `odds.json` records the sample counts and version; `odds.lua` is the
 bundled runtime table. Observed wins were 38,045 / 26,209 / 35,746; mean winning
@@ -99,6 +111,8 @@ same wallet. RPS reserves the next floor's reward before continuing. Removing a
 card after a wager does not redirect winnings.
 
 Network timeouts retain the request ID for **R** retry at a station or cashier.
+Keys and touches pressed while a screen waits for the host are kept, so **Q** still
+exits a display whose host is offline (after the 2 second timeout).
 An interrupted arcade round is shown on the host; review it and use **U** to
 refund by round ID. A cashier transfer writes its intent before moving items and
 credits only the returned transfer count. An uncertain result pauses financial

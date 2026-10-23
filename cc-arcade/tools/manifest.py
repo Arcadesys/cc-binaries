@@ -33,8 +33,8 @@ FURBALL = {
 TOOLS = ['house', 'config']
 KIOSKS = ['softstore']
 LAUNCHER = 'pinearcade'
-# Games whose entry does not take --monitor NAME.
-NO_MONITOR = {'race'}
+# Games whose entry does not take --monitor NAME. (race takes it since derby/app.lua parses it.)
+NO_MONITOR = set()
 ORDER = [LAUNCHER, 'pineslots', 'pinejack', 'pinebox', 'race', *FURBALL, 'wordle', *KIOSKS, *TOOLS]
 REQ = re.compile(r"""require\s*\(?\s*['"]([\w.\-]+)['"]""")
 PINE = ['derby/vendor/Pine3D.lua', 'derby/vendor/betterblittle.lua', 'derby/vendor/LICENSE', 'derby/vendor/REVISION.txt']

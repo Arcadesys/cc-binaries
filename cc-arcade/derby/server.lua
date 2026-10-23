@@ -40,9 +40,15 @@ function M.run(c)
    elseif a==keys.m then result=host:operator('currency')
    elseif a==keys.f then result=host:operator('fund')
    elseif a==keys.r or a==keys.u then
+    -- The R/U keypress is followed by its own char event; let it pass before read()
+    -- so the typed ID does not start with that letter.
+    local settle=os.startTimer(0)
+    repeat local ev,id=os.pullEvent() until ev=='timer' and id==settle
     t.setCursorPos(1,15); t.clearLine(); write(a==keys.r and 'Transaction ID: ' or 'Round ID: '); local id=read()
     if a==keys.r then write('Verified items actually moved: '); result=host:operator('reconcile',id,tonumber(read()))
     else result=host:operator('refund',id) end
+    -- read() swallowed the schedule timer; without a new one the races stop.
+    timer=os.startTimer(.1)
    end
    if result then message=result.ok and 'Saved and verified' or result.error; draw() end
   end
