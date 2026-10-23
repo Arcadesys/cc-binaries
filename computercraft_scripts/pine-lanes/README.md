@@ -45,7 +45,7 @@ This is deterministic arcade physics, not a certified bowling simulator. Pin top
 
 `lib/rng.lua` (mulberry32) and `lib/pindeck.lua` are the furball kernel; `lib/physics.lua` keeps the Pine contract over it, `lib/lane.lua` maps furball scene units to Pine axes, and `lib/alley.lua` holds the converted meshes. The kernel's fixed 1/120-second steps run in bounded batches, record 30 Hz playback snapshots, and display at a 10 Hz target. Skipping the animation cannot change a roll. Numerical failures cancel without altering the score or rack. `tests/furball.lua` checks the port against `tests/fixtures/furball_bowling.json`; regenerate it after furball tuning with `../tools/furball-fixtures/update.sh`.
 
-Run `tools/test_craftos.sh RESULT_DIRECTORY` for core tests or `tools/test_runtime.sh RESULT_DIRECTORY` for GUI CraftOS-PC integration tests. They use isolated emulator directories. The runtime tests require GUI monitor emulation. In CraftOS, launch `tests/run.lua` from the game folder for the core checks.
+Run `tools/test_craftos.sh RESULT_DIRECTORY` for core tests or `tools/test_runtime.sh RESULT_DIRECTORY` for GUI CraftOS-PC integration tests. They use isolated emulator directories. Without CraftOS, `lua5.4 tests/headless.lua` (run from this folder, as CI does) checks physics, rules, input, sound and controller under plain Lua 5.3/5.4. The runtime tests require GUI monitor emulation. In CraftOS, launch `tests/run.lua` from the game folder for the core checks.
 
 `--seed N` replays a match; `--diagnostic` starts a labeled lane inspection; `--log /path.jsonl` records explicit local playtest receipts. Logs are opt-in and are not saved match progress.
 
