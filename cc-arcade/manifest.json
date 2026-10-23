@@ -174,11 +174,11 @@
     },
     {
      "path": "pineslots/controls.lua",
-     "size": 3221
+     "size": 3246
     },
     {
      "path": "pineslots/machine.lua",
-     "size": 7976
+     "size": 8772
     },
     {
      "path": "pineslots/reels.lua",
@@ -186,7 +186,7 @@
     },
     {
      "path": "pineslots/render.lua",
-     "size": 3615
+     "size": 3704
     },
     {
      "path": "pineslots/scene.lua",

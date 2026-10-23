@@ -62,11 +62,12 @@ inserted=nil; live:refresh(); inserted={path='disk',drive='drive_0'}; live:refre
 check(live.problem and not live:session(),'Non-house disk rejected')
 disk=oldDisk
 -- The real event loop, driven by fake time, inputs and a recording wallet.
-local function harness(w,events,seq)
+local function harness(w,events,seq,width)
  local now=0; local level={}
  local sound={play=function() end,tick=function() end}
  local rolls=seq or {}
- local opts={target=window.create(term.current(),1,1,51,19,false),wallet=w,sound=sound,
+ local target=window.create(term.current(),1,1,width or 51,19,false)
+ local opts={target=target,wallet=w,sound=sound,
   clock=function() return now end,random=function(lo) return table.remove(rolls,1) or lo end,
   controls=controls.new({arm='right',bet='left',max='top',cash='back'},function(s) return level[s]==true end)}
  local co=coroutine.create(function() machine.run(opts) end)
@@ -76,7 +77,8 @@ local function harness(w,events,seq)
  local function tick(dt) now=now+(dt or .05); send('timer',1) end
  local function press(name,side) level[side]=true; send('redstone'); level[side]=false; send('redstone') end
  send()
- local api={tick=tick,press=press,send=send,co=co,now=function() return now end}
+ local api={tick=tick,press=press,send=send,co=co,now=function() return now end,
+  row=function(y) return (target.getLine(y)) end}
  events(api)
  os.pullEvent,os.startTimer=oldPull,oldTimer
  return api
@@ -116,4 +118,53 @@ harness(w,function(h)
  failSettle=false; h.press('arm','right')
  eq(w:session().balance,99,'Retry confirms payout'); h.send('key',keys.q)
 end,{0,0,0})
+-- The meter must not give a settled win away while the reels are still turning.
+local ex3=wallets.exhibition()
+local seven=reels.evaluate(sevens,1)
+harness(ex3,function(h)
+ h.tick(); h.press('arm','right'); h.tick()
+ check(h.row(1):find('CREDITS 99 ',1,true),'Meter shows the stake taken, not the win, while spinning: '..h.row(1))
+ for _=1,30 do h.tick() end
+ check(h.row(1):find('CREDITS 99 ',1,true),'Still hidden mid-spin: '..h.row(1))
+ for _=1,20 do h.tick() end
+ local mid=tonumber(h.row(1):match('CREDITS (%d+)'))
+ check(mid and mid>99 and mid<99+seven,'Win rolls up after the reels stop: '..tostring(mid))
+ for _=1,40 do h.tick() end
+ check(h.row(1):find('CREDITS '..(99+seven)..' ',1,true),'Roll-up ends on the settled balance: '..h.row(1))
+ h.send('key',keys.q)
+end,{sevens[1],sevens[2],sevens[3]})
+eq(ex3:session().balance,99+seven,'Settled balance')
+-- Short meter: the pull lowers the bet to what is left instead of refusing forever.
+local ex4=wallets.exhibition(); ex4:session().balance=3
+local begun={}; local b4=ex4.begin
+ex4.begin=function(self,stake,maximum) begun[#begun+1]=stake; return b4(self,stake,maximum) end
+harness(ex4,function(h)
+ h.tick(); h.press('max','top'); h.press('arm','right'); h.tick()
+ eq(#begun,0,'No spin on a short meter'); check(h.row(18):find('BET LOWERED TO 3',1,true),'Lowered bet shown: '..h.row(18))
+ check(h.row(1):find('BET 3',1,true),'Bet meter follows')
+ h.press('arm','right'); eq(begun[1],3,'Next pull plays the lowered bet')
+ for _=1,60 do h.tick() end
+ h.send('key',keys.q)
+end,{0,0,0})
+-- On a 39-column display, a multi-line win still shows what each line pays.
+local multi
+for a=0,reels.size-1 do for b=0,reels.size-1 do for c=0,reels.size-1 do
+ if not multi then local _,wins=reels.evaluate({a,b,c},5); if #wins>1 and wins[2].pay>=10 then multi={a,b,c} end end
+end end end
+check(multi,'Found a multi-line win')
+local _,mwins=reels.evaluate(multi,5)
+local seen={}
+harness(wallets.exhibition(),function(h)
+ h.tick(); h.press('max','top'); h.press('arm','right')
+ for _=1,200 do h.tick(); local m=h.row(18); if m:find('LINE',1,true) then seen[#seen+1]=m end end
+ h.send('key',keys.q)
+end,{multi[1],multi[2],multi[3]},39)
+check(#seen>0,'Line details shown')
+local pays={}; for _,w in ipairs(mwins) do pays[w.pay]=true end
+for _,m in ipairs(seen) do check(pays[tonumber(m:match('(%d+)%s*$'))],'Line pay fits on 39 columns: '..m) end
+-- Every line message, long or compact, fits the narrowest supported display.
+for _,sym in ipairs({'D','S','R','B','P','C'}) do
+ local n=reels.names[sym]
+ check(#('LINE 5: '..n..' '..n..' '..n..' = '..reels.three[sym])<=39,'Compact line text fits for '..n)
+end
 print('PASS '..passed..' Pine Slots assertions')
