@@ -124,7 +124,9 @@ function ui.draw(t, view, buttons, sceneRows)
     writeAt(t, 1, 4, "KEYBOARD CONTROLS", bright, black, w)
     writeAt(t, 1, 5, "ARROWS aim/power  Q/E or C club  A cup", white, black, w)
     writeAt(t, 1, 6, "SPACE swing   TAB view   F fine adjust", white, black, w)
-    writeAt(t, 1, 7, "P menu  H help  R restart  Backspace quit", white, black, w)
+    writeAt(t, 1, 7, "P menu  H help  Backspace quit", white, black, w)
+    writeAt(t, 1, 8, "R restart (here, menu or scorecard)", white, black, w)
+    writeAt(t, 1, 9, "SPACE / H resumes the hole", white, black, w)
   end
   if view.phase == "PAUSED" then writeAt(t, 1, 4, "PAUSED  |  Choose RESUME, RESTART or QUIT", bright, black, w) end
   t.setCursorPos(1, h)
