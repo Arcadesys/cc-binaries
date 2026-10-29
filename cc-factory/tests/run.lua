@@ -171,6 +171,38 @@ test('unlimited fuel runs complete operating cycle',function() local w,c,e=ready
 test('low fuel without consumables stops before reserve loss',function()
  local w,c,e=ready({fuel=0});w.slots[1]=nil;drive(w,c,e);eq(c.phase,'NEEDS_HELP');eq(w.pose.x,0);eq(w.pose.z,0);eq(w.fuel,0)
 end)
+for _,manual in ipairs({false,true}) do
+ test('exact return fuel reserve reaches home '..tostring(manual),function()
+  local w,c,e=ready()
+  for _=1,40 do e.step(c);if w.pose.z < -1 then break end end
+  local moves=0
+  for i=2,#c.path do
+   local a,b=c.path[i-1],c.path[i]
+   moves=moves+math.abs(a.x-b.x)+math.abs(a.y-b.y)+math.abs(a.z-b.z)
+  end
+  assert(moves>0);w.fuel=moves+c.config.fuelMargin;w.slots[1]=nil
+  if manual then e.requestReturn(c) else e.step(c);eq(c.phase,'RETURNING') end
+  for _=1,100 do e.step(c);if c.phase=='SERVICE' or c.phase=='NEEDS_HELP' then break end end
+  eq(c.phase,'SERVICE',c.lastError);poseMatches(w,c)
+  eq(w.pose.x,0);eq(w.pose.y,0);eq(w.pose.z,0);eq(w.pose.facing,'north');eq(w.fuel,c.config.fuelMargin)
+  if manual then drive(w,c,e);eq(c.phase,'STOPPED',c.lastError) end
+ end)
+end
+test('fuel capacity failure retains coal and persists recoverable stop',function()
+ local w,c,e=ready({fuel=0});local coal=w.slots[1].count
+ turtle.getFuelLimit=function() return 4 end
+ drive(w,c,e);eq(c.phase,'NEEDS_HELP');eq(w.slots[1].count,coal);eq(w.fuel,0)
+ assert(c.lastError:find('capacity',1,true),c.lastError);poseMatches(w,c)
+ local loaded={config=sim.copy(c.config)};loaded.config.resume=true
+ turtle.getFuelLimit=function() return 100000 end
+ assert(e.initialize(loaded)~='ERROR',loaded.lastError);drive(w,loaded,e);eq(loaded.phase,'DONE',loaded.lastError)
+end)
+test('fuel no progress fails promptly without consuming stack',function()
+ local w,c,e=ready({fuel=0});local attempts=0;local coal=w.slots[1].count
+ turtle.refuel=function() attempts=attempts+1;assert(attempts<3,'Unbounded refuel');return true end
+ drive(w,c,e);eq(c.phase,'NEEDS_HELP');eq(attempts,1);eq(w.slots[1].count,coal)
+ assert(c.lastError:find('no progress',1,true),c.lastError);poseMatches(w,c)
+end)
 test('missing output receiver fails without drops',function()
  local w,c,e=ready();w.set({x=0,y=-1,z=0},false);drive(w,c,e);eq(c.phase,'NEEDS_HELP');eq(w.drops,0)
 end)

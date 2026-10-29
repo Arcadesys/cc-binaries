@@ -77,12 +77,18 @@ local function fuel(ctx,need)
     if level=='unlimited' then return true end
     if type(level)~='number' then return false,'Invalid fuel reading' end
     if level>=need then return true end
+    local limit=turtle.getFuelLimit()
+    if type(limit)=='number' and need>limit then
+        return false,'Required fuel exceeds turtle fuel capacity'
+    end
     for slot=1,16 do
         local item=turtle.getItemDetail(slot)
         if item and item.name==ctx.config.fuelItem then
             turtle.select(slot)
             while turtle.getItemCount(slot)>0 and turtle.getFuelLevel()<need do
+                local before=turtle.getFuelLevel()
                 if not turtle.refuel(1) then break end
+                if turtle.getFuelLevel()<=before then return false,'Refueling made no progress' end
             end
         end
     end
@@ -190,7 +196,8 @@ local function service(ctx)
     local supply; supply,err=receiver(ctx.config.supplySide); if not supply then return false,err end
     local need=routeMoves(ctx.workPath)*2+ctx.config.fuelMargin+2
     for _=1,16 do
-        local fuelOK=fuel(ctx,need)
+        local fuelOK,fuelError=fuel(ctx,need)
+        if not fuelOK and (fuelError=='Required fuel exceeds turtle fuel capacity' or fuelError=='Refueling made no progress') then return false,fuelError end
         if fuelOK and stock(ctx,ctx.config.torchItem)>=ctx.config.torchReserve and stock(ctx,ctx.config.fillItem)>=ctx.config.fillReserve then
             ctx.phase='RESUMING'; ctx.travelIndex=2; return true
         end
@@ -365,7 +372,14 @@ function M.step(ctx)
         end
         local target=path[ctx.travelIndex]
         local ok,err=transact(ctx,'cleared route',function()
-            local enough,why=fuel(ctx,routeMoves(path,2,returning and ctx.travelIndex+1 or #path)+ctx.config.fuelMargin+1)
+            -- Turns use no fuel. Budget the actual remaining homeward moves,
+            -- including a target reached before its heading is restored.
+            local remaining=routeMoves(path,2,#path)+1
+            if returning then
+                remaining=math.abs(ctx.pose.x-target.x)+math.abs(ctx.pose.y-target.y)+math.abs(ctx.pose.z-target.z)
+                    +routeMoves(path,2,ctx.travelIndex)
+            end
+            local enough,why=fuel(ctx,remaining+ctx.config.fuelMargin)
             if not enough then return false,why end
             local moved,reason=approach(ctx,target,false)
             if moved and equal(ctx.pose,target) then ctx.travelIndex=ctx.travelIndex+(returning and -1 or 1) end
