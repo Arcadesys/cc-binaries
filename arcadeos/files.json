@@ -1170,7 +1170,7 @@
    "description": "Factory and TurtleOS turtle automation (turtles only)",
    "required": false,
    "turtle": true,
-   "size": 573840,
+   "size": 574694,
    "files": [
     {
      "src": "cc-factory/factory.lua",
@@ -1330,7 +1330,7 @@
     {
      "src": "cc-factory/lib_safe_miner.lua",
      "dest": "/pkg/factory/lib_safe_miner.lua",
-     "size": 25930
+     "size": 26784
     },
     {
      "src": "cc-factory/lib_schema.lua",

@@ -32,7 +32,10 @@ def main():
         results.mkdir()
         code = r'''
 local ok,err=pcall(function()
+  local journal=assert(fs.open("/mining-install-preserve.checkpoint","w"));journal.write("preserve existing job");journal.close()
   assert(shell.run("/src/cc-factory/dist/factory.lua"), "Standalone installer failed")
+  assert(shell.run("/src/cc-factory/dist/factory.lua"), "Repeated standalone installer failed")
+  local preserved=assert(fs.open("/mining-install-preserve.checkpoint","r"));assert(preserved.readAll()=="preserve existing job","Installer changed job journal");preserved.close()
   for _,name in ipairs(fs.list("/src/cc-factory")) do
     if name=="factory.lua" or name=="turtle_os.lua" or name=="fleet_coordinator.lua" or name=="fleet_worker.lua" or name:match("^lib_.*%.lua$") or name:match("^state_.*%.lua$") then
       local a=assert(fs.open("/src/cc-factory/"..name,"r")); local expected=a.readAll();a.close()
@@ -54,7 +57,7 @@ local ok,err=pcall(function()
   assert(not fs.exists("/pkg/factory/tests"),"Test helpers installed")
   assert(not fs.exists("/pkg/factory/tools"),"Developer tools installed")
 end)
-local f=assert(fs.open("/results/result.txt","w"));f.write(ok and "PASS both installers and source readback" or "FAIL "..tostring(err));f.close();os.shutdown()
+local f=assert(fs.open("/results/result.txt","w"));f.write(ok and "PASS both installers, repeat install, preserved journal and source readback" or "FAIL "..tostring(err));f.close();os.shutdown()
 '''
         proc = subprocess.run([CRAFTOS, "--headless", "--directory", str(base / "emulator"),
                                "--mount-ro", f"/src={REPO}", "--mount-rw", f"/results={results}",

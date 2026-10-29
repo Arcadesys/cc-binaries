@@ -68,6 +68,8 @@ The [setup prompt at 39×13](docs/evidence/setup-home-39x13-page1.png) shows the
 
 The engine keeps a recorded cleared return route, budgets its fuel reserve, unloads only into a verified inventory, retains configured supplies during service, and restores the exact work pose and instruction before continuing. Successful completion requires verified home pose and output transfer. `DONE` is not a claim that the surrounding world was inspected by a human.
 
+Homeward fuel checks use the actual remaining recorded moves plus the configured margin. A return at exactly that reserve can reach home without spending the margin; turns do not cost fuel. Unlimited fuel bypasses numeric fuel checks. An impossible fuel target (above the turtle's fuel capacity) stops before consuming fuel, and a refuel call that makes no progress stops with a reason. Fix the supply/capacity problem before resuming the identical job; fuel checks never authorize a shortcut or guessed pose.
+
 ## Resume and reconcile
 
 To resume a clean stopped or safely failed job, repeat its exact command with `--resume`, verify the saved physical pose and heading, then press ENTER. The default journal is `mining-<job>.checkpoint`; `--checkpoint <path>` chooses a different path. Keep the same job and configuration.
