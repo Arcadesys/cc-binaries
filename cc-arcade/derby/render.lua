@@ -8,6 +8,8 @@ local function line(t,y,text,fg,bg)
  t.write((text..string.rep(' ',w)):sub(1,w))
 end
 M.line=line
+local PLACES={'1st','2nd','3rd'}
+M.status=require('derby.ui').phase
 function M.new(t)
  assert(t.isColor(),'Pine3D Derby requires an advanced colour computer or monitor')
  require('derby.palette').apply(t)
@@ -55,10 +57,11 @@ function M.new(t)
   end
   f:drawObjects(objects); f:drawBuffer()
   line(t,1,' PINE3D DERBY'..(exhibition and ' | EXHIBITION - NO MONEY' or ' | '..tostring(v.id or 'CONNECTING')),colors.white,colors.blue)
-  line(t,2,' '..(v.paused and 'PAUSED' or v.phase or 'CONNECTING')..((v.seconds or 0)>0 and (' | '..v.seconds..' seconds') or ''),colors.yellow)
+  line(t,2,M.status(v),colors.yellow)
   local win=v.order and v.order[1]
   line(t,3,win and (' WINNER: '..win..' '..sim.horses[win].name) or ' Same race. Three horses. Pick your winner.',colors.white)
-  for i=1,3 do line(t,h-5+i,' '..i..' '..sim.horses[i].name..'  '..math.floor((positions[i] or 0)*100)..'%',colors.white) end
+  local place={}; for k,id in ipairs(v.order or {}) do place[id]=PLACES[k] end
+  for i=1,3 do line(t,h-5+i,' '..i..' '..sim.horses[i].name..'  '..(place[i] or (math.floor((positions[i] or 0)*100)..'%')),place[i]=='1st' and colors.yellow or colors.white) end
   line(t,h-1,' [C] Camera: '..(camera or 'follow')..'  [Q] Exit',colors.yellow)
   line(t,h,exhibition and ' Practice only | 1=Follow 2=Overview 3=Finish' or ' Bet at a station | 1=Follow 2=Overview 3=Finish',colors.white)
   term.redirect(previous)

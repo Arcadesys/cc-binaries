@@ -1,4 +1,11 @@
 local M={}
+-- What each host phase means to a player.
+M.phases={OPEN='BETTING OPEN',LOCKED='BETTING CLOSED - GATES LOADING',RUNNING="AND THEY'RE OFF",RESULT='RESULT',CANCELLED='RACE CANCELLED - STAKES REFUNDED'}
+function M.phase(v)
+ local text=v.offline and 'HOUSE OFFLINE - RECONNECTING' or v.paused and 'PAUSED' or M.phases[v.phase] or v.phase or 'CONNECTING'
+ if not v.offline and (v.seconds or 0)>0 then text=text..' | '..v.seconds..'s' end
+ return ' '..text
+end
 function M.line(t,y,text,fg,bg)
  local w,h=t.getSize(); if y<1 or y>h then return end
  t.setCursorPos(1,y); t.setTextColor(fg or colors.white); t.setBackgroundColor(bg or colors.black)
@@ -31,9 +38,18 @@ function M.card()
  end
 end
 function M.target()
- local monitor=peripheral.find('monitor')
+ -- A plain monitor cannot show the colour games; prefer an advanced one.
+ local monitor=peripheral.find('monitor',function(_,m) return m.isColor() end)
  if monitor then monitor.setTextScale(1); return monitor end
  return term.current()
+end
+-- Small monitors: use half-size text when the full size cannot fit w x h.
+function M.fit(t,w,h)
+ if not t.setTextScale then return t end
+ t.setTextScale(1)
+ local cw,ch=t.getSize()
+ if cw<w or ch<h then t.setTextScale(.5) end
+ return t
 end
 function M.usable(t)
  if not t.isColor() then

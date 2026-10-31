@@ -30,7 +30,7 @@ function M.new()
  end
  function hub:computer(id,files)
   local p=platform.new({files=files or {}})
-  local node={id=id,platform=p,files=p.files,timers={},modules={},finished=false}
+  local node={id=id,platform=p,files=p.files,timers={},modules={},queued={},finished=false}
   self.nodes[id]=node
   local env=setmetatable({fs=p.fs,textutils=p.textutils},{__index=_G}); env._G=env
   node.env=env
@@ -49,6 +49,7 @@ function M.new()
   env.os={getComputerID=function() return id end,epoch=function() return math.floor(hub.now*1000) end,
    startTimer=function(seconds) hub.serial=hub.serial+1; node.timers[hub.serial]=hub.now+seconds; return hub.serial end,
    cancelTimer=function(timer) node.timers[timer]=nil end,
+   queueEvent=function(...) node.queued[#node.queued+1]={...} end,
    pullEvent=function() return coroutine.yield() end}
   env.os.pullEventRaw=env.os.pullEvent
   env.peripheral={wrap=function(name)
@@ -88,9 +89,9 @@ function M.new()
   node.co=coroutine.create(function() node.require('derby.server').run(config) end)
   resume(node); self.host=node; return node
  end
- function hub:client(id,files)
+ function hub:client(id,files,options)
   local node=self:computer(id,files)
-  node.client=node.require('derby.client').new({modem='wired',host=1})
+  node.client=node.require('derby.client').new({modem='wired',host=1},options)
   return node
  end
  function hub:task(node,fn)

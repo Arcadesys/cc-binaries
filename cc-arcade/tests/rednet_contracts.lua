@@ -276,6 +276,41 @@ test('malformed race bet account cannot crash host or mutate ledger',function()
  end
  check(h:call(c,'read',{op='snapshot'}).ok,'Host still running'); sane(h)
 end)
+test('derby screens keep input that arrives while waiting for the house',function()
+ local h=Hub.new()
+ for _,keep in ipairs({true,false}) do
+  local c=h:client(keep and 3 or 4,nil,keep and {keepEvents=true} or nil)
+  h:start(c,'read',{op='snapshot'})
+  -- A key, the screen's own animation timer, a stale house reply and a raw modem packet.
+  for _,e in ipairs({{'key',16},{'timer',9999},{'rednet_message',1,{token='old',result={ok=true}},'pine-derby-house-v1'},{'modem_message','back',1,1,{}}}) do
+   local ok,err=coroutine.resume(c.co,(table.unpack or unpack)(e)); assert(ok,err)
+  end
+  h:pump(); check(c.finished and c.result.ok,'Reply still accepted after other events')
+  if keep then
+   eq(#c.queued,2,'Only the key and the timer are put back')
+   eq(c.queued[1][1],'key',' Key first'); eq(c.queued[1][2],16,'Same key'); eq(c.queued[2][1],'timer','Then the timer'); eq(c.queued[2][2],9999,'Same timer')
+  else eq(#c.queued,0,'Wallet clients keep their old behaviour') end
+ end
+ local c=h:client(3,nil,{keepEvents=true})
+ h.hook=function() return false end
+ local r=h:call(c,'read',{op='snapshot'}); check(r.offline and r.error=='House offline','A read does not claim to keep anything')
+ r=h:call(c,'mutate',reserve()); check(r.offline and r.error:find('kept for retry',1,true),'A mutation says it is kept for retry')
+ h.hook=nil; check(h:call(c,'retry').ok,'Retry still completes')
+end)
+test('host refund prompt ignores its own keypress and keeps the race schedule running',function()
+ local h,c=setup(); check(h:call(c,'mutate',reserve('stuck-round')).ok,'Interrupted arcade round')
+ local host=h.host; local typed={}
+ host.env.write=function() end
+ -- Like CC's read(): consume pending events (including the schedule timer), return the line.
+ host.env.read=function() for k in pairs(host.timers) do host.timers[k]=nil end; return table.remove(typed,1) end
+ typed[1]='stuck-round'
+ h:operator('u')
+ local ok,err=coroutine.resume(host.co,'char','u'); assert(ok,err)
+ check(next(typed)~=nil,'Prompt waits for the keypress char to pass')
+ h:timeout(host)
+ eq(h:state().rounds['stuck-round'].status,'refunded','Round ID typed without a stray U')
+ check(next(host.timers)~=nil,'Schedule timer armed again after the prompt'); sane(h)
+end)
 test('repeated deterministic packet loss and duplication preserve credits',function()
  local h,c=setup(); local packets=0
  h.hook=function(p)

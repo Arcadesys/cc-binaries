@@ -35,7 +35,7 @@
     },
     {
      "path": "derby/client.lua",
-     "size": 1855
+     "size": 2635
     },
     {
      "path": "derby/config.lua",
@@ -55,7 +55,7 @@
     },
     {
      "path": "derby/ui.lua",
-     "size": 1875
+     "size": 2683
     },
     {
      "path": "derby/vendor/LICENSE",
@@ -126,7 +126,7 @@
     },
     {
      "path": "derby/client.lua",
-     "size": 1855
+     "size": 2635
     },
     {
      "path": "derby/config.lua",
@@ -146,7 +146,7 @@
     },
     {
      "path": "derby/ui.lua",
-     "size": 1875
+     "size": 2683
     },
     {
      "path": "derby/vendor/LICENSE",
@@ -229,7 +229,7 @@
     },
     {
      "path": "derby/client.lua",
-     "size": 1855
+     "size": 2635
     },
     {
      "path": "derby/config.lua",
@@ -249,7 +249,7 @@
     },
     {
      "path": "derby/ui.lua",
-     "size": 1875
+     "size": 2683
     },
     {
      "path": "derby/vendor/LICENSE",
@@ -332,7 +332,7 @@
     },
     {
      "path": "derby/client.lua",
-     "size": 1855
+     "size": 2635
     },
     {
      "path": "derby/config.lua",
@@ -352,7 +352,7 @@
     },
     {
      "path": "derby/ui.lua",
-     "size": 1875
+     "size": 2683
     },
     {
      "path": "derby/vendor/LICENSE",
@@ -427,7 +427,7 @@
     },
     {
      "path": "derby/app.lua",
-     "size": 3496
+     "size": 4780
     },
     {
      "path": "derby/cage.lua",
@@ -439,7 +439,7 @@
     },
     {
      "path": "derby/client.lua",
-     "size": 1855
+     "size": 2635
     },
     {
      "path": "derby/config.lua",
@@ -475,7 +475,7 @@
     },
     {
      "path": "derby/render.lua",
-     "size": 3499
+     "size": 3592
     },
     {
      "path": "derby/scene.lua",
@@ -483,7 +483,7 @@
     },
     {
      "path": "derby/server.lua",
-     "size": 2680
+     "size": 3032
     },
     {
      "path": "derby/service.lua",
@@ -499,7 +499,7 @@
     },
     {
      "path": "derby/station.lua",
-     "size": 4131
+     "size": 5637
     },
     {
      "path": "derby/store.lua",
@@ -507,7 +507,7 @@
     },
     {
      "path": "derby/ui.lua",
-     "size": 1875
+     "size": 2683
     },
     {
      "path": "derby/vendor/LICENSE",
@@ -529,8 +529,7 @@
      "path": "race.lua",
      "size": 112
     }
-   ],
-   "monitor": false
+   ]
   },
   "wordle": {
    "title": "Daily Wordle",
@@ -547,7 +546,7 @@
     },
     {
      "path": "derby/ui.lua",
-     "size": 1875
+     "size": 2683
     },
     {
      "path": "derby/vendor/betterblittle.lua",
@@ -621,7 +620,7 @@
     },
     {
      "path": "derby/app.lua",
-     "size": 3496
+     "size": 4780
     },
     {
      "path": "derby/cage.lua",
@@ -633,7 +632,7 @@
     },
     {
      "path": "derby/client.lua",
-     "size": 1855
+     "size": 2635
     },
     {
      "path": "derby/config.lua",
@@ -665,7 +664,7 @@
     },
     {
      "path": "derby/render.lua",
-     "size": 3499
+     "size": 3592
     },
     {
      "path": "derby/scene.lua",
@@ -673,7 +672,7 @@
     },
     {
      "path": "derby/server.lua",
-     "size": 2680
+     "size": 3032
     },
     {
      "path": "derby/service.lua",
@@ -689,7 +688,7 @@
     },
     {
      "path": "derby/station.lua",
-     "size": 4131
+     "size": 5637
     },
     {
      "path": "derby/store.lua",
@@ -697,7 +696,7 @@
     },
     {
      "path": "derby/ui.lua",
-     "size": 1875
+     "size": 2683
     },
     {
      "path": "derby/vendor/LICENSE",
