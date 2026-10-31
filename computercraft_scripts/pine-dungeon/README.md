@@ -25,9 +25,11 @@ Moving into a monster strikes it instead of entering its tile. A zombie (`z`) ta
 
 ## The Warden
 
-The floor-3 boss (`W`, 14 HP) slams for 2 when adjacent. When you share an open row or column with it, its chest glows red and it charges a sonic boom for two turns, then hits for 4 unless you broke line of sight (use the pillars). It rests after each attack. At half health it roars and raises two zombies. The End Portal stays sealed until it falls. The map marks your position with `@` and names your facing direction above it; it carries all essential location information without relying on color.
+The floor-3 boss (`W`, 14 HP) slams for 2 when adjacent. When you share an open row or column with it, its chest glows red and it charges a sonic boom for two turns, then hits for 4 unless you broke line of sight (use the pillars). It rests after each attack. At half health it roars and raises two zombies; they act from the following turn. The End Portal stays sealed until it falls. The map marks your position with `@` and names your facing direction above it; it carries all essential location information without relying on color.
 
-The game is deliberately short and replayable. It has no random generation, saved progress, networking, names, sound, or equipment system.
+Damage you take on a turn is shown on the stat line in red (for example `HEARTS 8/12 -4`), and the message line names its source (`Mobs hit -1`, `Warden slams -2`). An attached speaker plays optional sound cues; without one the game is silent.
+
+The game is deliberately short and replayable. It has no random generation, saved progress, networking, names, or equipment system.
 
 ## Development
 
