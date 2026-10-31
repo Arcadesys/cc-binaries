@@ -84,7 +84,7 @@ local function install()
     end
 
     for name, content in pairs(bundled_modules) do
-        local filename = name .. ".lua"
+        local filename = fs.combine(shell.dir(), name .. ".lua")
         -- Delete existing file first to ensure clean write
         if fs.exists(filename) then
             fs.delete(filename)

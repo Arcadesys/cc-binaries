@@ -716,7 +716,7 @@
    "description": "Minesweeper, Solitaire, Euchre, Schema Designer",
    "required": false,
    "turtle": false,
-   "size": 96870,
+   "size": 98441,
    "files": [
     {
      "src": "cc-factory/lib_designer.lua",
@@ -751,7 +751,7 @@
     {
      "src": "cc-factory/lib_ui.lua",
      "dest": "/pkg/factory/lib_ui.lua",
-     "size": 11546
+     "size": 13117
     }
    ]
   },
@@ -1170,7 +1170,7 @@
    "description": "Factory and TurtleOS turtle automation (turtles only)",
    "required": false,
    "turtle": true,
-   "size": 574694,
+   "size": 655743,
    "files": [
     {
      "src": "cc-factory/factory.lua",
@@ -1188,6 +1188,11 @@
      "size": 3294
     },
     {
+     "src": "cc-factory/lib_betterblittle.lua",
+     "dest": "/pkg/factory/lib_betterblittle.lua",
+     "size": 6135
+    },
+    {
      "src": "cc-factory/lib_bg2.lua",
      "dest": "/pkg/factory/lib_bg2.lua",
      "size": 8440
@@ -1201,6 +1206,11 @@
      "src": "cc-factory/lib_diagnostics.lua",
      "dest": "/pkg/factory/lib_diagnostics.lua",
      "size": 1667
+    },
+    {
+     "src": "cc-factory/lib_factory_home.lua",
+     "dest": "/pkg/factory/lib_factory_home.lua",
+     "size": 2500
     },
     {
      "src": "cc-factory/lib_fleet_coordinator.lua",
@@ -1318,6 +1328,16 @@
      "size": 17381
     },
     {
+     "src": "cc-factory/lib_pine3d.lua",
+     "dest": "/pkg/factory/lib_pine3d.lua",
+     "size": 69408
+    },
+    {
+     "src": "cc-factory/lib_pine_mesh.lua",
+     "dest": "/pkg/factory/lib_pine_mesh.lua",
+     "size": 1551
+    },
+    {
      "src": "cc-factory/lib_placement.lua",
      "dest": "/pkg/factory/lib_placement.lua",
      "size": 14756
@@ -1375,7 +1395,7 @@
     {
      "src": "cc-factory/lib_ui.lua",
      "dest": "/pkg/factory/lib_ui.lua",
-     "size": 11546
+     "size": 13117
     },
     {
      "src": "cc-factory/lib_world.lua",
@@ -1455,7 +1475,7 @@
     {
      "src": "cc-factory/turtle_os.lua",
      "dest": "/pkg/factory/turtle_os.lua",
-     "size": 10929
+     "size": 10813
     },
     {
      "src": "cc-turtleos/turtleos/menu.lua",

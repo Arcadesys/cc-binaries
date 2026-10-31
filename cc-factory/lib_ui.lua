@@ -172,7 +172,12 @@ function ui.runForm(form)
     
     local running = true
     local result = nil
-    local activeInput = nil
+    local focusable = {}
+    for _, el in ipairs(form.elements) do
+        if el.type == "input" or el.type == "button" then focusable[#focusable + 1] = el end
+    end
+    local focus = 1
+    local activeInput = focusable[1] and focusable[1].type == "input" and focusable[1] or nil
 
     while running do
         ui.clear()
@@ -182,7 +187,7 @@ function ui.runForm(form)
         for _, el in ipairs(form.elements) do
             local ex, ey = fx + el.x, fy + el.y
             if el.type == "button" then
-                ui.button(ex, ey, el.text, false)
+                ui.button(ex, ey, el.text, focusable[focus] == el)
             elseif el.type == "label" then
                 ui.label(ex, ey, el.text)
             elseif el.type == "input" then
@@ -211,6 +216,7 @@ function ui.runForm(form)
                 elseif el.type == "input" then
                     if my == ey and mx >= ex and mx < ex + el.width then
                         activeInput = el
+                        for index, candidate in ipairs(focusable) do if candidate == el then focus = index end end
                         clickedSomething = true
                     end
                 end
@@ -224,13 +230,24 @@ function ui.runForm(form)
             activeInput.value = (activeInput.value or "") .. p1
         elseif event == "key" then
             local key = p1
-            if key == keys.backspace and activeInput then
+            if key == keys.tab or key == keys.down then
+                focus = focus % #focusable + 1
+                activeInput = focusable[focus].type == "input" and focusable[focus] or nil
+            elseif key == keys.up then
+                focus = (focus - 2) % #focusable + 1
+                activeInput = focusable[focus].type == "input" and focusable[focus] or nil
+            elseif key == keys.escape then return "cancel"
+            elseif key == keys.enter and focusable[focus] and focusable[focus].type == "button" then
+                local res = focusable[focus].callback(form)
+                if res then return res end
+            elseif key == keys.backspace and activeInput then
                 local val = activeInput.value or ""
                 if #val > 0 then
                     activeInput.value = val:sub(1, -2)
                 end
             elseif key == keys.enter and activeInput then
-                activeInput = nil
+                focus = focus % #focusable + 1
+                activeInput = focusable[focus].type == "input" and focusable[focus] or nil
             end
         end
     end
@@ -264,7 +281,8 @@ function ui.runMenu(title, items)
     local fx, fy = math.floor((w - fw) / 2) + 1, math.floor((h - fh) / 2) + 1
     
     local scroll = 0
-    local maxVisible = fh - 4 -- Title + padding (top/bottom)
+    local selected = 1
+    local maxVisible = math.max(1, fh - 4) -- Title + padding (top/bottom)
     
     while true do
         ui.clear()
@@ -275,7 +293,7 @@ function ui.runMenu(title, items)
             local idx = i + scroll
             if idx <= #items then
                 local item = items[idx]
-                ui.button(fx + 2, fy + 1 + i, item.text, false)
+                ui.button(fx + 2, fy + 1 + i, (idx == selected and "> " or "  ") .. item.text, idx == selected)
             end
         end
         
@@ -299,7 +317,7 @@ function ui.runMenu(title, items)
                     local item = items[idx]
                     local bx, by = fx + 2, fy + 1 + i
                     -- Button width is text length + 2 spaces
-                    if my == by and mx >= bx and mx < bx + #item.text + 2 then
+                    if my == by and mx >= bx and mx < bx + #item.text + 4 then
                         ui.button(bx, by, item.text, true) -- Flash
                         sleep(0.1)
                         if item.callback then
@@ -319,11 +337,14 @@ function ui.runMenu(title, items)
             end
         elseif event == "key" then
             local key = p1
-            if key == keys.up then
-                if scroll > 0 then scroll = scroll - 1 end
-            elseif key == keys.down then
-                if scroll + maxVisible < #items then scroll = scroll + 1 end
-            end
+            if key == keys.up then selected = math.max(1, selected - 1)
+            elseif key == keys.down then selected = math.min(#items, selected + 1)
+            elseif key == keys.enter and items[selected] and items[selected].callback then
+                local res = items[selected].callback()
+                if res then return res end
+            elseif key == keys.backspace or key == keys.escape then return "back" end
+            if selected <= scroll then scroll = selected - 1 end
+            if selected > scroll + maxVisible then scroll = selected - maxVisible end
         end
     end
 end

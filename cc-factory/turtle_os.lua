@@ -351,17 +351,14 @@ local function showGamesMenu()
 end
 
 local function showMainMenu()
-    while true do
-        local res = ui.runMenu("TurtleOS v2.1", {
-            { text = "MINE >", callback = showMineMenu },
-            { text = "FARM >", callback = showFarmMenu },
-            { text = "BUILD >", callback = showBuildMenu },
-            { text = "GAMES >", callback = showGamesMenu },
-            { text = "SYSTEM >", callback = showSystemMenu },
-            { text = "Exit", callback = function() return "exit" end }
-        })
-        if res == "exit" then return "exit" end
-    end
+    return require("lib_factory_home").run({
+        { text = "Mine", callback = showMineMenu },
+        { text = "Farm", callback = showFarmMenu },
+        { text = "Build", callback = showBuildMenu },
+        { text = "Games", callback = showGamesMenu },
+        { text = "System", callback = showSystemMenu },
+        { text = "Exit", callback = function() return "exit" end },
+    })
 end
 
 local function main()

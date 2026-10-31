@@ -47,7 +47,9 @@ The mine uses a two-level route with symmetric branches, inspected neighbours an
 
 ## Launch and keyboard controls
 
-In the existing TurtleOS menu, choose **Mine → Branch Mining**. The setup wizard asks one labelled question at a time, collects explicit home/heading/world and job identity, and proposes bounds for the tiny default mine. Invalid input is reprompted. **Q + ENTER** cancels setup without turtle actions. The wizard then opens the same factory preflight screen as the CLI; it still requires ENTER confirmation before mining.
+Run `turtle_os` to open the cc-factory launcher. Use the arrow keys to choose a section and Enter to open it; Q exits. Inside section menus, use Up/Down and Enter, or Escape to go back. Forms use Tab or Up/Down to move focus, Enter to advance or activate a button, and Escape to cancel. On colour screens the home screen displays a decorative Pine3D model; smaller or monochrome screens use a text view.
+
+Choose **Mine → Branch Mining**. The setup wizard asks one labelled question at a time, collects explicit home/heading/world and job identity, and proposes bounds for the tiny default mine. Invalid input is reprompted. **Q + ENTER** cancels setup without turtle actions. The wizard then opens the same factory preflight screen as the CLI; it still requires ENTER confirmation before mining.
 
 The following is a command template for a **future supervised test**, using an illustrative home at `0,64,0` facing north. Replace the home, dimension and bounds with the actual prepared area before use. The illustrated bounds include neighbour inspection around the tiny 6 / 3 / 2 mine; review the displayed bounds before starting.
 

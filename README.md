@@ -2,6 +2,26 @@
 
 ComputerCraft programs, consolidated from separate repositories via `git subtree` (each subfolder keeps its original commit history).
 
+## One-command installer
+
+On a CC:Tweaked computer with HTTP enabled, run:
+
+```
+wget run https://raw.githubusercontent.com/Arcadesys/cc-binaries/main/install.lua
+```
+
+Choose ArcadeOS, Pine games and arcade, TurtleOS, cc-factory, or the screensaver by number, or enter `q` to cancel. Each choice runs its existing installer, which controls its own prompts, files, and startup behavior. TurtleOS is intended for turtles and reboots by default. cc-factory installs into `/cc-factory`; after installation, run `cd /cc-factory` and then `turtle_os`. An existing nonempty directory requires confirmation before modules are overwritten. See the [safe mining pilot guide](./cc-factory/SAFE_MINING.md) before mining.
+
+You can also select a project directly and pass its installer options, for example:
+
+```
+wget run https://raw.githubusercontent.com/Arcadesys/cc-binaries/main/install.lua arcade pineslots --startup
+```
+
+To select cc-factory directly, append `factory` to the one-line installer command.
+
+Use `--base https://raw.githubusercontent.com/<owner>/cc-binaries/<branch>` to fetch both the selected installer and its files from a fork or branch. For an unpublished branch, the first URL must also point to that branch. The menu only becomes available at the `main` URL after this file is published there.
+
 ## ArcadeOS
 
 [`arcadeos/`](./arcadeos) is a Windows 1.0–style shell that runs everything below as apps, with tiled windows, menu bars, an icon strip and Windows 1.0 accessories. To install it on an Advanced Computer:
