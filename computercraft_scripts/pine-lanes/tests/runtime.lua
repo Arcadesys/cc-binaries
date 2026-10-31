@@ -3,7 +3,7 @@
 local App=require('lib.app')
 local ui=require('lib.ui')
 local M={}
-local keyNames={start='space',continue='space',roll='space',players_up='right',players_down='left',
+local keyNames={start='space',mascot_confirm='space',continue='space',roll='space',players_up='right',players_down='left',
  select_position='one',select_aim='two',select_power='three',select_hook='four',adjust_down='left',adjust_up='right',
  fine='f',view='tab',skip='s',help='h',pause='p',restart='r',quit='backspace',select_prev='up',select_next='down'}
 function M.run(mode,playerCount,shots)
@@ -23,7 +23,7 @@ function M.run(mode,playerCount,shots)
      end
      assert(event,'No tap target '..action..' in '..app.phase)
    else event={'key',assert(keys[keyNames[action]],action),false} end
-   if action=='roll' or action=='start' or action=='continue' then
+   if action=='roll' or action=='start' or action=='continue' or action=='mascot_confirm' then
      pending={time=os.clock()+.35,event=event}
    else os.queueEvent(table.unpack(event)) end
  end
@@ -39,6 +39,7 @@ function M.run(mode,playerCount,shots)
      if app.phase=='SETUP' then
        if app.playerCount<playerCount then queue('players_up',app) else queue('start',app) end;return
      end
+     if app.phase=='MASCOTS' then queue('mascot_confirm',app);return end
      -- Inspect help and all camera modes once before bowling.
      local actions={'help','start','view','view','view','pause','start'}
      if warm<=#actions then local action=actions[warm];warm=warm+1;queue(action,app);return end
@@ -104,6 +105,7 @@ function M.playbackRecovery()
   final=App.run({monitor='lanes_recovery',record=function(kind,data,app)
    if kind~='frame' then return end
    if stage==0 and app.phase=='SETUP' then stage=1;key('space')
+   elseif stage==1 and app.phase=='MASCOTS' and not pending then key('space')
    elseif stage==1 and app.phase=='AIM' then stage=2;key('space')
    elseif stage==2 and app.phase=='PLAYBACK' then
     frozen,elapsed,simulation=app.displaySnapshot,app.playback.elapsed,app.sim

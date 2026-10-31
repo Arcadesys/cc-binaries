@@ -166,7 +166,7 @@ function ui.draw(t,view,buttons)
     local nextPlayer=#(view.rankings or {})>0 and "FINAL RESULTS" or ("PLAYER "..tostring(view.currentPlayer or player))
     put(t,1,4,"NEXT: "..nextPlayer.." - CONTINUE",gold,black,w)
   elseif phase=="FINAL" then
-    put(t,1,4,"NEXT: FINAL RESULTS",gold,black,w)
+    put(t,1,4,"MATCH OVER: NEW GAME OR QUIT",gold,black,w)
   elseif view.lastInput then put(t,1,4,"INPUT: "..tostring(view.lastInput),gold,black,w) end
   if buttons.small then
     put(t,1,math.max(1,h-1),"RESIZE: NEED 39 x 19",gold,black,w)
@@ -187,7 +187,7 @@ function ui.draw(t,view,buttons)
 
   if phase=="HELP" then
     put(t,1,5,"ARROWS: select or adjust | 1-4: setting",white,black,w)
-    put(t,1,6,"SPACE: primary | TAB: view | F: fine",white,black,w)
+    put(t,1,6,"SPACE/ENTER: go | TAB: view | F: fine",white,black,w)
     put(t,1,7,"H: help P: menu S: skip R: restart",white,black,w)
     put(t,1,8,"BACKSPACE: quit from menus",white,black,w)
   elseif phase=="PAUSED" then

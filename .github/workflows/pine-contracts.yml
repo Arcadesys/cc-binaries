@@ -29,6 +29,9 @@ jobs:
         run: sudo apt-get update && sudo apt-get install --yes lua${{ matrix.lua }}
       - name: Test harness support
         run: python3 cc-arcade/tools/test_contracts.py --lua lua${{ matrix.lua }} --suite tests/support_contracts.lua
+      - name: Test Pine Lanes core modules
+        working-directory: computercraft_scripts/pine-lanes
+        run: lua${{ matrix.lua }} tests/headless.lua
       - name: Test production module contracts
         run: python3 cc-arcade/tools/test_contracts.py --lua lua${{ matrix.lua }}
       - name: Test production currency and migration
