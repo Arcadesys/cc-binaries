@@ -26,8 +26,19 @@ assert(sa.ball.x==forecast.ball.x and sa.ball.z==forecast.ball.z,'forecast disag
 assert(sa.lie=='green' and a:shot().club=='putter')
 assert(math.abs(a.aim-golf.aimToCup(sa))<1e-9)
 assert(a.power==math.floor(golf.distanceToCup(sa)/32*200+.5)/2)
-a:action('help'); a:action('swing'); assert(a.phase=='HELP' and a:state().strokes==1)
+-- Space in help resumes the hole without taking a stroke; START is then a no-op.
+local before=a.message
+a:action('help'); a:action('swing'); assert(a.phase=='AIM' and a:state().strokes==1 and not a.sim)
 a:action('start'); assert(a.phase=='AIM')
+-- H and P switch between help and menu; resuming restores the phase and its message.
+a:action('pause'); assert(a.phase=='PAUSED'); a:action('help'); assert(a.phase=='HELP')
+a:action('pause'); assert(a.phase=='PAUSED'); a:action('pause'); assert(a.phase=='AIM' and a.message==before)
+a:pause('Display resized.'); a:action('start'); assert(a.phase=='AIM' and a.message==before,'stale pause message')
+-- R beside the E club key cannot wipe a hole in play; it restarts from the menu.
+a:action('restart'); assert(a.phase=='AIM' and a:state().strokes==1,'restart must require the menu')
+-- Below the minimum display only QUIT works.
+a.smallDisplay=true; a:action('swing'); a:action('club_next'); assert(not a.sim and a:shot().club=='putter')
+a.smallDisplay=false
 a:action('swing'); a:pause('test resize')
 local ticks=a.sim.state.ticks; a:tick(10); assert(a.sim.state.ticks==ticks,'paused shot advanced')
 a:action('start'); assert(a.phase=='SIMULATE')

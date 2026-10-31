@@ -38,6 +38,9 @@ jobs:
           python3 cc-arcade/tools/test_contracts.py --lua lua${{ matrix.lua }} --suite tests/currency_wire.lua
       - name: Verify proposed payout analysis
         run: python3 cc-arcade/tools/test_contracts.py --lua lua${{ matrix.lua }} --suite tests/payout_analysis.lua
+      - name: Test Pine Links core modules
+        working-directory: computercraft_scripts/pine-links
+        run: lua${{ matrix.lua }} tests/headless.lua
       - name: Verify generated installer and manifest
         run: |
           python3 cc-arcade/derby/tools/bundle.py

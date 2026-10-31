@@ -32,7 +32,7 @@ end
 function App:reset()
   self.round = rules.new()
   self.clubIndex = clubIndex(DEFAULT.club); self.aim = DEFAULT.aim; self.power = DEFAULT.power
-  self.sim = nil; self.playback = nil; self.displayBall = nil; self.resumePhase = nil
+  self.sim = nil; self.playback = nil; self.displayBall = nil; self.resumePhase = nil; self.resumeMessage = nil
   self:updateForecast()
 end
 
@@ -65,9 +65,18 @@ function App:view()
     scoreName = rules.scoreName(s.strokes, course.hole.par), scoreLabel = golf.scoreLabel(s.strokes), mascot = self.mascot}
 end
 
-function App:pause(message)
-  if self.phase ~= 'PAUSED' and self.phase ~= 'HELP' then self.resumePhase = self.phase end
-  self.phase = 'PAUSED'; self.message = message or 'Paused. P or MENU to resume.'
+-- Overlays remember the phase and message underneath, so resuming restores both.
+function App:overlay(phase, message)
+  if self.phase ~= 'PAUSED' and self.phase ~= 'HELP' then self.resumePhase = self.phase; self.resumeMessage = self.message end
+  self.phase = phase
+  if message then self.message = message end
+end
+
+function App:pause(message) self:overlay('PAUSED', message or 'Paused. P or MENU to resume.') end
+
+function App:resume()
+  self.phase = self.resumePhase or 'AIM'; self.resumePhase = nil
+  self.message = self.resumeMessage or self.message; self.resumeMessage = nil
 end
 
 function App:resolve()
@@ -109,21 +118,24 @@ end
 function App:action(action)
   if not action then return end
   self.lastInput = action; self:emit('input', action)
-  if action == 'start' and (self.phase == 'HELP' or self.phase == 'PAUSED') then
-    self.phase = self.resumePhase or 'AIM'; self.resumePhase = nil; return
-  end
   if action == 'quit' then self.running = false; return end
+  -- Below the minimum size only QUIT is shown, so nothing else may play the hole unseen.
+  if self.smallDisplay then return end
+  local overlay = self.phase == 'HELP' or self.phase == 'PAUSED'
+  -- Space / Enter (swing) resumes from an overlay just like RESUME.
+  if overlay and (action == 'start' or action == 'swing') then self:resume(); return end
   if action == 'view' then self.camera = ({tee = 'overview', overview = 'map', map = 'tee'})[self.camera]; return end
   if action == 'help' or action == 'pause' then
-    if self.phase == 'HELP' or self.phase == 'PAUSED' then
-      self.phase = self.resumePhase or 'AIM'; self.resumePhase = nil
-      self.message = 'Arrows aim/power | Q/E club | A aim at cup | Space swing'
-    else
-      self.resumePhase = self.phase; self.phase = action == 'help' and 'HELP' or 'PAUSED'
-    end
+    local target = action == 'help' and 'HELP' or 'PAUSED'
+    -- The same key closes its own overlay; the other key switches between help and menu.
+    if self.phase == target then self:resume() else self:overlay(target) end
     return
   end
-  if action == 'restart' then self:restart(); return end
+  -- R sits beside the E club key, so restarting needs the menu, help or scorecard.
+  if action == 'restart' then
+    if overlay or self.phase == 'SCORECARD' or self.phase == 'TITLE' then self:restart() end
+    return
+  end
   if self.phase == 'TITLE' then
     if action == 'aim_left' or action == 'club_prev' then self.mascot=(self.mascot-2)%#mascots.list+1
     elseif action == 'aim_right' or action == 'club_next' then self.mascot=self.mascot%#mascots.list+1
@@ -203,6 +215,7 @@ function App.run(options)
     if renderer then pcall(function() renderer:close() end) end
     term.redirect(target); renderer = render.new(target, course)
     displayWidth, displayHeight = target.getSize()
+    app.smallDisplay = displayWidth < 39 or displayHeight < 19
   end
   local ok, err = xpcall(function()
     rebuild()
@@ -227,7 +240,9 @@ function App.run(options)
         app:pause('Display resized. P / MENU resumes.'); rebuild(); changed = true
       elseif event[1] == 'timer' and event[2] == timer then
         local phase = app.phase
-        local width, height = target.getSize()
+        -- A detached monitor's wrapped methods error rather than return nil.
+        local sized, width, height = pcall(target.getSize)
+        if not sized then width, height = nil, nil end
         if monitorName and not width then
           -- The monitor vanished before its detach event arrived; fall back the same way.
           target = original; monitorName = nil
