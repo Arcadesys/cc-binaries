@@ -20,4 +20,28 @@ local commits = 0
 for _, l in ipairs(log) do if l:match("^commit") then commits = commits + 1 end end
 assert(commits >= 2, "live loop committed too few pitches: " .. table.concat(log, " "))
 print("PASS live loop: " .. commits .. " commits, " .. #log .. " events")
+
+-- Pulling the monitor mid-game falls back to the terminal, paused, instead of crashing.
+-- CraftOS-PC only emulates monitors with --gui (tools/test_smoke.sh); headless runs skip this.
+local name = "pineball_smoke"
+if periphemu and pcall(periphemu.create, name, "monitor") and peripheral.isPresent(name) then
+  local app, frames, onTerminal = nil, 0, 0
+  parallel.waitForAny(function()
+    app = App.run({monitor = name, seed = 4, record = function(kind, data, a)
+      if kind == "frame" then
+        frames = frames + 1
+        if a.phase == "PAUSED" and a.message:find("detached", 1, true) then onTerminal = onTerminal + 1 end
+      end
+    end})
+  end, function()
+    sleep(.3); os.queueEvent("key", keys.space, false); sleep(.5)
+    periphemu.remove(name); sleep(.6)
+    os.queueEvent("key", keys.p, false); sleep(.3)
+    os.queueEvent("key", keys.p, false); sleep(.3); os.queueEvent("key", keys.backspace, false)
+    sleep(.5); os.queueEvent("terminate")
+  end)
+  assert(term.current() == original, "terminal not restored after detach")
+  assert(onTerminal >= 1 and frames > 3, "no terminal fallback after detach")
+  print("PASS monitor detach: " .. frames .. " frames")
+else print("SKIP monitor detach: no emulated monitors") end
 return true
