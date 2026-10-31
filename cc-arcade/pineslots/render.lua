@@ -36,7 +36,7 @@ function M.new(t)
  term.redirect(old)
  local api={frame=f}
  -- view: positions[3], lamps(i)->bool, lines[5]->bool, pressed{name=true},
- -- title, credits, bet, win, message, highlight
+ -- title, credits, bet, win, message, short (compact message for narrow screens), highlight
  function api:draw(v)
   local previous=term.redirect(t)
   local ww,hh=t.getSize()
@@ -55,6 +55,7 @@ function M.new(t)
   line(t,1,' '..(v.title or 'PINE SLOTS'),colors.yellow,colors.blue)
   t.setCursorPos(math.max(1,w-#right+1),1); t.setTextColor(colors.white); t.setBackgroundColor(colors.blue); t.write(right)
   local msg=v.message or ''
+  if #msg>w and v.short then msg=v.short end
   local pad=math.max(0,math.floor((w-#msg)/2))
   line(t,h-1,string.rep(' ',pad)..msg,v.highlight and colors.black or colors.yellow,v.highlight and colors.yellow or colors.black)
   for _,b in ipairs(M.buttons(w)) do
