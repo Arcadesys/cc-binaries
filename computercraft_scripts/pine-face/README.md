@@ -14,7 +14,7 @@ Copy the whole `pine-face` folder to each computer, then:
 | Each other player | `/pine-face/face.lua --join`, or `--join <host computer ID>` to skip the lookup |
 | Alone against bots | `/pine-face/face.lua --solo` |
 
-Players join in the lobby and fill seats 2–4. The host presses ENTER (or START) when everyone is in; any empty seat gets a bot. A player who joins after the match starts takes over a bot's seat. If a player's computer goes quiet for three seconds, a bot takes over their seat, and running `--join` again gets them the same seat back. If the host goes away, players see "Lost the host" and can press R to rejoin.
+Players join in the lobby and fill seats 2–4. The host presses ENTER (or START) when everyone is in; any empty seat gets a bot. A player who joins after the match starts takes over a bot's seat. If a player's computer goes quiet for three seconds, a bot takes over their seat. If that computer is heard again (a brief radio gap), it gets its seat and name back automatically; otherwise running `--join` again gets the same seat back. If the host goes away, players see "Lost the host" and can press R to rejoin. Without a host ID, R looks the host up again, so a host restarted on another computer is found.
 
 `--terminal` uses the computer's own screen; `--monitor NAME` picks a monitor. Without either, the first color monitor attached is used. The minimum display is 39×19 characters; at 46 columns or more a radar appears beside the view.
 
@@ -36,7 +36,7 @@ Each tap on a button holds that control briefly; for continuous movement, hold t
 
 ## How it works
 
-`lib/world.lua` is the whole game: the arena, movement with wall sliding, bullets, hits, tags, respawns and the win. It runs at a fixed ten ticks per second and has no clock, terminal or network dependency, so a match from a given seed always plays the same way. `lib/bot.lua` routes bots through the maze by breadth-first search, turns them toward any rival in plain sight, and fires once they are lined up.
+`lib/world.lua` is the whole game: the arena, movement with wall sliding, bullets, hits, tags, respawns and the win. It runs at a fixed ten ticks per second and has no clock, terminal or network dependency, so a match from a given seed always plays the same way. `lib/bot.lua` routes bots through the maze by breadth-first search, turns them toward any rival in plain sight, and fires once they are lined up (holding fire while the target's spawn shield is up).
 
 `lib/net.lua` speaks rednet protocol `pine-face-v1`. The host advertises itself with `rednet.host`, owns the only copy of the world, steps it, and sends every player a compact snapshot each tick. Players send only which keys they're holding. `lib/render.lua` builds the walls, floor, Smileys and bullets as Pine3D objects once, and each frame draws only those near you and in front of you. `lib/ui.lua` draws the scoreboard, hearts, radar, lobby and results.
 
@@ -51,10 +51,10 @@ Run `tools/test_craftos.sh RESULT_DIRECTORY` (CraftOS-PC, headless). The tests c
 - the tenth tag ending the match
 - snapshot round trips
 - a deterministic four-bot match played to a winner
-- host and clients over a fake rednet: joining, a full lobby, dropouts, rejoining
+- host and clients over a fake rednet: joining, a full lobby, dropouts, rejoining, automatic reseating after a brief gap, and finding a restarted host on retry
 - input
 - layouts at three sizes
-- rendering every phase, plus the real event loop
+- rendering every phase, plus the real event loop (including a RETRY whose lookup swallows the loop timer)
 
 The tests also leave screen dumps (`*.json`) in the result directory, which `arcadeos/tools/render.py` turns into PNGs.
 

@@ -64,7 +64,10 @@ function Bot:input(state,seat)
     local diff=world.wrap(world.bearing(me.x,me.z,target.x,target.z)-me.yaw+self.jitter*.5)
     mask=steer(mask,diff,world.TURN/2)
     -- A short reaction time keeps bots from snap-firing the moment you round a corner.
-    if self.seen>3 and math.abs(diff)<9 and not state.bullets[seat] then mask=mask+world.FIRE end
+    -- Hold fire while the target's spawn shield is up; the shot would only be blocked.
+    if self.seen>3 and math.abs(diff)<9 and not state.bullets[seat] and (target.shield or 0)<=0 then
+      mask=mask+world.FIRE
+    end
     if best>2.5^2 and math.abs(diff)<40 then mask=mask+world.FWD;self.pushing=true
     elseif best<1.2^2 then mask=mask+world.BACK end
     return mask

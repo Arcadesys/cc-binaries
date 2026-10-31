@@ -139,7 +139,11 @@ function App.run(options)
     end
     draw()
     local dirty=false
-    local timer=os.startTimer(.05)
+    -- rednet.lookup (run by RETRY) pulls and discards every event for two seconds,
+    -- including this loop's timer; re-arm it whenever it is overdue so play resumes.
+    local timer,armedAt
+    local function arm() timer=os.startTimer(.05);armedAt=os.epoch("utc") end
+    arm()
     while app.running do
       local event={os.pullEventRaw()}
       if event[1]=="terminate" then app.running=false
@@ -155,8 +159,11 @@ function App.run(options)
         app.sound:tick()
         -- Draw at most once per timer so a burst of snapshots never backs up the queue.
         if dirty and app.running then draw();dirty=false end
-        timer=os.startTimer(.05)
-      elseif app:handle(event) then dirty=true; app.sound:tick() end
+        arm()
+      else
+        if app:handle(event) then dirty=true; app.sound:tick() end
+        if os.epoch("utc")-armedAt>250 then arm() end
+      end
     end
   end,debug.traceback)
   pcall(function() app.session:close() end)
